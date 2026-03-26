@@ -1,0 +1,14 @@
+# Env
+.env
+.env.*
+
+# Backend
+fisio-secretary/backend/node_modules/
+fisio-secretary-mvp/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store

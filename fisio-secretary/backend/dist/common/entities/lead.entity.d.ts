@@ -1,0 +1,29 @@
+import { Conversation } from './conversation.entity';
+import { LeadStageHistory } from './lead-stage-history.entity';
+import { Appointment } from './appointment.entity';
+export type LeadStage = 'novo_lead' | 'qualificando' | 'lead_quente' | 'lead_frio' | 'agendado' | 'convertido' | 'perdido';
+export type LeadTemperature = 'quente' | 'morno' | 'frio';
+export declare class Lead {
+    id: string;
+    phone: string;
+    name: string;
+    stage: LeadStage;
+    temperature: LeadTemperature;
+    qualificationScore: number;
+    symptoms: string;
+    urgency: string;
+    availability: string;
+    budget: string;
+    qualificationStep: number;
+    aiContext: object[];
+    nurtureStep: number;
+    nurturePaused: boolean;
+    nextNurtureAt: Date;
+    appointmentAt: Date;
+    lastMessageAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    conversation: Conversation;
+    stageHistory: LeadStageHistory[];
+    appointments: Appointment[];
+}
