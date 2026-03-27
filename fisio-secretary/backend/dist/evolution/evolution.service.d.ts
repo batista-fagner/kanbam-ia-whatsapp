@@ -8,6 +8,5 @@ export declare class EvolutionService {
     private readonly apiKey;
     private readonly instanceName;
     constructor(http: HttpService, config: ConfigService);
-    resolvePhone(remoteJid: string): Promise<string>;
     sendTextMessage(phone: string, text: string): Promise<void>;
 }

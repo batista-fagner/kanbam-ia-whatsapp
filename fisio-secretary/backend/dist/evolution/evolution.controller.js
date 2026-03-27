@@ -37,9 +37,7 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
         const remoteJid = message.key.remoteJid ?? '';
         if (remoteJid.includes('@g.us'))
             return { ok: true };
-        const phone = remoteJid.includes('@s.whatsapp.net')
-            ? remoteJid.replace('@s.whatsapp.net', '')
-            : remoteJid;
+        const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
         const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
         if (!phone || !text)
             return { ok: true };
@@ -73,8 +71,7 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
                 updateData.qualificationStep = f.qualificationStep;
         }
         await this.leadsService.update(lead.id, updateData);
-        const sendTo = await this.evolutionService.resolvePhone(phone);
-        await this.evolutionService.sendTextMessage(sendTo, aiResponse.reply);
+        await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
         return { ok: true };
     }

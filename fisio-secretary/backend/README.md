@@ -1,98 +1,151 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Fisio Secretary — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend da secretária virtual para clínica de fisioterapia. Recebe mensagens do WhatsApp via Evolution API, processa com IA (Claude) e qualifica leads automaticamente.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+- **Framework:** NestJS + TypeScript
+- **Banco de dados:** PostgreSQL (Supabase) via TypeORM
+- **Cache:** Redis
+- **WhatsApp:** Evolution API v2
+- **IA:** Anthropic Claude (`claude-haiku-4-5-20251001`)
+- **Real-time:** Socket.io
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Arquitetura
 
-## Project setup
-
-```bash
-$ npm install
+```
+WhatsApp → Evolution API → POST /webhooks/evolution
+                                     ↓
+                            Cria/busca Lead + Conversa
+                                     ↓
+                            Salva mensagem (inbound)
+                                     ↓
+                            Claude AI processa histórico
+                                     ↓
+                            Atualiza Lead (stage, temperatura, campos)
+                                     ↓
+                            Envia resposta via Evolution API
+                                     ↓
+                            Salva mensagem (outbound)
 ```
 
-## Compile and run the project
+## Módulos
 
-```bash
-# development
-$ npm run start
+### `EvolutionModule`
+- Recebe webhooks do WhatsApp
+- Filtra mensagens de grupos e do próprio bot
+- Orquestra o fluxo lead → IA → resposta
 
-# watch mode
-$ npm run start:dev
+### `LeadsModule`
+- CRUD de leads e conversas
+- Histórico de troca de estágio
+- Armazena mensagens com direção (inbound/outbound)
 
-# production mode
-$ npm run start:prod
+### `AiModule`
+- Integra com Anthropic SDK
+- Mantém histórico de conversa no campo `aiContext` (JSONB) do Lead
+- Retorna JSON estruturado com `reply`, `stage`, `temperature` e `fields`
+
+## Estágios do Lead
+
+```
+novo_lead → qualificando → lead_quente → agendado → convertido
+                        ↘ lead_frio  → perdido
 ```
 
-## Run tests
+**Temperatura:** `quente` | `morno` | `frio`
+
+## Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/leads` | Lista todos os leads |
+| GET | `/leads/:id` | Busca lead por ID |
+| GET | `/leads/:id/conversation` | Conversa com mensagens |
+| PATCH | `/leads/:id/stage` | Atualiza estágio do lead |
+| POST | `/webhooks/evolution` | Webhook do WhatsApp |
+
+## Configuração
+
+### Variáveis de ambiente
+
+Crie um arquivo `.env` na raiz de `fisio-secretary/` (o backend usa `../.env` por symlink):
+
+```env
+# Banco de dados (Supabase)
+SUPABASE_DATABASE_URL=postgresql://postgres.[project]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+SUPABASE_DIRECT_URL=postgresql://postgres.[project]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres
+
+# Redis
+REDIS_PASSWORD=sua_senha_redis
+
+# Evolution API (WhatsApp)
+AUTHENTICATION_API_KEY=chave_32_caracteres
+EVOLUTION_BASE_URL=http://evolution_api:8080
+EVOLUTION_INSTANCE_NAME=fisio-secretary
+
+# Anthropic (Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Configurações da clínica (usadas no prompt da IA)
+PHYSIO_CLINIC_NAME=Nome da Clínica
+PHYSIO_THERAPIST_NAME=Nome do Fisioterapeuta
+PHYSIO_CONSULTATION_PRICE=150
+PHYSIO_AVAILABLE_SLOTS=Seg-Sex 8h-18h
+PHYSIO_ADDRESS=Endereço da clínica
+```
+
+Consulte `.env.example` para a lista completa.
+
+## Rodando localmente
+
+### Pré-requisitos
+- Node.js 20+
+- Docker e Docker Compose (para Redis e Evolution API)
+
+### 1. Instalar dependências
+
+```bash
+cd fisio-secretary/backend
+npm install
+```
+
+### 2. Subir infraestrutura (Redis + Evolution API)
+
+```bash
+cd fisio-secretary
+docker compose up -d
+```
+
+### 3. Iniciar o backend
+
+```bash
+# desenvolvimento (watch mode)
+npm run start:dev
+
+# produção
+npm run start:prod
+```
+
+A API estará disponível em `http://localhost:3000`.
+
+## Testes
 
 ```bash
 # unit tests
-$ npm run test
+npm test
 
 # e2e tests
-$ npm run test:e2e
+npm run test:e2e
 
-# test coverage
-$ npm run test:cov
+# cobertura
+npm run test:cov
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Build
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run build
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Output gerado em `dist/`.

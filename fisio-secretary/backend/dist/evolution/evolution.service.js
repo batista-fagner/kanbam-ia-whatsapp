@@ -29,21 +29,6 @@ let EvolutionService = EvolutionService_1 = class EvolutionService {
         this.apiKey = config.get('AUTHENTICATION_API_KEY') ?? '';
         this.instanceName = config.get('EVOLUTION_INSTANCE_NAME') ?? '';
     }
-    async resolvePhone(remoteJid) {
-        if (!remoteJid.includes('@lid'))
-            return remoteJid;
-        try {
-            const res = await (0, rxjs_1.firstValueFrom)(this.http.get(`${this.baseUrl}/chat/findContacts/${this.instanceName}`, { headers: { apikey: this.apiKey } }));
-            const contacts = res.data ?? [];
-            const match = contacts.find((c) => c.lid === remoteJid || c.id === remoteJid);
-            if (match?.id)
-                return match.id.replace('@s.whatsapp.net', '');
-        }
-        catch (err) {
-            this.logger.error(`Erro ao resolver LID ${remoteJid}: ${err.message}`);
-        }
-        return remoteJid;
-    }
     async sendTextMessage(phone, text) {
         try {
             await (0, rxjs_1.firstValueFrom)(this.http.post(`${this.baseUrl}/message/sendText/${this.instanceName}`, { number: phone, text }, { headers: { apikey: this.apiKey } }));

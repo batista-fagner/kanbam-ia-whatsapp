@@ -22,9 +22,7 @@ export class EvolutionController {
 
     const remoteJid = message.key.remoteJid ?? '';
     if (remoteJid.includes('@g.us')) return { ok: true }; // ignora grupos
-    const phone = remoteJid.includes('@s.whatsapp.net')
-      ? remoteJid.replace('@s.whatsapp.net', '')
-      : remoteJid; // mantém JID completo para @lid
+    const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
 
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
     if (!phone || !text) return { ok: true };
@@ -59,9 +57,7 @@ export class EvolutionController {
 
     await this.leadsService.update(lead.id, updateData);
 
-    // Envia resposta (resolve @lid para número real se necessário)
-    const sendTo = await this.evolutionService.resolvePhone(phone);
-    await this.evolutionService.sendTextMessage(sendTo, aiResponse.reply);
+    await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
 
     return { ok: true };

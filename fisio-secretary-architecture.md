@@ -515,7 +515,143 @@
 
 ---
 
-## 12. Ordem de Construção
+## 13. Funcionalidades Avançadas de Mensagens
+
+### 13.1 Fila com Debounce de Mensagens
+
+**Problema:** usuário envia mensagens em sequência rápida ("oi" → "queria marcar" → "uma consulta") e Sofia responde 3 vezes separadamente.
+
+**Solução:** acumular mensagens do mesmo lead por uma janela de **3 segundos de inatividade**, depois processar tudo concatenado como uma única mensagem.
+
+```
+Webhook recebe msg → enqueue(phone, text) → retorna { ok: true }
+                                ↓ (3s sem nova msg do mesmo número)
+                     concatena textos → processa IA → envia resposta
+```
+
+**Arquivos:**
+
+| Arquivo | Ação |
+|---------|------|
+| `src/evolution/message-queue.service.ts` | **Criar** — `Map<phone, { messages[], timer }>`, método `enqueue()`, EventEmitter2 |
+| `src/evolution/evolution.controller.ts` | Substituir chamada direta à IA por `messageQueue.enqueue()` |
+| `src/evolution/evolution.module.ts` | Registrar `MessageQueueService` + `BullModule.registerQueue` |
+
+**Dependências:** `@nestjs/bull` + `bull` (usa o Redis já existente)
+
+---
+
+### 13.2 Indicador de Digitação ("...")
+
+**Problema:** usuário não sabe que Sofia está processando — parece que a mensagem sumiu.
+
+**Solução:** chamar endpoint da Evolution API para mostrar "digitando..." antes de enviar a resposta.
+
+```
+Timer de 3s dispara
+  → sendTypingIndicator(phone, 4000)   ← "digitando..." aparece no WhatsApp
+  → processMessage() via IA            ← processamento real
+  → sendTextMessage() ou sendAudio()   ← envia resposta
+```
+
+**Arquivos:**
+
+| Arquivo | Ação |
+|---------|------|
+| `src/evolution/evolution.service.ts` | Adicionar `sendTypingIndicator(phone, durationMs)` |
+
+**Endpoint Evolution:** `POST /chat/sendPresence/{instanceName}`
+```json
+{ "number": "phone", "options": { "presence": "composing", "delay": 4000 } }
+```
+
+---
+
+### 13.3 Mensagens de Áudio (STT + TTS)
+
+**Regra de negócio:**
+- Recebeu **texto** → responde em **texto**
+- Recebeu **áudio** → transcreve (STT) → processa IA → responde em **áudio** (TTS)
+
+#### STT — Transcrição de áudio recebido
+
+- Evolution API fornece o áudio em base64 via webhook
+- `AudioService.transcribe(buffer)` chama **Whisper (OpenAI)** → retorna texto
+- Texto entra no fluxo normal da IA
+
+#### TTS — Geração de áudio para resposta
+
+- `AudioService.textToSpeech(text)` chama **ElevenLabs** com a voz configurada para Sofia
+- Retorna buffer MP3/OGG
+- `EvolutionService.sendAudioMessage(phone, buffer)` envia via Evolution API
+
+**Lógica de decisão no controller:**
+```
+se messageType === 'audio':
+  inputText = transcrever(audioData)
+  responseMode = 'audio'
+senão:
+  inputText = message.conversation
+  responseMode = 'text'
+
+... processamento IA ...
+
+se responseMode === 'audio':
+  audioBuffer = textToSpeech(aiResponse.reply)
+  sendAudioMessage(phone, audioBuffer)
+senão:
+  sendTextMessage(phone, aiResponse.reply)
+```
+
+**Arquivos:**
+
+| Arquivo | Ação |
+|---------|------|
+| `src/audio/audio.service.ts` | **Criar** — `transcribe()` (Whisper) + `textToSpeech()` (ElevenLabs) |
+| `src/audio/audio.module.ts` | **Criar** — registra e exporta `AudioService` |
+| `src/evolution/evolution.service.ts` | Adicionar `sendAudioMessage(phone, audioBuffer)` |
+| `src/evolution/evolution.controller.ts` | Lógica de decisão texto/áudio |
+| `src/evolution/evolution.module.ts` | Importar `AudioModule` |
+
+**Endpoint Evolution para envio de áudio:** `POST /message/sendMedia/{instanceName}`
+```json
+{ "number": "phone", "mediatype": "audio", "media": "<base64>" }
+```
+
+---
+
+### 13.4 Novas Variáveis de Ambiente (Fase 6)
+
+```bash
+# ElevenLabs (TTS)
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID=...    # ID da voz da Sofia
+
+# OpenAI (Whisper STT)
+OPENAI_API_KEY=...
+```
+
+---
+
+### 13.5 Ordem de Implementação (Fase 6)
+
+```
+FASE 6 — Mensagens Avançadas
+  ├── MessageQueueService: debounce 3s por número
+  ├── Indicador de digitação (sendTypingIndicator)
+  ├── AudioModule: STT com Whisper
+  └── AudioModule: TTS com ElevenLabs + sendAudioMessage
+```
+
+**Critérios de verificação:**
+- Enviar 3 mensagens rápidas → Sofia responde 1 única vez com contexto completo
+- "digitando..." aparece no WhatsApp antes da resposta
+- Enviar áudio → Sofia transcreve → processa → responde em áudio
+- Enviar texto → Sofia responde em texto (fluxo atual preservado)
+
+---
+
+## 14. Ordem de Construção
 
 ```
 FASE 1 — Infraestrutura
@@ -552,11 +688,17 @@ FASE 5 — Polish
   ├── Toggle IA por lead
   ├── Envio manual pelo operador
   └── Histórico de movimentações de stage ✅
+
+FASE 6 — Mensagens Avançadas
+  ├── MessageQueueService: debounce 3s por número
+  ├── Indicador de digitação (sendTypingIndicator)
+  ├── AudioModule: STT com Whisper
+  └── AudioModule: TTS com ElevenLabs + sendAudioMessage
 ```
 
 ---
 
-## 12. Variáveis de Ambiente
+## 15. Variáveis de Ambiente
 
 ```bash
 # Banco
@@ -586,4 +728,11 @@ PHYSIO_CONSULTATION_PRICE="R$ 180,00"
 PHYSIO_AVAILABLE_SLOTS="Segunda a Sexta 8h-19h, Sábado 8h-13h"
 PHYSIO_ADDRESS="Rua das Flores, 123 - São Paulo/SP"
 PHYSIO_INSURANCE_PLANS="Unimed, Bradesco Saúde, Particular"
+
+# ElevenLabs (TTS — Fase 6)
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID=...
+
+# OpenAI Whisper (STT — Fase 6)
+OPENAI_API_KEY=...
 ```

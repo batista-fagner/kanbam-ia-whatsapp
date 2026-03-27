@@ -4,7 +4,9 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(ln:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(node -r dotenv/config -e \":*)",
+      "Bash(node:*)"
     ]
   }
 }
