@@ -87,6 +87,23 @@ let LeadsService = class LeadsService {
             order: { messages: { createdAt: 'ASC' } },
         });
     }
+    async getHistory(leadId) {
+        return this.historyRepo.find({
+            where: { leadId },
+            order: { createdAt: 'ASC' },
+        });
+    }
+    async toggleAi(leadId, enabled) {
+        const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+        if (conversation) {
+            conversation.aiEnabled = enabled;
+            await this.conversationsRepo.save(conversation);
+        }
+    }
+    async getAiEnabled(leadId) {
+        const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+        return conversation?.aiEnabled ?? true;
+    }
 };
 exports.LeadsService = LeadsService;
 exports.LeadsService = LeadsService = __decorate([

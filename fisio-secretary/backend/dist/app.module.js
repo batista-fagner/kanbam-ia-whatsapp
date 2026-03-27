@@ -17,6 +17,7 @@ const lead_stage_history_entity_1 = require("./common/entities/lead-stage-histor
 const appointment_entity_1 = require("./common/entities/appointment.entity");
 const evolution_module_1 = require("./evolution/evolution.module");
 const leads_module_1 = require("./leads/leads.module");
+const calendar_module_1 = require("./calendar/calendar.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -37,6 +38,7 @@ exports.AppModule = AppModule = __decorate([
             }),
             evolution_module_1.EvolutionModule,
             leads_module_1.LeadsModule,
+            calendar_module_1.CalendarModule,
         ],
     })
 ], AppModule);

@@ -2,13 +2,25 @@
 .env
 .env.*
 
-# Backend
+# Dependencies
 fisio-secretary/backend/node_modules/
+fisio-secretary/frontend/node_modules/
 fisio-secretary-mvp/node_modules/
+
+# Build output
+fisio-secretary/backend/dist/
+fisio-secretary/frontend/dist/
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

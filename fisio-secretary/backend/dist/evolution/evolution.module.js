@@ -13,12 +13,13 @@ const evolution_controller_1 = require("./evolution.controller");
 const evolution_service_1 = require("./evolution.service");
 const leads_module_1 = require("../leads/leads.module");
 const ai_module_1 = require("../ai/ai.module");
+const calendar_module_1 = require("../calendar/calendar.module");
 let EvolutionModule = class EvolutionModule {
 };
 exports.EvolutionModule = EvolutionModule;
 exports.EvolutionModule = EvolutionModule = __decorate([
     (0, common_1.Module)({
-        imports: [axios_1.HttpModule, leads_module_1.LeadsModule, ai_module_1.AiModule],
+        imports: [axios_1.HttpModule, leads_module_1.LeadsModule, ai_module_1.AiModule, calendar_module_1.CalendarModule],
         controllers: [evolution_controller_1.EvolutionController],
         providers: [evolution_service_1.EvolutionService],
         exports: [evolution_service_1.EvolutionService],

@@ -20,4 +20,7 @@ export declare class LeadsService {
     findAll(): Promise<Lead[]>;
     findOne(id: string): Promise<Lead | null>;
     getConversationWithMessages(leadId: string): Promise<Conversation | null>;
+    getHistory(leadId: string): Promise<LeadStageHistory[]>;
+    toggleAi(leadId: string, enabled: boolean): Promise<void>;
+    getAiEnabled(leadId: string): Promise<boolean>;
 }

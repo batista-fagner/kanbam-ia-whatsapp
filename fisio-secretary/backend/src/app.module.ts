@@ -8,6 +8,7 @@ import { LeadStageHistory } from './common/entities/lead-stage-history.entity';
 import { Appointment } from './common/entities/appointment.entity';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { LeadsModule } from './leads/leads.module';
     }),
     EvolutionModule,
     LeadsModule,
+    CalendarModule,
   ],
 })
 export class AppModule {}

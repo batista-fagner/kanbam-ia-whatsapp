@@ -6,7 +6,8 @@
       "Bash(ln:*)",
       "Bash(curl:*)",
       "Bash(node -r dotenv/config -e \":*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(xargs -I{} curl -s http://localhost:3000/leads/{}/conversation)"
     ]
   }
 }

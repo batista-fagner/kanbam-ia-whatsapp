@@ -19,7 +19,8 @@ export declare class Lead {
     nurtureStep: number;
     nurturePaused: boolean;
     nextNurtureAt: Date;
-    appointmentAt: Date;
+    appointmentAt: Date | null;
+    calendarEventId: string | null;
     lastMessageAt: Date;
     createdAt: Date;
     updatedAt: Date;

@@ -15,10 +15,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeadsController = void 0;
 const common_1 = require("@nestjs/common");
 const leads_service_1 = require("./leads.service");
+const leads_gateway_1 = require("./leads.gateway");
 let LeadsController = class LeadsController {
     leadsService;
-    constructor(leadsService) {
+    leadsGateway;
+    constructor(leadsService, leadsGateway) {
         this.leadsService = leadsService;
+        this.leadsGateway = leadsGateway;
     }
     findAll() {
         return this.leadsService.findAll();
@@ -29,8 +32,17 @@ let LeadsController = class LeadsController {
     getConversation(id) {
         return this.leadsService.getConversationWithMessages(id);
     }
-    updateStage(id, body) {
-        return this.leadsService.updateStage(id, body.stage, 'operator');
+    getHistory(id) {
+        return this.leadsService.getHistory(id);
+    }
+    async updateStage(id, body) {
+        const lead = await this.leadsService.updateStage(id, body.stage, 'operator');
+        this.leadsGateway.emitLeadUpdated(lead);
+        return lead;
+    }
+    async toggleAi(id, body) {
+        await this.leadsService.toggleAi(id, body.enabled);
+        return { ok: true };
     }
 };
 exports.LeadsController = LeadsController;
@@ -55,15 +67,31 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], LeadsController.prototype, "getConversation", null);
 __decorate([
+    (0, common_1.Get)(':id/history'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], LeadsController.prototype, "getHistory", null);
+__decorate([
     (0, common_1.Patch)(':id/stage'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], LeadsController.prototype, "updateStage", null);
+__decorate([
+    (0, common_1.Patch)(':id/ai'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], LeadsController.prototype, "toggleAi", null);
 exports.LeadsController = LeadsController = __decorate([
     (0, common_1.Controller)('leads'),
-    __metadata("design:paramtypes", [leads_service_1.LeadsService])
+    __metadata("design:paramtypes", [leads_service_1.LeadsService,
+        leads_gateway_1.LeadsGateway])
 ], LeadsController);
 //# sourceMappingURL=leads.controller.js.map

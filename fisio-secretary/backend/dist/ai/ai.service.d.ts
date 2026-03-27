@@ -3,8 +3,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Lead } from '../common/entities/lead.entity';
 export interface AiResponse {
     reply: string;
+    success?: boolean;
     stage?: string;
     temperature?: string;
+    action?: 'schedule' | 'cancel' | 'reschedule' | 'none';
+    appointmentDateTime?: string;
     fields?: {
         name?: string;
         symptoms?: string;

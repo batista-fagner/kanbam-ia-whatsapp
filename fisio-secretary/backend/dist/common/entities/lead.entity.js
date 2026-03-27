@@ -31,6 +31,7 @@ let Lead = class Lead {
     nurturePaused;
     nextNurtureAt;
     appointmentAt;
+    calendarEventId;
     lastMessageAt;
     createdAt;
     updatedAt;
@@ -101,8 +102,12 @@ __decorate([
 ], Lead.prototype, "nextNurtureAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'appointment_at', nullable: true, type: 'timestamp' }),
-    __metadata("design:type", Date)
+    __metadata("design:type", Object)
 ], Lead.prototype, "appointmentAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'calendar_event_id', nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], Lead.prototype, "calendarEventId", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'last_message_at', nullable: true, type: 'timestamp' }),
     __metadata("design:type", Date)

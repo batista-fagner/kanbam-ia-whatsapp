@@ -95,4 +95,24 @@ export class LeadsService {
       order: { messages: { createdAt: 'ASC' } } as any,
     });
   }
+
+  async getHistory(leadId: string) {
+    return this.historyRepo.find({
+      where: { leadId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  async toggleAi(leadId: string, enabled: boolean): Promise<void> {
+    const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+    if (conversation) {
+      conversation.aiEnabled = enabled;
+      await this.conversationsRepo.save(conversation);
+    }
+  }
+
+  async getAiEnabled(leadId: string): Promise<boolean> {
+    const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+    return conversation?.aiEnabled ?? true;
+  }
 }

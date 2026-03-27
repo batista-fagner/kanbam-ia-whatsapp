@@ -15,15 +15,16 @@ const message_entity_1 = require("../common/entities/message.entity");
 const lead_stage_history_entity_1 = require("../common/entities/lead-stage-history.entity");
 const leads_service_1 = require("./leads.service");
 const leads_controller_1 = require("./leads.controller");
+const leads_gateway_1 = require("./leads.gateway");
 let LeadsModule = class LeadsModule {
 };
 exports.LeadsModule = LeadsModule;
 exports.LeadsModule = LeadsModule = __decorate([
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([lead_entity_1.Lead, conversation_entity_1.Conversation, message_entity_1.Message, lead_stage_history_entity_1.LeadStageHistory])],
-        providers: [leads_service_1.LeadsService],
+        providers: [leads_service_1.LeadsService, leads_gateway_1.LeadsGateway],
         controllers: [leads_controller_1.LeadsController],
-        exports: [leads_service_1.LeadsService],
+        exports: [leads_service_1.LeadsService, leads_gateway_1.LeadsGateway],
     })
 ], LeadsModule);
 //# sourceMappingURL=leads.module.js.map

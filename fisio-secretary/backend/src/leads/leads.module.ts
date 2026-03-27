@@ -6,11 +6,12 @@ import { Message } from '../common/entities/message.entity';
 import { LeadStageHistory } from '../common/entities/lead-stage-history.entity';
 import { LeadsService } from './leads.service';
 import { LeadsController } from './leads.controller';
+import { LeadsGateway } from './leads.gateway';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Lead, Conversation, Message, LeadStageHistory])],
-  providers: [LeadsService],
+  providers: [LeadsService, LeadsGateway],
   controllers: [LeadsController],
-  exports: [LeadsService],
+  exports: [LeadsService, LeadsGateway],
 })
 export class LeadsModule {}
