@@ -61,6 +61,15 @@ export class EvolutionController {
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
 
+    // Se IA desativada, apenas salva a mensagem e notifica o frontend
+    const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
+    if (!aiEnabled) {
+      this.logger.log(`IA desativada para ${phone} — mensagem salva, aguardando operador`);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000);
 
