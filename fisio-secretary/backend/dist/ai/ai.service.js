@@ -106,12 +106,16 @@ let AiService = AiService_1 = class AiService {
                 messages,
             });
             let raw = response.content[0].text.trim();
+            this.logger.debug(`Resposta bruta do Claude: ${raw}`);
             raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
             const jsonMatch = raw.match(/\{[\s\S]*\}/);
-            if (!jsonMatch)
+            if (!jsonMatch) {
+                this.logger.error(`Resposta sem JSON. Conteúdo bruto: ${raw}`);
                 throw new Error('Resposta não contém JSON válido');
+            }
             const parsed = JSON.parse(jsonMatch[0]);
             parsed.success = true;
+            parsed.rawJson = jsonMatch[0];
             return parsed;
         }
         catch (err) {
@@ -120,12 +124,12 @@ let AiService = AiService_1 = class AiService {
             return { reply: 'Olá! Tive um probleminha aqui, pode repetir?', success: false };
         }
     }
-    buildUpdatedContext(lead, incomingText, reply) {
+    buildUpdatedContext(lead, incomingText, rawJson) {
         const history = lead.aiContext ?? [];
         return [
             ...history,
             { role: 'user', content: incomingText },
-            { role: 'assistant', content: reply },
+            { role: 'assistant', content: rawJson },
         ];
     }
 };

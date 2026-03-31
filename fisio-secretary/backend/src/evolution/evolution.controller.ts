@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { EvolutionService } from './evolution.service';
+import { MessageQueueService } from './message-queue.service';
 import { LeadsService } from '../leads/leads.service';
 import { AiService } from '../ai/ai.service';
 import { LeadsGateway } from '../leads/leads.gateway';
@@ -8,9 +9,11 @@ import { CalendarService } from '../calendar/calendar.service';
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
+  private readonly processedIds = new Set<string>();
 
   constructor(
     private readonly evolutionService: EvolutionService,
+    private readonly messageQueue: MessageQueueService,
     private readonly leadsService: LeadsService,
     private readonly aiService: AiService,
     private readonly leadsGateway: LeadsGateway,
@@ -25,26 +28,49 @@ export class EvolutionController {
     if (!message?.key || message.key.fromMe) return { ok: true };
 
     const remoteJid = message.key.remoteJid ?? '';
-    if (remoteJid.includes('@g.us')) return { ok: true }; // ignora grupos
+    if (remoteJid.includes('@g.us')) return { ok: true };
     const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
 
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
     if (!phone || !text) return { ok: true };
 
+    // Ignora webhook duplicado para a mesma mensagem
+    const messageId = message.key.id;
+    if (this.processedIds.has(messageId)) {
+      this.logger.warn(`Webhook duplicado ignorado: ${messageId}`);
+      return { ok: true };
+    }
+    this.processedIds.add(messageId);
+    setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+
     this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
 
+    // Enfileira e retorna imediatamente — processamento acontece no callback após debounce
+    this.messageQueue.enqueue(phone, text, (combinedText) => {
+      this.processMessage(phone, combinedText, message.key.id).catch((err) =>
+        this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`),
+      );
+    });
+
+    return { ok: true };
+  }
+
+  private async processMessage(phone: string, combinedText: string, messageKeyId: string) {
     const { lead, conversation } = await this.leadsService.findOrCreate(phone);
 
-    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, text, message.key.id);
+    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
 
+    // Mostra "digitando..." enquanto a IA processa
+    void this.evolutionService.sendTypingIndicator(phone, 5000);
+
     // Processa com IA
-    const aiResponse = await this.aiService.processMessage(lead, text);
+    const aiResponse = await this.aiService.processMessage(lead, combinedText);
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
 
-    // Atualiza contexto e campos do lead (só salva contexto se a IA respondeu com sucesso)
+    // Atualiza contexto e campos do lead
     const updatedContext = aiResponse.success
-      ? this.aiService.buildUpdatedContext(lead, text, aiResponse.reply)
+      ? this.aiService.buildUpdatedContext(lead, combinedText, aiResponse.rawJson!)
       : lead.aiContext;
     const updateData: any = { aiContext: updatedContext };
 
@@ -84,18 +110,16 @@ export class EvolutionController {
 
     if (action === 'schedule' && aiResponse.appointmentDateTime) {
       const startDateTime = new Date(aiResponse.appointmentDateTime);
-
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(startDateTime);
 
       if (!available) {
-        // Horário ocupado — informa a IA para oferecer alternativa
         this.logger.warn(`Horário ocupado: ${startDateTime.toISOString()} (${conflictingEvent})`);
         const busyReply = `Ops! Esse horário já está ocupado (${conflictingEvent}). Por favor, escolha outro horário ou dia 😊`;
         await this.evolutionService.sendTextMessage(phone, busyReply);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
-        return { ok: true };
+        return;
       }
 
       const eventId = await this.calendarService.createAppointment({
@@ -106,10 +130,7 @@ export class EvolutionController {
       });
 
       if (eventId) {
-        await this.leadsService.update(lead.id, {
-          calendarEventId: eventId,
-          appointmentAt: startDateTime,
-        });
+        await this.leadsService.update(lead.id, { calendarEventId: eventId, appointmentAt: startDateTime });
       }
     }
 
@@ -120,7 +141,6 @@ export class EvolutionController {
 
     if (action === 'reschedule' && aiResponse.appointmentDateTime) {
       const newDateTime = new Date(aiResponse.appointmentDateTime);
-
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(newDateTime);
 
       if (!available) {
@@ -130,15 +150,13 @@ export class EvolutionController {
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
-        return { ok: true };
+        return;
       }
 
       if (lead.calendarEventId) {
-        // Atualiza evento existente
         await this.calendarService.updateAppointment(lead.calendarEventId, newDateTime);
         await this.leadsService.update(lead.id, { appointmentAt: newDateTime });
       } else {
-        // Sem evento anterior (primeiro horário foi bloqueado) — cria novo
         const eventId = await this.calendarService.createAppointment({
           leadName: lead.name || lead.phone,
           phone: lead.phone,
@@ -156,8 +174,6 @@ export class EvolutionController {
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
-
-    return { ok: true };
   }
 
   @Post('manual')

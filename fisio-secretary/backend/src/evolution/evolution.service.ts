@@ -19,6 +19,20 @@ export class EvolutionService {
     this.instanceName = config.get('EVOLUTION_INSTANCE_NAME') ?? '';
   }
 
+  async sendTypingIndicator(phone: string, durationMs = 3000): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.http.post(
+          `${this.baseUrl}/chat/sendPresence/${this.instanceName}`,
+          { number: phone, presence: 'composing', delay: durationMs },
+          { headers: { apikey: this.apiKey } },
+        ),
+      );
+    } catch (err) {
+      this.logger.warn(`Erro ao enviar typing indicator para ${phone}: ${err.message}`);
+    }
+  }
+
   async sendTextMessage(phone: string, text: string): Promise<void> {
     try {
       await firstValueFrom(

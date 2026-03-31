@@ -74,9 +74,22 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 - **Fase 1:** ✅ Concluída — Docker Compose, infra, Evolution conectado ao WhatsApp
 - **Fase 2:** ✅ Concluída — Backend core, webhook, leads, eco bot
-- **Fase 3:** ⚠️ Implementada, pendente de testes — IA Sofia integrada com Claude, fluxo de qualificação precisa ser testado com mais profundidade (especialmente a máquina de estados de qualificação)
-- **Fase 4:** 🚧 MVP parcial — Frontend Kanban feito com dados mockados, sem integração com backend, sem WebSocket
-- **Fase 5:** ❌ Não implementada — Toggle IA, envio manual pelo operador, histórico de stages, stats no header
+- **Fase 3:** ✅ Concluída e testada — IA Sofia integrada com Claude, fluxo de qualificação funcionando, agendamento testado com sucesso
+- **Fase 4:** ✅ Concluída — Frontend Kanban feito com dados mockados, sem integração com backend, sem WebSocket
+- **Fase 5:** ✅ Concluída — Toggle IA, envio manual pelo operador, histórico de stages, stats no header
+
+---
+
+## Bug corrigido (30/03/2026)
+
+**Problema:** Claude respondia em texto puro após a primeira mensagem, causando erro `Resposta não contém JSON válido`.
+
+**Causa:** `buildUpdatedContext()` salvava no histórico (`aiContext`) apenas o campo `reply` (texto puro), não o JSON completo. Nas próximas mensagens, o Claude via respostas em texto no histórico e seguia o mesmo padrão.
+
+**Correção:**
+- `AiService.processMessage()` agora retorna `rawJson` (string com o JSON completo)
+- `buildUpdatedContext()` salva o JSON completo como conteúdo do assistant no histórico
+- `EvolutionController` passa `aiResponse.rawJson` para `buildUpdatedContext()`
 
 ---
 

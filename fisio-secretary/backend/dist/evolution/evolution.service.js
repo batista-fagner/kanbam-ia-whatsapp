@@ -29,6 +29,14 @@ let EvolutionService = EvolutionService_1 = class EvolutionService {
         this.apiKey = config.get('AUTHENTICATION_API_KEY') ?? '';
         this.instanceName = config.get('EVOLUTION_INSTANCE_NAME') ?? '';
     }
+    async sendTypingIndicator(phone, durationMs = 3000) {
+        try {
+            await (0, rxjs_1.firstValueFrom)(this.http.post(`${this.baseUrl}/chat/sendPresence/${this.instanceName}`, { number: phone, presence: 'composing', delay: durationMs }, { headers: { apikey: this.apiKey } }));
+        }
+        catch (err) {
+            this.logger.warn(`Erro ao enviar typing indicator para ${phone}: ${err.message}`);
+        }
+    }
     async sendTextMessage(phone, text) {
         try {
             await (0, rxjs_1.firstValueFrom)(this.http.post(`${this.baseUrl}/message/sendText/${this.instanceName}`, { number: phone, text }, { headers: { apikey: this.apiKey } }));

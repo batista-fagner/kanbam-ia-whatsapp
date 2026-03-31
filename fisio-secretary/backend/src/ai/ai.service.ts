@@ -6,6 +6,7 @@ import { Lead } from '../common/entities/lead.entity';
 export interface AiResponse {
   reply: string;
   success?: boolean;
+  rawJson?: string;
   stage?: string;
   temperature?: string;
   action?: 'schedule' | 'cancel' | 'reschedule' | 'none';
@@ -115,12 +116,17 @@ export class AiService {
       });
 
       let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
+      this.logger.debug(`Resposta bruta do Claude: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       // Extrai só o bloco JSON caso venha com texto antes/depois
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Resposta não contém JSON válido');
+      if (!jsonMatch) {
+        this.logger.error(`Resposta sem JSON. Conteúdo bruto: ${raw}`);
+        throw new Error('Resposta não contém JSON válido');
+      }
       const parsed: AiResponse = JSON.parse(jsonMatch[0]);
       parsed.success = true;
+      parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
       this.logger.error(`Erro ao chamar Claude: ${err.message}`);
@@ -132,13 +138,13 @@ export class AiService {
   buildUpdatedContext(
     lead: Lead,
     incomingText: string,
-    reply: string,
+    rawJson: string,
   ): Anthropic.MessageParam[] {
     const history = (lead.aiContext as Anthropic.MessageParam[]) ?? [];
     return [
       ...history,
       { role: 'user', content: incomingText },
-      { role: 'assistant', content: reply },
+      { role: 'assistant', content: rawJson },
     ];
   }
 }

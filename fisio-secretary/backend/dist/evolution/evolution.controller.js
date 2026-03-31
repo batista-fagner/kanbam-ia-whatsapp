@@ -16,19 +16,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EvolutionController = void 0;
 const common_1 = require("@nestjs/common");
 const evolution_service_1 = require("./evolution.service");
+const message_queue_service_1 = require("./message-queue.service");
 const leads_service_1 = require("../leads/leads.service");
 const ai_service_1 = require("../ai/ai.service");
 const leads_gateway_1 = require("../leads/leads.gateway");
 const calendar_service_1 = require("../calendar/calendar.service");
 let EvolutionController = EvolutionController_1 = class EvolutionController {
     evolutionService;
+    messageQueue;
     leadsService;
     aiService;
     leadsGateway;
     calendarService;
     logger = new common_1.Logger(EvolutionController_1.name);
-    constructor(evolutionService, leadsService, aiService, leadsGateway, calendarService) {
+    processedIds = new Set();
+    constructor(evolutionService, messageQueue, leadsService, aiService, leadsGateway, calendarService) {
         this.evolutionService = evolutionService;
+        this.messageQueue = messageQueue;
         this.leadsService = leadsService;
         this.aiService = aiService;
         this.leadsGateway = leadsGateway;
@@ -47,14 +51,28 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
         const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
         if (!phone || !text)
             return { ok: true };
+        const messageId = message.key.id;
+        if (this.processedIds.has(messageId)) {
+            this.logger.warn(`Webhook duplicado ignorado: ${messageId}`);
+            return { ok: true };
+        }
+        this.processedIds.add(messageId);
+        setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
         this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
+        this.messageQueue.enqueue(phone, text, (combinedText) => {
+            this.processMessage(phone, combinedText, message.key.id).catch((err) => this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`));
+        });
+        return { ok: true };
+    }
+    async processMessage(phone, combinedText, messageKeyId) {
         const { lead, conversation } = await this.leadsService.findOrCreate(phone);
-        await this.leadsService.saveMessage(conversation.id, 'inbound', phone, text, message.key.id);
+        await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
         await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
-        const aiResponse = await this.aiService.processMessage(lead, text);
+        void this.evolutionService.sendTypingIndicator(phone, 5000);
+        const aiResponse = await this.aiService.processMessage(lead, combinedText);
         this.logger.log(`IA respondeu [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
         const updatedContext = aiResponse.success
-            ? this.aiService.buildUpdatedContext(lead, text, aiResponse.reply)
+            ? this.aiService.buildUpdatedContext(lead, combinedText, aiResponse.rawJson)
             : lead.aiContext;
         const updateData = { aiContext: updatedContext };
         if (aiResponse.temperature)
@@ -103,7 +121,7 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
                 await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
                 const updatedLead = await this.leadsService.findOne(lead.id);
                 this.leadsGateway.emitLeadUpdated(updatedLead);
-                return { ok: true };
+                return;
             }
             const eventId = await this.calendarService.createAppointment({
                 leadName: lead.name || lead.phone,
@@ -112,10 +130,7 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
                 startDateTime,
             });
             if (eventId) {
-                await this.leadsService.update(lead.id, {
-                    calendarEventId: eventId,
-                    appointmentAt: startDateTime,
-                });
+                await this.leadsService.update(lead.id, { calendarEventId: eventId, appointmentAt: startDateTime });
             }
         }
         if (action === 'cancel' && lead.calendarEventId) {
@@ -132,7 +147,7 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
                 await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
                 const updatedLead = await this.leadsService.findOne(lead.id);
                 this.leadsGateway.emitLeadUpdated(updatedLead);
-                return { ok: true };
+                return;
             }
             if (lead.calendarEventId) {
                 await this.calendarService.updateAppointment(lead.calendarEventId, newDateTime);
@@ -154,7 +169,6 @@ let EvolutionController = EvolutionController_1 = class EvolutionController {
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
-        return { ok: true };
     }
     async sendManual(body) {
         const { lead, conversation } = await this.leadsService.findOrCreate(body.phone);
@@ -184,6 +198,7 @@ __decorate([
 exports.EvolutionController = EvolutionController = EvolutionController_1 = __decorate([
     (0, common_1.Controller)('webhooks'),
     __metadata("design:paramtypes", [evolution_service_1.EvolutionService,
+        message_queue_service_1.MessageQueueService,
         leads_service_1.LeadsService,
         ai_service_1.AiService,
         leads_gateway_1.LeadsGateway,

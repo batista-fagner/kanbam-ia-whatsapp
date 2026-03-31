@@ -4,6 +4,7 @@ import { Lead } from '../common/entities/lead.entity';
 export interface AiResponse {
     reply: string;
     success?: boolean;
+    rawJson?: string;
     stage?: string;
     temperature?: string;
     action?: 'schedule' | 'cancel' | 'reschedule' | 'none';
@@ -24,5 +25,5 @@ export declare class AiService {
     private readonly client;
     constructor(config: ConfigService);
     processMessage(lead: Lead, incomingText: string): Promise<AiResponse>;
-    buildUpdatedContext(lead: Lead, incomingText: string, reply: string): Anthropic.MessageParam[];
+    buildUpdatedContext(lead: Lead, incomingText: string, rawJson: string): Anthropic.MessageParam[];
 }
