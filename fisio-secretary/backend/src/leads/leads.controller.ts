@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Delete, Body } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { LeadsGateway } from './leads.gateway';
 
@@ -39,6 +39,13 @@ export class LeadsController {
   @Patch(':id/ai')
   async toggleAi(@Param('id') id: string, @Body() body: { enabled: boolean }) {
     await this.leadsService.toggleAi(id, body.enabled);
+    return { ok: true };
+  }
+
+  @Delete(':id')
+  async deleteLead(@Param('id') id: string) {
+    await this.leadsService.deleteLead(id);
+    this.leadsGateway.emitLeadDeleted(id);
     return { ok: true };
   }
 }

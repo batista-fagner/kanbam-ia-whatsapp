@@ -24,6 +24,8 @@ docker compose down
 # Parar e remover volumes (cuidado: apaga dados)
 docker compose down -v
 ```
+<!-- Ngrok -->
+ngrok http 3000 
 
 Serviços que sobem:
 | Serviço       | URL                    |

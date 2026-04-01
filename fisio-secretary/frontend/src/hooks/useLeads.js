@@ -28,6 +28,10 @@ export function useLeads() {
       })
     })
 
+    socket.on('lead:deleted', (leadId) => {
+      setLeads((prev) => prev.filter((l) => l.id !== leadId))
+    })
+
     return () => socket.disconnect()
   }, [fetchLeads])
 

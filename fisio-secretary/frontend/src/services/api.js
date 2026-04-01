@@ -31,3 +31,6 @@ export const sendManualMessage = (phone, text) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, text }),
   }).then(json)
+
+export const deleteLead = (id) =>
+  fetch(`${BASE}/leads/${id}`, { method: 'DELETE' }).then(json)

@@ -11,15 +11,17 @@ import { Stethoscope, LogOut, Wifi, Users, Flame, CalendarCheck } from 'lucide-r
 
 import { COLUMNS } from '../data/mockData'
 import { useLeads } from '../hooks/useLeads'
-import { updateStage } from '../services/api'
+import { updateStage, deleteLead } from '../services/api'
 import KanbanColumn from '../components/KanbanColumn'
 import LeadCard from '../components/LeadCard'
 import LeadModal from '../components/LeadModal'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 export default function KanbanPage({ onLogout }) {
   const { leads, setLeads, loading } = useLeads()
   const [activeId, setActiveId] = useState(null)
   const [selectedLead, setSelectedLead] = useState(null)
+  const [leadToDelete, setLeadToDelete] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -29,6 +31,13 @@ export default function KanbanPage({ onLogout }) {
 
   function handleDragStart({ active }) {
     setActiveId(active.id)
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!leadToDelete) return
+    setLeads(prev => prev.filter(l => l.id !== leadToDelete.id))
+    setLeadToDelete(null)
+    await deleteLead(leadToDelete.id)
   }
 
   async function handleDragEnd({ active, over }) {
@@ -108,6 +117,7 @@ export default function KanbanPage({ onLogout }) {
                 column={col}
                 leads={leads.filter(l => l.stage === col.id)}
                 onCardClick={setSelectedLead}
+                onCardDelete={setLeadToDelete}
               />
             ))}
           </div>
@@ -128,6 +138,14 @@ export default function KanbanPage({ onLogout }) {
         <LeadModal
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
+        />
+      )}
+
+      {leadToDelete && (
+        <ConfirmDeleteModal
+          lead={leadToDelete}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setLeadToDelete(null)}
         />
       )}
     </div>

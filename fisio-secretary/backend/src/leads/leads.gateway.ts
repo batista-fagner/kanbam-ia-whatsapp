@@ -9,4 +9,8 @@ export class LeadsGateway {
   emitLeadUpdated(lead: any) {
     this.server.emit('lead:updated', lead);
   }
+
+  emitLeadDeleted(leadId: string) {
+    this.server.emit('lead:deleted', leadId);
+  }
 }

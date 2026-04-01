@@ -22,7 +22,25 @@ export interface AiResponse {
   };
 }
 
-function buildSystemPrompt(): string {
+function buildLeadContext(lead: Lead): string {
+  const lines: string[] = [];
+  if (lead.name) lines.push(`- Nome: ${lead.name}`);
+  if (lead.stage) lines.push(`- Stage atual: ${lead.stage}`);
+  if (lead.symptoms) lines.push(`- Sintomas relatados: ${lead.symptoms}`);
+  if (lead.urgency) lines.push(`- Urgência: ${lead.urgency}`);
+  if (lead.availability) lines.push(`- Disponibilidade: ${lead.availability}`);
+  if (lead.budget) lines.push(`- Orçamento: ${lead.budget}`);
+  if (lead.qualificationScore != null) lines.push(`- Score de qualificação: ${lead.qualificationScore}`);
+  if (lead.appointmentAt) {
+    const d = new Date(lead.appointmentAt);
+    const fmt = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()} às ${d.getHours().toString().padStart(2,'0')}h${d.getMinutes().toString().padStart(2,'0').replace('00','')}`;
+    lines.push(`- Consulta agendada: ${fmt}`);
+  }
+  if (lines.length === 0) return '';
+  return `\nCONTEXTO DO LEAD ATUAL (use para nunca perguntar o que já foi respondido):\n${lines.join('\n')}\n`;
+}
+
+function buildSystemPrompt(lead?: Lead): string {
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 
   const now = new Date();
@@ -108,7 +126,8 @@ RESPONDA SEMPRE em JSON com este formato exato:
     "qualificationScore": número de 0 a 100,
     "qualificationStep": 0 a 4
   }
-}`;}
+}` + (lead ? buildLeadContext(lead) : '');
+}
 
 
 @Injectable()
@@ -134,7 +153,7 @@ export class AiService {
       const response = await this.client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 512,
-        system: buildSystemPrompt(),
+        system: buildSystemPrompt(lead),
         messages,
       });
 

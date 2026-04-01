@@ -1,11 +1,10 @@
 export const COLUMNS = [
   { id: 'novo_lead',    label: 'Novo Lead',     emoji: '🆕', bg: 'bg-blue-500',   light: 'bg-blue-50',   border: 'border-blue-200' },
+  { id: 'lead_frio',    label: 'Lead Frio',     emoji: '🧊', bg: 'bg-sky-500',    light: 'bg-sky-50',    border: 'border-sky-200' },
   { id: 'qualificando', label: 'Qualificando',  emoji: '💬', bg: 'bg-violet-500', light: 'bg-violet-50', border: 'border-violet-200' },
   { id: 'lead_quente',  label: 'Lead Quente',   emoji: '🔥', bg: 'bg-orange-500', light: 'bg-orange-50', border: 'border-orange-200' },
-  { id: 'lead_frio',    label: 'Lead Frio',     emoji: '🧊', bg: 'bg-sky-500',    light: 'bg-sky-50',    border: 'border-sky-200' },
   { id: 'agendado',     label: 'Agendado',      emoji: '📅', bg: 'bg-teal-500',   light: 'bg-teal-50',   border: 'border-teal-200' },
-  { id: 'convertido',   label: 'Convertido',    emoji: '✅', bg: 'bg-emerald-500',light: 'bg-emerald-50',border: 'border-emerald-200' },
-  { id: 'perdido',      label: 'Perdido',       emoji: '❌', bg: 'bg-slate-400',  light: 'bg-slate-50',  border: 'border-slate-200' },
+  { id: 'perdido',      label: 'Lead Perdido',  emoji: '❌', bg: 'bg-slate-400',  light: 'bg-slate-50',  border: 'border-slate-200' },
 ]
 
 export const initialLeads = [

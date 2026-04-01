@@ -7,7 +7,11 @@
       "Bash(curl:*)",
       "Bash(node -r dotenv/config -e \":*)",
       "Bash(node:*)",
-      "Bash(xargs -I{} curl -s http://localhost:3000/leads/{}/conversation)"
+      "Bash(xargs -I{} curl -s http://localhost:3000/leads/{}/conversation)",
+      "Bash(docker run:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(i.get\\(''''name''''\\), i.get\\(''''connectionStatus''''\\)\\) for i in d]\")",
+      "Bash(xargs ls:*)"
     ]
   }
 }

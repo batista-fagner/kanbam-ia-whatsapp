@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import LeadCard from './LeadCard'
 
-export default function KanbanColumn({ column, leads, onCardClick }) {
+export default function KanbanColumn({ column, leads, onCardClick, onCardDelete }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
 
   return (
@@ -30,6 +30,7 @@ export default function KanbanColumn({ column, leads, onCardClick }) {
             key={lead.id}
             lead={lead}
             onClick={() => onCardClick(lead)}
+            onDelete={onCardDelete}
           />
         ))}
 

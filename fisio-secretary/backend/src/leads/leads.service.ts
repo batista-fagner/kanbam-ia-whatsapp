@@ -115,4 +115,14 @@ export class LeadsService {
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
     return conversation?.aiEnabled ?? true;
   }
+
+  async deleteLead(leadId: string): Promise<void> {
+    const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+    if (conversation) {
+      await this.messagesRepo.delete({ conversationId: conversation.id });
+      await this.conversationsRepo.delete({ leadId });
+    }
+    await this.historyRepo.delete({ leadId });
+    await this.leadsRepo.delete(leadId);
+  }
 }

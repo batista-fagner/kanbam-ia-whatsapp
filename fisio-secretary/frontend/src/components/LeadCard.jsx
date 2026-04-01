@@ -1,5 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+import { Trash2 } from 'lucide-react'
 
 const urgencyColor = {
   alta:  'bg-red-100 text-red-700',
@@ -19,7 +20,7 @@ const scoreColor = (score) => {
   return 'text-slate-400'
 }
 
-export default function LeadCard({ lead, onClick }) {
+export default function LeadCard({ lead, onClick, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id })
 
   const style = {
@@ -48,9 +49,19 @@ export default function LeadCard({ lead, onClick }) {
             <p className="text-xs text-gray-400">{lead.phone}</p>
           </div>
         </div>
-        {lead.stage !== 'novo_lead' && (
-          <span className="text-base leading-none">{tempBadge[lead.temperature]}</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {lead.stage !== 'novo_lead' && (
+            <span className="text-base leading-none">{tempBadge[lead.temperature]}</span>
+          )}
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onDelete && onDelete(lead) }}
+            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+            title="Excluir lead"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Symptoms */}
