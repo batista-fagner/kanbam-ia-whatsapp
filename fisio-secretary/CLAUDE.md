@@ -52,6 +52,14 @@ fisio-secretary/
 
 ---
 
+## Configuração do projeto
+
+### Claude Code Settings (`.claude/settings.local.json`)
+- **Model:** Haiku 4.5 para todas as operações (mais econômico para git operations)
+  - Quando você pedir em linguagem natural para subir alterações ("commit e push", "suba as mudanças", etc), Claude usa Haiku automaticamente para processar e executar
+
+---
+
 ## Fluxo atual (implementado e testado)
 
 ```
