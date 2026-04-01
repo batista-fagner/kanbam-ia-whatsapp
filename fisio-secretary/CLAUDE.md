@@ -11,6 +11,8 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
 - **IA:** Anthropic Claude (claude-haiku-4-5-20251001)
+- **STT:** OpenAI Whisper (transcrição de áudio)
+- **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
 - **WhatsApp:** Evolution API v2 (Baileys)
 - **Infra:** Docker Compose
 
@@ -22,36 +24,50 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 fisio-secretary/
 ├── backend/src/
 │   ├── evolution/
-│   │   ├── evolution.controller.ts   ← webhook POST /webhooks/evolution
-│   │   ├── evolution.service.ts      ← sendTextMessage() para Evolution API
+│   │   ├── evolution.controller.ts   ← webhook POST /webhooks/evolution + processMessage() privado
+│   │   ├── evolution.service.ts      ← sendTextMessage(), sendTypingIndicator(), sendAudioMessage(), getBase64FromMedia()
+│   │   ├── message-queue.service.ts  ← debounce de 10s por phone, callback-based
 │   │   └── evolution.module.ts
+│   ├── audio/
+│   │   ├── audio.service.ts          ← transcribe() via Whisper, textToSpeech() via Google Cloud TTS
+│   │   └── audio.module.ts
 │   ├── ai/
-│   │   ├── ai.service.ts             ← processMessage(), buildUpdatedContext()
+│   │   ├── ai.service.ts             ← processMessage(), buildUpdatedContext(), buildSystemPrompt()
 │   │   └── ai.module.ts
 │   ├── leads/
-│   │   ├── leads.service.ts          ← findOrCreate, saveMessage, updateStage
-│   │   ├── leads.controller.ts       ← GET /leads, GET /leads/:id/conversation
+│   │   ├── leads.service.ts          ← findOrCreate, saveMessage, updateStage, toggleAi, getAiEnabled
+│   │   ├── leads.controller.ts       ← GET /leads, GET /leads/:id/conversation, PATCH /leads/:id/ai
 │   │   └── leads.module.ts
 │   ├── common/entities/
 │   │   ├── lead.entity.ts
-│   │   ├── conversation.entity.ts
+│   │   ├── conversation.entity.ts    ← campo aiEnabled (boolean, default true)
 │   │   ├── message.entity.ts
 │   │   ├── lead-stage-history.entity.ts
 │   │   └── appointment.entity.ts
 │   └── app.module.ts
+├── COMANDOS.md                       ← comandos para rodar o projeto
 ├── .env                              ← variáveis de ambiente
 └── docker-compose.yml
 ```
 
 ---
 
-## Fluxo atual (já implementado)
+## Fluxo atual (implementado e testado)
 
 ```
-Webhook recebe msg → extrai phone + texto → findOrCreate Lead
-  → salva msg inbound → processMessage() IA
+Webhook recebe msg (texto ou áudio)
+  → filtra msgs antigas (>5min ignoradas)
+  → deduplicação por message.key.id
+  → se áudio: getBase64FromMedia() → AudioService.transcribe() (Whisper) → enfileira texto
+  → MessageQueueService.enqueue() → retorna {ok:true} imediatamente
+  → após 10s de silêncio: callback dispara processMessage()
+  → getAiEnabled() — se false, salva msg e notifica frontend (operador assume)
+  → sendTypingIndicator() — mostra "digitando..." no WhatsApp
+  → AiService.processMessage() com buildSystemPrompt(lead)
   → atualiza Lead (stage, temperature, fields)
-  → sendTextMessage() → salva msg outbound
+  → se última msg era áudio: AudioService.textToSpeech() → sendAudioMessage()
+  → se última msg era texto: sendTextMessage()
+  → salva msg outbound → emite WebSocket
 ```
 
 A IA (Sofia) responde JSON:
@@ -60,7 +76,9 @@ A IA (Sofia) responde JSON:
   "reply": "...",
   "stage": "qualificando",
   "temperature": "quente",
-  "fields": { "symptoms": "...", "urgency": "alta", ... }
+  "action": "schedule|cancel|reschedule|none",
+  "appointmentDateTime": "2026-04-03T14:00:00",
+  "fields": { "name": "...", "symptoms": "...", "urgency": "alta", ... }
 }
 ```
 
@@ -74,71 +92,82 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 - **Fase 1:** ✅ Concluída — Docker Compose, infra, Evolution conectado ao WhatsApp
 - **Fase 2:** ✅ Concluída — Backend core, webhook, leads, eco bot
-- **Fase 3:** ✅ Concluída e testada — IA Sofia integrada com Claude, fluxo de qualificação funcionando, agendamento testado com sucesso
-- **Fase 4:** ✅ Concluída — Frontend Kanban feito com dados mockados, sem integração com backend, sem WebSocket
-- **Fase 5:** ✅ Concluída — Toggle IA, envio manual pelo operador, histórico de stages, stats no header
+- **Fase 3:** ✅ Concluída e testada — IA Sofia integrada com Claude, fluxo de qualificação e agendamento funcionando
+- **Fase 4:** ✅ Concluída — Frontend Kanban integrado com backend e WebSocket
+- **Fase 5:** ✅ Concluída — Toggle IA por lead, envio manual pelo operador, histórico de stages, stats no header
+- **Fase 6:** ✅ Concluída — Mensagens de áudio: STT via Whisper + TTS via Google Cloud (voz pt-BR-Neural2-C)
 
 ---
 
-## Bug corrigido (30/03/2026)
+## Funcionalidades implementadas (01/04/2026)
 
-**Problema:** Claude respondia em texto puro após a primeira mensagem, causando erro `Resposta não contém JSON válido`.
-
-**Causa:** `buildUpdatedContext()` salvava no histórico (`aiContext`) apenas o campo `reply` (texto puro), não o JSON completo. Nas próximas mensagens, o Claude via respostas em texto no histórico e seguia o mesmo padrão.
-
-**Correção:**
-- `AiService.processMessage()` agora retorna `rawJson` (string com o JSON completo)
-- `buildUpdatedContext()` salva o JSON completo como conteúdo do assistant no histórico
-- `EvolutionController` passa `aiResponse.rawJson` para `buildUpdatedContext()`
+### Mensagens de Áudio (Fase 6)
+- **Regra:** recebeu áudio → responde em áudio. Recebeu texto → responde em texto.
+- `lastMessageWasAudio` Map no controller rastreia o tipo por phone — o último tipo recebido define o formato da resposta
+- **STT:** `AudioService.transcribe(base64)` — converte áudio ogg/opus para texto via OpenAI Whisper (modelo whisper-1, idioma pt)
+- **TTS:** `AudioService.textToSpeech(text)` — gera MP3 via Google Cloud TTS (voz `pt-BR-Neural2-C`, feminina, Neural2)
+- **Pré-processamento do texto para TTS:**
+  - Remove emojis e símbolos Unicode especiais
+  - Converte datas `dd/mm/aaaa` → "4 de abril de 2026"
+  - Converte datas `dd/mm` → "4 de abril"
+  - Converte horas `14h30` / `14:30` → "14 horas e 30 minutos"
+  - Converte valores `R$150,00` → "150 reais"
+  - Remove caracteres especiais restantes, normaliza espaços
+- **SSML:** texto processado é embrulhado em `<speak><prosody rate="medium">` para fala natural
+- **Fallback:** se TTS falhar, envia como texto e loga o erro com status HTTP
+- `evolution.service.ts` — `getBase64FromMedia(message)` e `sendAudioMessage(phone, buffer)`
+  - Endpoint download: `POST /chat/getBase64FromMediaMessage/{instance}`
+  - Endpoint envio: `POST /message/sendMedia/{instance}` com `mediatype: "audio"`, `mimetype: "audio/mpeg"`
 
 ---
 
-## Funcionalidades pendentes (implementar na ordem abaixo)
+## Funcionalidades implementadas (31/03/2026)
 
-### 1. Fila com Debounce de Mensagens
+### Fila com Debounce (10s)
+- `message-queue.service.ts` — acumula mensagens do mesmo número por 10s de silêncio, concatena e dispara callback
+- Webhook retorna `{ok:true}` imediatamente — sem retry da Evolution API
+- Deduplicação por `message.key.id` — evita duplo processamento de webhooks duplicados
 
-**Problema:** usuário manda 3 msgs seguidas → Sofia responde 3 vezes.
-**Solução:** acumular msgs do mesmo lead por 3s de inatividade, depois processar tudo de uma vez.
+### Indicador de Digitação
+- `evolution.service.ts` — `sendTypingIndicator(phone, durationMs)`
+- Endpoint: `POST /chat/sendPresence/{instanceName}` com body `{ number, presence: "composing", delay }`
+- Disparado antes do `processMessage()`, em paralelo (void)
 
-**Arquivos a criar/modificar:**
-- `src/evolution/message-queue.service.ts` ← **novo** — Map<phone, {messages, timer}>; `enqueue()` reinicia timer de 3s; quando dispara, concatena e emite evento
-- `src/evolution/evolution.controller.ts` — trocar chamada direta por `messageQueue.enqueue()`; retornar `{ok:true}` imediatamente
-- `src/evolution/evolution.module.ts` — registrar `MessageQueueService`
+### Toggle de IA por Lead
+- Campo `aiEnabled` na entidade `Conversation` (default: `true`)
+- `PATCH /leads/:id/ai` — ativa/desativa a IA para um lead específico
+- Quando desativada: mensagem salva + WebSocket emitido, Sofia não responde
+- Frontend: switch "IA ativa" no modal do lead; input de envio manual liberado quando IA off
 
-**Dependências:** `@nestjs/bull` + `bull` (Redis já disponível no docker-compose)
+### Datas corretas no agendamento
+- `buildSystemPrompt()` injeta a data de hoje + calendário dos próximos 7 dias no prompt
+- A IA não calcula datas — consulta a lista pronta (evita erros como "sexta = data passada")
+- Confirmação obrigatória: Sofia mostra data completa (ex: "03/04, às 14h") e aguarda confirmação antes de `action="schedule"`
 
-### 2. Indicador de Digitação ("...")
+### Contexto do lead injetado no system prompt
+- `buildLeadContext(lead)` gera um bloco com nome, stage, sintomas, urgência, disponibilidade, orçamento, score e consulta agendada
+- Injetado no final do system prompt a cada chamada — Sofia nunca esquece quem está atendendo mesmo que o cliente some e volte
+- Evita regressão de contexto (ex: pedir nome de lead já qualificado)
 
-**Problema:** usuário não sabe que Sofia está processando.
-**Solução:** chamar endpoint da Evolution API para mostrar "digitando..." antes de enviar resposta.
+### Filtro de mensagens antigas
+- Webhook verifica `message.messageTimestamp` — mensagens com mais de 5 minutos são descartadas
+- Evita que o backend responda mensagens antigas acumuladas quando volta do ar após queda
 
-**Arquivos a modificar:**
-- `src/evolution/evolution.service.ts` — adicionar `sendTypingIndicator(phone, durationMs)`
-  - Endpoint: `POST /chat/sendPresence/{instanceName}`
-  - Body: `{ number: phone, options: { presence: "composing", delay: durationMs } }`
-- Chamar logo antes de `processMessage()` quando o timer de debounce disparar
+---
 
-### 3. Mensagens de Áudio
+## Bugs corrigidos
 
-**Regra:** recebeu áudio → responde em áudio. Recebeu texto → responde em texto.
+**[30/03] Resposta sem JSON:** `buildUpdatedContext()` passou a salvar o JSON completo (`rawJson`) no histórico em vez do texto puro do `reply`. Impedia o Claude de "esquecer" o formato JSON nas mensagens seguintes.
 
-**3a. STT — transcrever áudio recebido:**
-- `src/audio/audio.service.ts` ← **novo** — `transcribe(buffer): Promise<string>` via Whisper (OpenAI API)
-- `src/evolution/evolution.controller.ts` — detectar `message.message.audioMessage`, extrair base64, chamar `audioService.transcribe()`
+**[31/03] Webhook duplicado:** Evolution API (Baileys) envia `messages.upsert` duas vezes para a mesma mensagem. Corrigido com `Set<messageId>` no controller (TTL de 5 min).
 
-**3b. TTS — gerar áudio para resposta (ElevenLabs):**
-- `src/audio/audio.service.ts` — adicionar `textToSpeech(text): Promise<Buffer>` via ElevenLabs SDK
-- `src/evolution/evolution.service.ts` — adicionar `sendAudioMessage(phone, buffer)`
-  - Endpoint: `POST /message/sendMedia/{instanceName}`
-  - Body: `{ number: phone, mediatype: "audio", media: base64(buffer) }`
-- `src/audio/audio.module.ts` ← **novo**
+**[31/03] Data errada no agendamento:** IA calculava "sexta" como data passada. Corrigido injetando calendário com datas absolutas no prompt via `buildSystemPrompt()`.
 
-**Variáveis de ambiente a adicionar ao .env:**
-```
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-OPENAI_API_KEY=...
-```
+**[31/03] Debounce com Promise:** implementação anterior usava Promise por webhook — segundo webhook pendurava forever, causando retry. Refatorado para callback.
+
+**[31/03] IA esquecia contexto do lead:** após agendamento concluído, cliente mandando "oi" fazia Sofia perguntar nome/dor novamente. Corrigido injetando `buildLeadContext(lead)` no system prompt com os dados já coletados do banco.
+
+**[31/03] Backend respondia mensagens antigas:** ao reiniciar o backend, Evolution API reenviava webhooks pendentes e a Sofia respondia mensagens velhas. Corrigido com filtro de timestamp (>5min = descartado).
 
 ---
 
@@ -162,6 +191,10 @@ EVOLUTION_INSTANCE_NAME=Kanbam
 ANTHROPIC_API_KEY=...
 JWT_SECRET=...
 WEBHOOK_SECRET=...
+OPENAI_API_KEY=...              # Whisper STT
+GOOGLE_SERVICE_ACCOUNT_EMAIL=... # Google Cloud TTS
+GOOGLE_PRIVATE_KEY="..."         # Google Cloud TTS
+GOOGLE_CALENDAR_ID=...
 ```
 
 ---

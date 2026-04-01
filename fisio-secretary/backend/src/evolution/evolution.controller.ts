@@ -5,11 +5,14 @@ import { LeadsService } from '../leads/leads.service';
 import { AiService } from '../ai/ai.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { CalendarService } from '../calendar/calendar.service';
+import { AudioService } from '../audio/audio.service';
 
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
   private readonly processedIds = new Set<string>();
+  // Rastreia se a última mensagem recebida de um phone foi áudio (para responder em áudio)
+  private readonly lastMessageWasAudio = new Map<string, boolean>();
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -18,6 +21,7 @@ export class EvolutionController {
     private readonly aiService: AiService,
     private readonly leadsGateway: LeadsGateway,
     private readonly calendarService: CalendarService,
+    private readonly audioService: AudioService,
   ) {}
 
   @Post('evolution')
@@ -32,7 +36,20 @@ export class EvolutionController {
     const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
 
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
-    if (!phone || !text) return { ok: true };
+    const isAudio = !!message.message?.audioMessage;
+
+    if (!phone || (!text && !isAudio)) return { ok: true };
+
+    // Ignora mensagens antigas (backend estava fora do ar)
+    const messageTimestamp = message.messageTimestamp;
+    if (messageTimestamp) {
+      const msgDate = new Date(messageTimestamp * 1000);
+      const ageSeconds = (Date.now() - msgDate.getTime()) / 1000;
+      if (ageSeconds > 300) {
+        this.logger.warn(`Mensagem ignorada — muito antiga (${Math.round(ageSeconds)}s): ${phone}`);
+        return { ok: true };
+      }
+    }
 
     // Ignora webhook duplicado para a mesma mensagem
     const messageId = message.key.id;
@@ -43,11 +60,22 @@ export class EvolutionController {
     this.processedIds.add(messageId);
     setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
 
+    // Rastreia tipo da última mensagem para definir formato da resposta
+    this.lastMessageWasAudio.set(phone, isAudio);
+
+    if (isAudio) {
+      // Transcreve o áudio de forma assíncrona e enfileira o texto resultante
+      this.transcribeAndEnqueue(phone, message, messageId).catch((err) =>
+        this.logger.error(`Erro ao transcrever áudio de ${phone}: ${err.message}`),
+      );
+      return { ok: true };
+    }
+
     this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
 
     // Enfileira e retorna imediatamente — processamento acontece no callback após debounce
-    this.messageQueue.enqueue(phone, text, (combinedText) => {
-      this.processMessage(phone, combinedText, message.key.id).catch((err) =>
+    this.messageQueue.enqueue(phone, text!, (combinedText) => {
+      this.processMessage(phone, combinedText, messageId).catch((err) =>
         this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`),
       );
     });
@@ -55,8 +83,28 @@ export class EvolutionController {
     return { ok: true };
   }
 
+  private async transcribeAndEnqueue(phone: string, message: any, messageId: string) {
+    this.logger.log(`Transcrevendo áudio de ${phone}...`);
+    const { base64 } = await this.evolutionService.getBase64FromMedia(message);
+    const transcribedText = await this.audioService.transcribe(base64);
+    this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
+
+    this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
+      this.processMessage(phone, combinedText, messageId).catch((err) =>
+        this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
+      );
+    });
+  }
+
   private async processMessage(phone: string, combinedText: string, messageKeyId: string) {
     const { lead, conversation } = await this.leadsService.findOrCreate(phone);
+
+    // Lead perdido voltou a falar: reinicia como lead_frio
+    if (lead.stage === 'perdido') {
+      await this.leadsService.updateStage(lead.id, 'lead_frio' as any, 'system');
+      lead.stage = 'lead_frio' as any;
+      this.logger.log(`Lead ${phone} era perdido — movido para lead_frio ao retornar`);
+    }
 
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
@@ -178,7 +226,25 @@ export class EvolutionController {
       }
     }
 
-    await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+    const respondWithAudio = this.lastMessageWasAudio.get(phone) === true;
+    this.lastMessageWasAudio.delete(phone);
+
+    if (respondWithAudio) {
+      try {
+        this.logger.log(`Gerando TTS para ${phone}...`);
+        const audioBuffer = await this.audioService.textToSpeech(aiResponse.reply);
+        this.logger.log(`TTS gerado (${audioBuffer.length} bytes), enviando áudio para ${phone}...`);
+        await this.evolutionService.sendAudioMessage(phone, audioBuffer);
+        this.logger.log(`Resposta enviada como áudio para ${phone}`);
+      } catch (err) {
+        const status = err?.response?.status ?? err?.status ?? 'N/A';
+        this.logger.warn(`Falha ao gerar/enviar áudio [HTTP ${status}], enviando como texto: ${err.message}`);
+        await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+      }
+    } else {
+      await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+    }
+
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
 
     const updatedLead = await this.leadsService.findOne(lead.id);

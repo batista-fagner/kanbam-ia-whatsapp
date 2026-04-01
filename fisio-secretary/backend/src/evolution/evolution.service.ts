@@ -46,4 +46,34 @@ export class EvolutionService {
       this.logger.error(`Erro ao enviar mensagem para ${phone}: ${err.message}`);
     }
   }
+
+  async getBase64FromMedia(messageData: any): Promise<{ base64: string; mimetype: string }> {
+    const response = await firstValueFrom(
+      this.http.post(
+        `${this.baseUrl}/chat/getBase64FromMediaMessage/${this.instanceName}`,
+        { message: messageData },
+        { headers: { apikey: this.apiKey } },
+      ),
+    );
+    return response.data as { base64: string; mimetype: string };
+  }
+
+  async sendAudioMessage(phone: string, audioBuffer: Buffer): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.http.post(
+          `${this.baseUrl}/message/sendMedia/${this.instanceName}`,
+          {
+            number: phone,
+            mediatype: 'audio',
+            media: audioBuffer.toString('base64'),
+            mimetype: 'audio/mpeg',
+          },
+          { headers: { apikey: this.apiKey } },
+        ),
+      );
+    } catch (err) {
+      this.logger.error(`Erro ao enviar áudio para ${phone}: ${err.message}`);
+    }
+  }
 }

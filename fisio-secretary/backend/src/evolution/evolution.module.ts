@@ -6,9 +6,10 @@ import { MessageQueueService } from './message-queue.service';
 import { LeadsModule } from '../leads/leads.module';
 import { AiModule } from '../ai/ai.module';
 import { CalendarModule } from '../calendar/calendar.module';
+import { AudioModule } from '../audio/audio.module';
 
 @Module({
-  imports: [HttpModule, LeadsModule, AiModule, CalendarModule],
+  imports: [HttpModule, LeadsModule, AiModule, CalendarModule, AudioModule],
   controllers: [EvolutionController],
   providers: [EvolutionService, MessageQueueService],
   exports: [EvolutionService],
