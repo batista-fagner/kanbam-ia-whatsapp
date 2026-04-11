@@ -25,7 +25,7 @@ docker compose down
 docker compose down -v
 ```
 <!-- Ngrok -->
-ngrok http 3000 
+ngrok http 3000
 
 Serviços que sobem:
 | Serviço       | URL                    |

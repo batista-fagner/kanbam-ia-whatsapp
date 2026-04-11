@@ -1,3 +1,4 @@
+<!-- Testando o git -->
 # Fisio Secretary — Backend
 
 Backend da secretária virtual para clínica de fisioterapia. Recebe mensagens do WhatsApp via Evolution API, processa com IA (Claude), qualifica leads automaticamente e agenda consultas no Google Calendar.
