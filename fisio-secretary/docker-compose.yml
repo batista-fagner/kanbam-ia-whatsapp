@@ -16,25 +16,8 @@ services:
       timeout: 5s
       retries: 5
 
-  evolution:
-    container_name: evolution_api
-    image: evoapicloud/evolution-api:v2.3.7
-    restart: always
-    depends_on:
-      redis:
-        condition: service_healthy
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    volumes:
-      - evolution_instances:/evolution/instances
-    networks:
-      - fisio_net
-
 volumes:
   redis_data:
-  evolution_instances:
 
 networks:
   fisio_net:

@@ -8,10 +8,10 @@
 
 ---
 
-## Docker (Evolution API + Redis + Postgres)
+## Docker (Redis apenas)
 
 ```bash
-# Subir todos os serviços de infra
+# Subir apenas Redis (WhatsApp via uazapi, Postgres via Supabase)
 cd fisio-secretary
 docker compose up -d
 
@@ -24,15 +24,25 @@ docker compose down
 # Parar e remover volumes (cuidado: apaga dados)
 docker compose down -v
 ```
-<!-- Ngrok -->
+
+<!-- Ngrok para webhooks -->
+Para receber webhooks da uazapi no localhost:
+```bash
 ngrok http 3000
+```
+Configurar a URL gerada na uazapi como: `https://<ngrok-url>/webhooks/uazapi`
 
 Serviços que sobem:
-| Serviço       | URL                    |
-|---------------|------------------------|
-| Evolution API | http://localhost:8080  |
-| Redis         | localhost:6379         |
-| PostgreSQL    | localhost:5432         |
+| Serviço | URL |
+|---------|-----|
+| Redis | localhost:6379 |
+
+Serviços externos:
+| Serviço | Gerenciador |
+|---------|-------------|
+| WhatsApp (uazapi) | https://free.uazapi.com |
+| PostgreSQL | Supabase |
+| Google Calendar | Google Cloud |
 
 ---
 
@@ -102,12 +112,10 @@ npm run dev
 # Ver containers rodando
 docker ps
 
-# Reiniciar apenas a Evolution API
-docker compose restart evolution
-
 # Acessar shell do Redis
 docker exec -it fisio_redis redis-cli -a $REDIS_PASSWORD
 
-# Acessar shell do Postgres
-docker exec -it fisio_postgres psql -U postgres
+# Ver logs do backend em tempo real
+# (no terminal onde rodou npm run start:dev)
+tail -f backend/logs/combined.log
 ```

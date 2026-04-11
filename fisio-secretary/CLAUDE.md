@@ -2,7 +2,7 @@
 
 ## O que é este projeto
 
-Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensagens WhatsApp via Evolution API, qualifica leads automaticamente usando Claude, e exibe um Kanban em tempo real para o operador.
+Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensagens WhatsApp via uazapi, qualifica leads automaticamente usando Claude, e exibe um Kanban em tempo real para o operador.
 
 ---
 
@@ -11,10 +11,10 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
 - **IA:** Anthropic Claude (claude-haiku-4-5-20251001)
-- **STT:** OpenAI Whisper (transcrição de áudio)
+- **STT:** OpenAI Whisper (transcrição via uazapi)
 - **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
-- **WhatsApp:** Evolution API v2 (Baileys)
-- **Infra:** Docker Compose
+- **WhatsApp:** uazapi (API gerenciada, R$ 29/mês)
+- **Infra:** Docker (apenas Redis), Backend/Frontend em localhost
 
 ---
 
@@ -24,8 +24,8 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 fisio-secretary/
 ├── backend/src/
 │   ├── evolution/
-│   │   ├── evolution.controller.ts   ← webhook POST /webhooks/evolution + processMessage() privado
-│   │   ├── evolution.service.ts      ← sendTextMessage(), sendTypingIndicator(), sendAudioMessage(), getBase64FromMedia()
+│   │   ├── evolution.controller.ts   ← webhook POST /webhooks/uazapi + processMessage() privado
+│   │   ├── evolution.service.ts      ← sendTextMessage(), sendTypingIndicator(), sendAudioMessage(), transcribeAudio()
 │   │   ├── message-queue.service.ts  ← debounce de 10s por phone, callback-based
 │   │   └── evolution.module.ts
 │   ├── audio/
@@ -65,15 +65,15 @@ fisio-secretary/
 ```
 Webhook recebe msg (texto ou áudio)
   → filtra msgs antigas (>5min ignoradas)
-  → deduplicação por message.key.id
-  → se áudio: getBase64FromMedia() → AudioService.transcribe() (Whisper) → enfileira texto
+  → deduplicação por messageid
+  → se áudio (type=media + mediaType in [audio,ptt,myaudio]): transcribeAudio() via uazapi → enfileira texto
   → MessageQueueService.enqueue() → retorna {ok:true} imediatamente
   → após 10s de silêncio: callback dispara processMessage()
   → getAiEnabled() — se false, salva msg e notifica frontend (operador assume)
   → sendTypingIndicator() — mostra "digitando..." no WhatsApp
   → AiService.processMessage() com buildSystemPrompt(lead)
   → atualiza Lead (stage, temperature, fields)
-  → se última msg era áudio: AudioService.textToSpeech() → sendAudioMessage()
+  → se última msg era áudio: AudioService.textToSpeech() → sendAudioMessage(type=ptt)
   → se última msg era texto: sendTextMessage()
   → salva msg outbound → emite WebSocket
 ```
@@ -98,12 +98,13 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 ## Status das fases
 
-- **Fase 1:** ✅ Concluída — Docker Compose, infra, Evolution conectado ao WhatsApp
+- **Fase 1:** ✅ Concluída — Docker Compose, infra, WhatsApp conectado
 - **Fase 2:** ✅ Concluída — Backend core, webhook, leads, eco bot
 - **Fase 3:** ✅ Concluída e testada — IA Sofia integrada com Claude, fluxo de qualificação e agendamento funcionando
 - **Fase 4:** ✅ Concluída — Frontend Kanban integrado com backend e WebSocket
 - **Fase 5:** ✅ Concluída — Toggle IA por lead, envio manual pelo operador, histórico de stages, stats no header
-- **Fase 6:** ✅ Concluída — Mensagens de áudio: STT via Whisper + TTS via Google Cloud (voz pt-BR-Neural2-C)
+- **Fase 6:** ✅ Concluída — Mensagens de áudio: STT via uazapi + TTS via Google Cloud (voz pt-BR-Neural2-C)
+- **Fase 7:** ✅ Concluída — Migração Evolution API → uazapi (11/04/2026)
 
 ---
 
@@ -112,7 +113,7 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 ### Mensagens de Áudio (Fase 6)
 - **Regra:** recebeu áudio → responde em áudio. Recebeu texto → responde em texto.
 - `lastMessageWasAudio` Map no controller rastreia o tipo por phone — o último tipo recebido define o formato da resposta
-- **STT:** `AudioService.transcribe(base64)` — converte áudio ogg/opus para texto via OpenAI Whisper (modelo whisper-1, idioma pt)
+- **STT:** `EvolutionService.transcribeAudio(messageId)` — transcrição via uazapi `/message/download` com `transcribe: true` (usa OpenAI Whisper internamente)
 - **TTS:** `AudioService.textToSpeech(text)` — gera MP3 via Google Cloud TTS (voz `pt-BR-Neural2-C`, feminina, Neural2)
 - **Pré-processamento do texto para TTS:**
   - Remove emojis e símbolos Unicode especiais
@@ -123,9 +124,9 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
   - Remove caracteres especiais restantes, normaliza espaços
 - **SSML:** texto processado é embrulhado em `<speak><prosody rate="medium">` para fala natural
 - **Fallback:** se TTS falhar, envia como texto e loga o erro com status HTTP
-- `evolution.service.ts` — `getBase64FromMedia(message)` e `sendAudioMessage(phone, buffer)`
-  - Endpoint download: `POST /chat/getBase64FromMediaMessage/{instance}`
-  - Endpoint envio: `POST /message/sendMedia/{instance}` com `mediatype: "audio"`, `mimetype: "audio/mpeg"`
+- `evolution.service.ts` — `transcribeAudio(messageId)` e `sendAudioMessage(phone, buffer)`
+  - Endpoint transcrição: `POST /message/download` com `id, transcribe: true`
+  - Endpoint envio: `POST /send/media` com `type: "ptt"`, `file: base64`
 
 ---
 
@@ -138,7 +139,7 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 ### Indicador de Digitação
 - `evolution.service.ts` — `sendTypingIndicator(phone, durationMs)`
-- Endpoint: `POST /chat/sendPresence/{instanceName}` com body `{ number, presence: "composing", delay }`
+- Endpoint: `POST /message/presence` com body `{ number, presence: "composing", delay }`
 - Disparado antes do `processMessage()`, em paralelo (void)
 
 ### Toggle de IA por Lead
@@ -177,29 +178,39 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 **[31/03] Backend respondia mensagens antigas:** ao reiniciar o backend, Evolution API reenviava webhooks pendentes e a Sofia respondia mensagens velhas. Corrigido com filtro de timestamp (>5min = descartado).
 
+**[11/04] Migração para uazapi:** Evolution API substituída por uazapi (R$ 29/mês, suporte, sem Docker). Adaptados endpoints de webhook, envio de texto/áudio, transcrição automática de áudio (eliminou necessidade de chamar Whisper manualmente).
+
 ---
 
 ## Variáveis de ambiente (.env)
 
 ```
+# Supabase
 SUPABASE_DATABASE_URL=...
 SUPABASE_DIRECT_URL=...
 SUPABASE_URL=...
 SUPABASE_ANON_KEY=...
+
+# Redis
 REDIS_PASSWORD=...
-AUTHENTICATION_API_KEY=...   # Evolution API
-SERVER_URL=http://localhost:8080
+
+# uazapi (WhatsApp)
+UAZAPI_BASE_URL=https://free.uazapi.com
+UAZAPI_TOKEN=...
+
+# Backend
+SERVER_URL=http://localhost:3000
 DATABASE_ENABLED=true
 DATABASE_PROVIDER=postgresql
 DATABASE_CONNECTION_URI=...
 CACHE_REDIS_ENABLED=true
 CACHE_REDIS_URI=redis://:REDIS_PASSWORD@fisio_redis:6379/1
-EVOLUTION_BASE_URL=http://localhost:8080
-EVOLUTION_INSTANCE_NAME=Kanbam
+
+# IA e APIs
 ANTHROPIC_API_KEY=...
 JWT_SECRET=...
 WEBHOOK_SECRET=...
-OPENAI_API_KEY=...              # Whisper STT
+OPENAI_API_KEY=...              # Transcrição (usado pela uazapi internamente)
 GOOGLE_SERVICE_ACCOUNT_EMAIL=... # Google Cloud TTS
 GOOGLE_PRIVATE_KEY="..."         # Google Cloud TTS
 GOOGLE_CALENDAR_ID=...
@@ -209,12 +220,10 @@ GOOGLE_CALENDAR_ID=...
 
 ## Docker Compose — serviços
 
-| Serviço | Porta | Nome interno |
-|---------|-------|-------------|
-| Evolution API | 8080 | `evolution_api` |
-| Backend NestJS | 3000 | `backend` |
-| Frontend React | 5173 | `frontend` |
-| PostgreSQL | 5432 | `fisio_postgres` |
-| Redis | 6379 | `fisio_redis` |
+| Serviço | Porta | Nota |
+|---------|-------|------|
+| Redis | 6379 | Container (gerenciado pelo Docker) |
+| Backend NestJS | 3000 | Local (npm run start:dev) |
+| Frontend React | 5173 | Local (npm run dev) |
 
-Todos na rede `fisio_net`.
+**Observação:** PostgreSQL (Supabase), WhatsApp (uazapi) e Google Calendar são serviços externos (não Docker).

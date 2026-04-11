@@ -1,14 +1,14 @@
 <!-- Testando o git -->
 # Fisio Secretary — Backend
 
-Backend da secretária virtual para clínica de fisioterapia. Recebe mensagens do WhatsApp via Evolution API, processa com IA (Claude), qualifica leads automaticamente e agenda consultas no Google Calendar.
+Backend da secretária virtual para clínica de fisioterapia. Recebe mensagens do WhatsApp via uazapi, processa com IA (Claude), qualifica leads automaticamente e agenda consultas no Google Calendar.
 
 ## Stack
 
 - **Framework:** NestJS + TypeScript
 - **Banco de dados:** PostgreSQL (Supabase) via TypeORM
 - **Cache:** Redis
-- **WhatsApp:** Evolution API v2
+- **WhatsApp:** uazapi (API gerenciada, R$ 29/mês)
 - **IA:** Anthropic Claude (`claude-haiku-4-5-20251001`)
 - **Agenda:** Google Calendar API v3 (Service Account)
 - **Real-time:** Socket.io
@@ -16,7 +16,7 @@ Backend da secretária virtual para clínica de fisioterapia. Recebe mensagens d
 ## Arquitetura
 
 ```
-WhatsApp → Evolution API → POST /webhooks/evolution
+WhatsApp → uazapi → POST /webhooks/uazapi
                                      ↓
                             Cria/busca Lead + Conversa
                                      ↓
