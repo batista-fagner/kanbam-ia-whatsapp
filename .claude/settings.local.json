@@ -11,7 +11,12 @@
       "Bash(docker run:*)",
       "Bash(python3 -m json.tool)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(i.get\\(''''name''''\\), i.get\\(''''connectionStatus''''\\)\\) for i in d]\")",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "WebFetch(domain:free.uazapi.com)",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:docs.uazapi.com)",
+      "Bash(python3 -c ':*)"
     ]
   }
 }

@@ -9,6 +9,8 @@ export class EvolutionService {
   private readonly baseUrl: string = '';
   private readonly apiKey: string = '';
   private readonly instanceName: string = '';
+  private readonly uazapiBaseUrl: string = '';
+  private readonly uazapiToken: string = '';
 
   constructor(
     private http: HttpService,
@@ -17,15 +19,17 @@ export class EvolutionService {
     this.baseUrl = config.get('EVOLUTION_BASE_URL') ?? '';
     this.apiKey = config.get('AUTHENTICATION_API_KEY') ?? '';
     this.instanceName = config.get('EVOLUTION_INSTANCE_NAME') ?? '';
+    this.uazapiBaseUrl = config.get('UAZAPI_BASE_URL') ?? '';
+    this.uazapiToken = config.get('UAZAPI_TOKEN') ?? '';
   }
 
   async sendTypingIndicator(phone: string, durationMs = 3000): Promise<void> {
     try {
       await firstValueFrom(
         this.http.post(
-          `${this.baseUrl}/chat/sendPresence/${this.instanceName}`,
+          `${this.uazapiBaseUrl}/message/presence`,
           { number: phone, presence: 'composing', delay: durationMs },
-          { headers: { apikey: this.apiKey } },
+          { headers: { token: this.uazapiToken } },
         ),
       );
     } catch (err) {
@@ -37,9 +41,9 @@ export class EvolutionService {
     try {
       await firstValueFrom(
         this.http.post(
-          `${this.baseUrl}/message/sendText/${this.instanceName}`,
+          `${this.uazapiBaseUrl}/send/text`,
           { number: phone, text },
-          { headers: { apikey: this.apiKey } },
+          { headers: { token: this.uazapiToken } },
         ),
       );
     } catch (err) {
@@ -47,29 +51,35 @@ export class EvolutionService {
     }
   }
 
-  async getBase64FromMedia(messageData: any): Promise<{ base64: string; mimetype: string }> {
+  async transcribeAudio(messageId: string): Promise<string> {
     const response = await firstValueFrom(
       this.http.post(
-        `${this.baseUrl}/chat/getBase64FromMediaMessage/${this.instanceName}`,
-        { message: messageData },
-        { headers: { apikey: this.apiKey } },
+        `${this.uazapiBaseUrl}/message/download`,
+        {
+          id: messageId,
+          transcribe: true,
+          generate_mp3: false,
+          return_link: false,
+          openai_apikey: this.config.get('OPENAI_API_KEY'),
+        },
+        { headers: { token: this.uazapiToken } },
       ),
     );
-    return response.data as { base64: string; mimetype: string };
+    return (response.data as any).transcription ?? '';
   }
 
   async sendAudioMessage(phone: string, audioBuffer: Buffer): Promise<void> {
     try {
       await firstValueFrom(
         this.http.post(
-          `${this.baseUrl}/message/sendMedia/${this.instanceName}`,
+          `${this.uazapiBaseUrl}/send/media`,
           {
             number: phone,
-            mediatype: 'audio',
-            media: audioBuffer.toString('base64'),
-            mimetype: 'audio/mpeg',
+            type: 'ptt',
+            file: audioBuffer.toString('base64'),
+            delay: 2000,
           },
-          { headers: { apikey: this.apiKey } },
+          { headers: { token: this.uazapiToken } },
         ),
       );
     } catch (err) {

@@ -24,35 +24,34 @@ export class EvolutionController {
     private readonly audioService: AudioService,
   ) {}
 
-  @Post('evolution')
-  async handleWebhook(@Body() body: any) {
-    if (body.event !== 'messages.upsert') return { ok: true };
+  @Post('uazapi')
+  async handleUazapiWebhook(@Body() body: any) {
+    if (body.EventType !== 'messages') return { ok: true };
 
-    const message = body.data;
-    if (!message?.key || message.key.fromMe) return { ok: true };
+    const message = body.message;
+    if (!message || message.fromMe || message.isGroup || message.wasSentByApi) return { ok: true };
 
-    const remoteJid = message.key.remoteJid ?? '';
-    if (remoteJid.includes('@g.us')) return { ok: true };
-    const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
-
-    const text = message.message?.conversation || message.message?.extendedTextMessage?.text;
-    const isAudio = !!message.message?.audioMessage;
+    const rawPhone: string = body.chat?.phone ?? '';
+    const phone = rawPhone.replace(/\D/g, '');
+    const text: string = message.text;
+    const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
 
     if (!phone || (!text && !isAudio)) return { ok: true };
 
-    // Ignora mensagens antigas (backend estava fora do ar)
-    const messageTimestamp = message.messageTimestamp;
+    if (!phone || (!text && !isAudio)) return { ok: true };
+
+    // Ignora mensagens antigas — timestamp já em milissegundos na uazapi
+    const messageTimestamp: number = message.messageTimestamp;
     if (messageTimestamp) {
-      const msgDate = new Date(messageTimestamp * 1000);
-      const ageSeconds = (Date.now() - msgDate.getTime()) / 1000;
+      const ageSeconds = (Date.now() - messageTimestamp) / 1000;
       if (ageSeconds > 300) {
         this.logger.warn(`Mensagem ignorada — muito antiga (${Math.round(ageSeconds)}s): ${phone}`);
         return { ok: true };
       }
     }
 
-    // Ignora webhook duplicado para a mesma mensagem
-    const messageId = message.key.id;
+    // Deduplicação por messageid
+    const messageId: string = message.messageid;
     if (this.processedIds.has(messageId)) {
       this.logger.warn(`Webhook duplicado ignorado: ${messageId}`);
       return { ok: true };
@@ -60,11 +59,9 @@ export class EvolutionController {
     this.processedIds.add(messageId);
     setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
 
-    // Rastreia tipo da última mensagem para definir formato da resposta
     this.lastMessageWasAudio.set(phone, isAudio);
 
     if (isAudio) {
-      // Transcreve o áudio de forma assíncrona e enfileira o texto resultante
       this.transcribeAndEnqueue(phone, message, messageId).catch((err) =>
         this.logger.error(`Erro ao transcrever áudio de ${phone}: ${err.message}`),
       );
@@ -73,8 +70,7 @@ export class EvolutionController {
 
     this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
 
-    // Enfileira e retorna imediatamente — processamento acontece no callback após debounce
-    this.messageQueue.enqueue(phone, text!, (combinedText) => {
+    this.messageQueue.enqueue(phone, text, (combinedText) => {
       this.processMessage(phone, combinedText, messageId).catch((err) =>
         this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`),
       );
@@ -85,8 +81,7 @@ export class EvolutionController {
 
   private async transcribeAndEnqueue(phone: string, message: any, messageId: string) {
     this.logger.log(`Transcrevendo áudio de ${phone}...`);
-    const { base64 } = await this.evolutionService.getBase64FromMedia(message);
-    const transcribedText = await this.audioService.transcribe(base64);
+    const transcribedText = await this.evolutionService.transcribeAudio(message.messageid);
     this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
 
     this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
