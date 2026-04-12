@@ -88,6 +88,32 @@ export class LeadsService {
     return this.leadsRepo.findOne({ where: { id } });
   }
 
+  async findByPhones(phones: string[]): Promise<Map<string, string>> {
+    if (!phones.length) return new Map();
+    // Compara só dígitos — o phone no banco pode ter +, espaços, traços
+    // regexp_replace remove tudo que não é dígito para comparar
+    const leads = await this.leadsRepo.createQueryBuilder('lead')
+      .select(['lead.phone', 'lead.name'])
+      .where(
+        `regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phones)
+         OR regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phonesNoPrefix)`,
+        {
+          phones,
+          phonesNoPrefix: phones.map(p => p.startsWith('55') && p.length > 11 ? p.slice(2) : p),
+        },
+      )
+      .getMany();
+    // Indexa por dígitos normalizados para facilitar o match
+    const result = new Map<string, string>();
+    for (const lead of leads) {
+      const digits = lead.phone.replace(/\D/g, '');
+      result.set(digits, lead.name ?? '');
+      if (!digits.startsWith('55')) result.set(`55${digits}`, lead.name ?? '');
+      else result.set(digits.slice(2), lead.name ?? '');
+    }
+    return result;
+  }
+
   async getConversationWithMessages(leadId: string) {
     return this.conversationsRepo.findOne({
       where: { leadId },

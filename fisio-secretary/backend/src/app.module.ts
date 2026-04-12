@@ -6,9 +6,11 @@ import { Conversation } from './common/entities/conversation.entity';
 import { Message } from './common/entities/message.entity';
 import { LeadStageHistory } from './common/entities/lead-stage-history.entity';
 import { Appointment } from './common/entities/appointment.entity';
+import { Campaign } from './common/entities/campaign.entity';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { BulkMessageModule } from './bulk-message/bulk-message.module';
 
 @Module({
   imports: [
@@ -19,7 +21,7 @@ import { CalendarModule } from './calendar/calendar.module';
         type: 'postgres',
         url: config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Appointment],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Appointment, Campaign],
         synchronize: true, // apenas dev — gera tabelas automaticamente
         logging: false,
       }),
@@ -27,6 +29,7 @@ import { CalendarModule } from './calendar/calendar.module';
     EvolutionModule,
     LeadsModule,
     CalendarModule,
+    BulkMessageModule,
   ],
 })
 export class AppModule {}

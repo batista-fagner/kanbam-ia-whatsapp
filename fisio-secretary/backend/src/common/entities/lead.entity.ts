@@ -1,6 +1,7 @@
 import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne,
+  BeforeInsert, BeforeUpdate,
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 import { LeadStageHistory } from './lead-stage-history.entity';
@@ -73,6 +74,14 @@ export class Lead {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  normalizePhone() {
+    if (this.phone) {
+      this.phone = this.phone.replace(/\D/g, '');
+    }
+  }
 
   @OneToOne(() => Conversation, (c) => c.lead)
   conversation: Conversation;

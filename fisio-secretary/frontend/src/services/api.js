@@ -34,3 +34,23 @@ export const sendManualMessage = (phone, text) =>
 
 export const deleteLead = (id) =>
   fetch(`${BASE}/leads/${id}`, { method: 'DELETE' }).then(json)
+
+export const sendBulkMessage = (payload) =>
+  fetch(`${BASE}/bulk-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
+export const getCampaigns = () =>
+  fetch(`${BASE}/bulk-message/campaigns`).then(json)
+
+export const getCampaignMessages = (id) =>
+  fetch(`${BASE}/bulk-message/campaigns/${id}/messages`).then(json)
+
+export const controlCampaign = (id, action) =>
+  fetch(`${BASE}/bulk-message/campaigns/${id}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  }).then(json)
