@@ -105,6 +105,38 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 - **Fase 5:** ✅ Concluída — Toggle IA por lead, envio manual pelo operador, histórico de stages, stats no header
 - **Fase 6:** ✅ Concluída — Mensagens de áudio: STT via uazapi + TTS via Google Cloud (voz pt-BR-Neural2-C)
 - **Fase 7:** ✅ Concluída — Migração Evolution API → uazapi (11/04/2026)
+- **Fase 8:** ✅ Concluída — Envio em Massa com Sidebar (11/04/2026)
+
+---
+
+## Funcionalidades implementadas (11/04/2026 — Fase 8)
+
+### Envio em Massa com Sidebar
+- **Layout.jsx:** sidebar colapsável com navegação principal (Kanban + Envio em Massa)
+  - Logo Sofia no header
+  - Items com ícones (LayoutDashboard, Send)
+  - Botão logout no rodapé
+  - Transição suave ao recolher (w-16 vs w-56)
+- **BulkMessagePage.jsx:** sistema completo de envio em massa com 3 abas
+  - **Aba Manual:** lista de números (um por linha), interpolação de variáveis {telefone}
+  - **Aba Leads do Sistema:** filtro por stage + temperatura, seleção individual/em massa, interpolação com {nome} e {telefone}
+  - **Aba Histórico:** polling a cada 5s, status detalhado (scheduled/sending/paused/done), preview da mensagem, modal com detalhes por destinatário
+- **BulkMessageService:** integração completa com uazapi
+  - `POST /sender/advanced` — envia campanha com delay 5-15s entre mensagens
+  - `GET /sender/listfolders` — sincroniza status de campanhas ativas
+  - `POST /sender/listmessages` — retorna detalhes por destinatário (número, status, timestamp)
+  - `POST /sender/edit` — controla campanha (stop/continue/delete)
+- **Campaign entity:** tabela `campaigns` para histórico
+  - Fields: `campaignName`, `message`, `mode` (manual|system), `totalRecipients`, `folderId`, `status`
+  - Polling automático sincroniza status com uazapi a cada requisição
+- **Enriquecimento com nomes:** 
+  - `LeadsService.findByPhones()` busca leads por múltiplos telefones com regex (ignora formatação +55, espaços, traços)
+  - `getCampaignMessages()` injeta `leadName` para cada destinatário (best-effort para leads do sistema)
+- **Lead.entity normalizePhone():** hook `@BeforeInsert/@BeforeUpdate` normaliza phone para dígitos (ex: `+55 27 98879-1829` → `5527988791829`)
+- **Otimistic UI:** envio de mensagens manual no modal do Kanban
+  - Mensagem aparece imediatamente na conversa (com opacidade 60% enquanto envia)
+  - Se API falhar, remove otimistic e volta o texto pro campo
+  - Melhora drasticamente a percepção de responsividade
 
 ---
 
@@ -227,3 +259,30 @@ GOOGLE_CALENDAR_ID=...
 | Frontend React | 5173 | Local (npm run dev) |
 
 **Observação:** PostgreSQL (Supabase), WhatsApp (uazapi) e Google Calendar são serviços externos (não Docker).
+
+---
+
+## Pendências Futuras
+
+### 1. Otimização do Prompt de Venda com SPIN Selling
+**Status:** ⏳ Pendente  
+**Objetivo:** Melhorar a qualificação de leads e conversão de vendas para nicho específico (Fisioterapia)  
+**Estratégia:** Implementar framework SPIN Selling (Situation, Problem, Implication, Need-Payoff) no system prompt
+- Refatorar `buildSystemPrompt()` para injeta estrutura SPIN na qualificação
+- Treinar Sofia para fazer perguntas de diagnóstico baseadas em SPIN
+- Aumentar temperatura (lead_quente) baseado em respostas de implicação
+- Testar com leads reais antes/depois
+
+### 2. Follow-up Automático de 7 Dias de Cadência
+**Status:** ⏳ Pendente  
+**Objetivo:** Re-engajar leads que não avançaram (lead_frio) com série de 7 mensagens em cadência automática  
+**Implementação Necessária:**
+- Adicionar campo `nurtureCadenceDay` em `Conversation` (0-7, incrementa a cada dia)
+- Job/scheduler (Bull Queue ou cron) que roda diariamente e identifica leads elegíveis (`lead_frio` + `lastMessageAt` > 24h)
+- Template de 7 mensagens SPIN progressivas (escalação de interesse)
+- Mensagem 1 (dia 1): Reengagement + pergunta Situation
+- Mensagem 2-3: Problem discovery (perguntas de dor)
+- Mensagem 4-5: Implication (consequências)
+- Mensagem 6-7: Need-Payoff (benefícios da consulta)
+- Webhook de reativação: se lead responder durante cadência, reseta contador e volta para qualificação ativa
+- Métricas: taxa de reativação por dia, por template
