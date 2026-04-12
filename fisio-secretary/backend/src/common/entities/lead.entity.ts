@@ -21,8 +21,8 @@ export class Lead {
   @Column({ unique: true })
   phone: string;
 
-  @Column({ nullable: true })
-  name: string;
+  @Column({ type: 'varchar', nullable: true })
+  name: string | null;
 
   @Column({ default: 'novo_lead' })
   stage: LeadStage;

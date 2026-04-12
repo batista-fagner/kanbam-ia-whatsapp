@@ -40,6 +40,13 @@ export default function KanbanPage() {
     await deleteLead(leadToDelete.id)
   }
 
+  function handleLeadUpdate(updatedLead) {
+    setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l))
+    if (selectedLead?.id === updatedLead.id) {
+      setSelectedLead(updatedLead)
+    }
+  }
+
   async function handleDragEnd({ active, over }) {
     setActiveId(null)
     if (!over) return
@@ -96,6 +103,7 @@ export default function KanbanPage() {
                 leads={leads.filter(l => l.stage === col.id)}
                 onCardClick={setSelectedLead}
                 onCardDelete={setLeadToDelete}
+                onLeadUpdate={handleLeadUpdate}
               />
             ))}
           </div>

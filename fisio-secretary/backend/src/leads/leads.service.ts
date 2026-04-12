@@ -137,6 +137,12 @@ export class LeadsService {
     }
   }
 
+  async updateName(leadId: string, name: string): Promise<Lead> {
+    const lead = await this.leadsRepo.findOneOrFail({ where: { id: leadId } });
+    lead.name = name.trim() || null;
+    return this.leadsRepo.save(lead);
+  }
+
   async getAiEnabled(leadId: string): Promise<boolean> {
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
     return conversation?.aiEnabled ?? true;

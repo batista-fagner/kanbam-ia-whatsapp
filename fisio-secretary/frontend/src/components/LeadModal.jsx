@@ -70,16 +70,26 @@ export default function LeadModal({ lead, onClose }) {
 
   async function handleSend() {
     if (!manualText.trim() || sending) return
+    const text = manualText.trim()
+    const tempId = Date.now()
+    // Optimistic update — aparece imediatamente
+    setMessages(prev => [...prev, {
+      id: tempId,
+      sender: 'operator',
+      content: text,
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      pending: true,
+    }])
+    setManualText('')
     setSending(true)
     try {
-      await sendManualMessage(lead.phone, manualText.trim())
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        sender: 'operator',
-        content: manualText.trim(),
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      }])
-      setManualText('')
+      await sendManualMessage(lead.phone, text)
+      // Remove o flag pending após confirmação
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: false } : m))
+    } catch {
+      // Rollback: remove a mensagem se der erro
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setManualText(text)
     } finally {
       setSending(false)
     }
@@ -218,7 +228,7 @@ export default function LeadModal({ lead, onClose }) {
                 <p className="text-xs text-gray-400 text-center mt-4">Nenhuma mensagem ainda</p>
               )}
               {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.sender === 'lead' ? 'justify-start' : 'justify-end'}`}>
+                <div key={msg.id} className={`flex ${msg.sender === 'lead' ? 'justify-start' : 'justify-end'} ${msg.pending ? 'opacity-60' : ''}`}>
                   {msg.sender === 'lead' && (
                     <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 text-xs font-bold mr-2 mt-1 shrink-0">
                       <User className="w-3 h-3" />

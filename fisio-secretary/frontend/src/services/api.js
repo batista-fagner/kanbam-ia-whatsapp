@@ -1,6 +1,10 @@
 const BASE = 'http://localhost:3000'
 
-const json = (r) => r.json()
+const json = async (r) => {
+  const data = await r.json()
+  if (!r.ok) throw new Error(data?.message || `HTTP ${r.status}`)
+  return data
+}
 
 export const getLeads = () =>
   fetch(`${BASE}/leads`).then(json)
@@ -16,6 +20,13 @@ export const updateStage = (id, stage) =>
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stage }),
+  }).then(json)
+
+export const updateName = (id, name) =>
+  fetch(`${BASE}/leads/${id}/name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
   }).then(json)
 
 export const toggleAi = (id, enabled) =>

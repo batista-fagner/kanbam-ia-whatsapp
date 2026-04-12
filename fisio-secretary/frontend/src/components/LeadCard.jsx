@@ -1,6 +1,8 @@
+import { useState, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Edit2 } from 'lucide-react'
+import { updateName } from '../services/api'
 
 const urgencyColor = {
   alta:  'bg-red-100 text-red-700',
@@ -20,13 +22,40 @@ const scoreColor = (score) => {
   return 'text-slate-400'
 }
 
-export default function LeadCard({ lead, onClick, onDelete }) {
+export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(lead.name || '')
+  const inputRef = useRef(null)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id })
 
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
+  }
+
+  async function handleSaveName() {
+    if (!editName.trim()) {
+      setEditName(lead.name || '')
+      setIsEditing(false)
+      return
+    }
+    try {
+      const updated = await updateName(lead.id, editName.trim())
+      onLeadUpdate?.(updated)
+      setIsEditing(false)
+    } catch (err) {
+      console.error('Erro ao atualizar nome:', err)
+      setEditName(lead.name || '')
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter') handleSaveName()
+    if (e.key === 'Escape') {
+      setEditName(lead.name || '')
+      setIsEditing(false)
+    }
   }
 
   return (
@@ -40,18 +69,41 @@ export default function LeadCard({ lead, onClick, onDelete }) {
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
             {(lead.name || lead.phone).charAt(0).toUpperCase()}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800 leading-tight">{lead.name || 'Sem nome'}</p>
-            <p className="text-xs text-gray-400">{lead.phone}</p>
+          <div className="flex-1 min-w-0">
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={handleSaveName}
+                onKeyDown={handleKeyDown}
+                autoFocus
+                className="w-full text-sm font-semibold bg-blue-50 border border-blue-300 text-gray-800 rounded px-1 py-0.5"
+              />
+            ) : (
+              <p className="text-sm font-semibold text-gray-800 leading-tight truncate">{lead.name || 'Sem nome'}</p>
+            )}
+            <p className="text-xs text-gray-400 truncate">{lead.phone}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           {lead.stage !== 'novo_lead' && (
             <span className="text-base leading-none">{tempBadge[lead.temperature]}</span>
+          )}
+          {!isEditing && !lead.name && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); setTimeout(() => inputRef.current?.focus(), 0) }}
+              className="p-1 rounded hover:bg-blue-50 text-gray-300 hover:text-blue-400 transition-colors"
+              title="Editar nome"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
           )}
           <button
             onPointerDown={(e) => e.stopPropagation()}

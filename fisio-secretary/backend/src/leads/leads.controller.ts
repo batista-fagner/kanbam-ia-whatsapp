@@ -36,6 +36,13 @@ export class LeadsController {
     return lead;
   }
 
+  @Patch(':id/name')
+  async updateName(@Param('id') id: string, @Body() body: { name: string }) {
+    const lead = await this.leadsService.updateName(id, body.name);
+    this.leadsGateway.emitLeadUpdated(lead);
+    return lead;
+  }
+
   @Patch(':id/ai')
   async toggleAi(@Param('id') id: string, @Body() body: { enabled: boolean }) {
     await this.leadsService.toggleAi(id, body.enabled);
