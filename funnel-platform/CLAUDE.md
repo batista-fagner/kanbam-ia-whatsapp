@@ -42,8 +42,10 @@ funnel-platform/
 | Dashboard | 125 | ✅ Estrutura base |
 | Forms | 365 | ✅ Form builder UI |
 | FormPublic | 274 | ✅ Página pública para leads |
+| **Leads** | **480** | **✅ Completa com mensagens** |
+| **InstagramLeads** | **200** | **✅ Análise IA + Card insights** |
+| **WhatsAppLeads** | **152** | **✅ Envio de mensagens** |
 | Campaigns | 22 | ⚠️ Stub |
-| Leads | 17 | ⚠️ Stub |
 | EmailSequences | 22 | ⚠️ Stub |
 | Analytics | 17 | ⚠️ Stub |
 | Settings | 39 | ⚠️ Stub |
@@ -66,27 +68,56 @@ funnel-platform/
 
 ## 📝 Referências Externas
 
-- [RapidAPI Instagram Analysis](https://rapidapi.com/) — 7 arquivos de referência inclusos
+- [OpenAI GPT-4o-mini](https://openai.com/api/) — ✅ Análise IA de leads + geração de mensagens
+- [RapidAPI Instagram Analysis](https://rapidapi.com/) — ✅ 7 arquivos de referência inclusos
+- [uazapi](https://docs.uazapi.com) — ✅ WhatsApp automático (R$ 29/mês)
 - [Resend Email API](https://resend.com/docs) — documentação necessária
 - [Meta Ads API](https://developers.facebook.com/) — ads e pixel tracking
-- [uazapi](https://docs.uazapi.com) — WhatsApp (R$ 29/mês)
 - [Supabase](https://supabase.com/) — PostgreSQL gerenciado
 
 ---
 
 ## 🚀 Como Começar
 
-### Setup local (Frontend)
+### Setup Backend
+```bash
+cd funnel-platform/backend
+npm install
+npm start  # NestJS na porta 3001
+```
+
+### Setup Frontend
 ```bash
 cd funnel-platform/frontend
 npm install
-npm run dev  # Vite dev server na porta 5174
+npm run dev  # Vite dev server na porta 5173
 ```
 
-### Checklist antes de commitar
-- [ ] Verificar se há `TESTE.JS` (7791 linhas!) — pode ser lixo acidental
-- [ ] Validar componentes Tailwind (output)
-- [ ] Testar páginas no navegador
+### Usar o Sistema
+1. **Form público:** http://localhost:5173/f/default
+   - Preencher: Nome, Email, Telefone, Instagram
+   - Lead é criado e enriquecido automaticamente
+   - Mensagem é enviada ao WhatsApp em ~10 segundos
+
+2. **Dashboard de Leads:** http://localhost:5173/leads
+   - Visualizar todas as mensagens enviadas
+   - Ver análise completa da IA
+   - Copiar mensagem para reutilizar
+
+3. **Instagram Leads:** http://localhost:5173/instagram
+   - Análise completa do Instagram
+   - Insights de nicho, engajamento, público
+   - Card visual com ângulo de venda
+
+### Variáveis de Ambiente (`.env`)
+```env
+OPENAI_API_KEY=sua_chave_aqui
+OPENAI_MODEL=gpt-4o-mini
+RAPIDAPI_KEY=sua_chave_rapidapi
+RAPIDAPI_HOST=instagram120.p.rapidapi.com
+UAZAPI_BASE_URL=https://labsai.uazapi.com
+UAZAPI_TOKEN=seu_token_uazapi
+```
 
 ---
 
@@ -114,10 +145,39 @@ npm run dev  # Vite dev server na porta 5174
 
 ## ⚡ Status Atual
 
-**Branches:** 6 commits à frente de origin/main  
-**Staged:** ~25k linhas de novo código (43 arquivos)  
-**Pronto para:** Design review, integração de API, testes
+### Fluxo Implementado (✅ Testado e Funcionando)
+
+```
+Lead preenche form
+  ↓
+Instagram enriquecido (RapidAPI)
+  ↓
+IA analisa: nicho, engajamento, público, oportunidades
+  ↓
+Mensagem personalizada gerada (OpenAI GPT-4o-mini)
+  ↓
+Mensagem enviada via WhatsApp (uazapi) em ~10 segundos
+  ↓
+Dashboard mostra todas as mensagens
+```
+
+### Commits Recentes
+- **b697da4** — Prompt de IA otimizado para venda de implementação de IA
+- **ca102e2** — Envio automático de mensagens WhatsApp ao enriquecer leads
+- **a3a326f** — Scaffolding completo do funnel-platform
+- **ff3906f** — Análise IA de leads do Instagram com OpenAI GPT-4o-mini
+
+### Status Geral
+**Branches:** 11 commits à frente de origin/main  
+**Implementado:** 
+- ✅ Análise de Instagram com IA (RapidAPI + OpenAI)
+- ✅ Envio automático de WhatsApp (uazapi)
+- ✅ Dashboard de Leads com mensagens enviadas
+- ✅ Card visual com insights da IA
+- ✅ Form público + enriquecimento automático
+
+**Pronto para:** Testes com novos leads, refinamento de prompts de venda, otimizações de UX
 
 ---
 
-**Última atualização:** 2026-04-14
+**Última atualização:** 2026-04-17
