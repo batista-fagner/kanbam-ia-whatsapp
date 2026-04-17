@@ -39,30 +39,33 @@ export class AiAnalysisService {
         )
         .join('\n');
 
-      const prompt = `Você é um especialista em análise de leads para vendas B2B/B2C. Analise os dados de um usuário do Instagram e forneça insights acionáveis para vendedores.
+      const prompt = `Você é um especialista em vendas de implementação de IA para empresas. Analise o perfil do empresário no Instagram e gere uma abordagem persuasiva focada em como IA pode potencializar o negócio dele.
 
-DADOS DO LEAD:
+DADOS DO LEAD (Empresário):
 Nome: ${name}
 Instagram: ${instagram}
 Seguidores: ${followers.toLocaleString()}
 Taxa de Engajamento: ${(engagementRate * 100).toFixed(2)}%
 Bio: "${biography}"
 
-ÚLTIMOS 3 POSTS:
+CONTEÚDO RECENTE:
 ${postsData}
 
-Forneça uma análise em JSON com os seguintes campos:
+CONTEXTO: Você vende implementação de IA para automação, análise de dados, chatbots e otimização de processos.
+
+Analise e gere um JSON com os seguintes campos:
 {
-  "niche": "Identificar o nicho/indústria principal (ex: educação financeira, marketing digital, lifestyle, etc)",
-  "engagement_level": "Avaliar o nível de engajamento (baixo/médio/alto/muito alto) com justificativa breve",
-  "audience_profile": "Descrever brevemente quem provavelmente segue este usuário",
-  "content_pattern": "Padrão de conteúdo identificado (ex: educativo, motivacional, comercial, etc)",
-  "selling_angle": "Sugestão de produto/serviço que faria sentido vender para este lead (máx 100 caracteres)",
-  "outreach_message": "Mensagem personalizada curta para abordar este lead (máx 150 caracteres, em português)",
-  "confidence_score": "Confiança da análise de 0 a 100"
+  "niche": "Identificar o segmento/indústria do empresário (ex: e-commerce, consultoria, agência, etc)",
+  "engagement_level": "Nível de engajamento (baixo/médio/alto) - indica quanto tempo tem para inovação",
+  "audience_profile": "Tipo de público que ele atrai (B2B, B2C, profissionais, etc)",
+  "content_pattern": "Padrão: educacional, vendas, inspirational, etc - mostra sua abordagem de negócio",
+  "selling_angle": "Oportunidade específica de IA para seu negócio baseada no que vemos (máx 100 chars)",
+  "outreach_message": "Mensagem de abertura persuasiva para iniciar conversa sobre implementação de IA (máx 180 chars, português)",
+  "confidence_score": "Confiança (0-100)"
 }
 
-Responda APENAS com o JSON, sem markdown ou explicações adicionais.`;
+Foque em: demonstrar conhecimento do negócio dele, mencionar benefício específico de IA, criar urgência subtil.
+Responda APENAS com o JSON, sem markdown.`;
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
