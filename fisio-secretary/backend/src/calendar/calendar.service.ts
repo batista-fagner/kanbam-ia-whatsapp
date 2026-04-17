@@ -50,7 +50,7 @@ export class CalendarService {
     symptoms: string;
     startDateTime: Date;
     durationMin?: number;
-  }): Promise<string | null> {
+  }): Promise<{ id: string; htmlLink: string } | null> {
     const { leadName, phone, symptoms, startDateTime, durationMin = 60 } = params;
     const endDateTime = new Date(startDateTime.getTime() + durationMin * 60 * 1000);
 
@@ -68,7 +68,7 @@ export class CalendarService {
       });
 
       this.logger.log(`Evento criado: ${event.data.htmlLink}`);
-      return event.data.id ?? null;
+      return { id: event.data.id ?? '', htmlLink: event.data.htmlLink ?? '' };
     } catch (err) {
       this.logger.error(`Erro ao criar evento: ${err.message}`);
       return null;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send } from 'lucide-react'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink } from 'lucide-react'
 import { getConversation, getHistory, toggleAi, sendManualMessage } from '../services/api'
 
 const urgencyLabel = { alta: '⚠️ Alta', media: '🟡 Média', baixa: '🟢 Baixa' }
@@ -175,6 +175,18 @@ export default function LeadModal({ lead, onClose }) {
                 )}
                 {lead.appointmentAt && (
                   <InfoRow icon={<Clock className="w-3.5 h-3.5" />} label="Consulta agendada" value={new Date(lead.appointmentAt).toLocaleString('pt-BR')} highlight />
+                )}
+                {lead.calendarEventLink && (
+                  <a
+                    href={lead.calendarEventLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 w-full px-3 py-2 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-sm font-medium transition"
+                  >
+                    <Calendar className="w-4 h-4 shrink-0" />
+                    <span className="flex-1">Ver no Google Calendar</span>
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                  </a>
                 )}
               </div>
 

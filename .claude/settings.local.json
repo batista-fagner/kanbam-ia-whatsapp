@@ -18,7 +18,14 @@
       "WebFetch(domain:docs.uazapi.com)",
       "Bash(python3 -c ':*)",
       "Bash(npx tsc:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm create:*)",
+      "Bash(pkill -f \"vite --port 5174\")",
+      "Read(//Users/fagnerbatista/Documents/**)",
+      "Read(//Users/fagnerbatista/**)",
+      "Bash(./node_modules/.bin/vite --port 5174)",
+      "Bash(pkill -f \"vite.*5174\")",
+      "Bash(./node_modules/.bin/vite)"
     ]
   }
 }

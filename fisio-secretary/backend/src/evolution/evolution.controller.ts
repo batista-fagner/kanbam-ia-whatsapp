@@ -174,21 +174,21 @@ export class EvolutionController {
         return;
       }
 
-      const eventId = await this.calendarService.createAppointment({
+      const event = await this.calendarService.createAppointment({
         leadName: lead.name || lead.phone,
         phone: lead.phone,
         symptoms: lead.symptoms || '',
         startDateTime,
       });
 
-      if (eventId) {
-        await this.leadsService.update(lead.id, { calendarEventId: eventId, appointmentAt: startDateTime });
+      if (event) {
+        await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: startDateTime });
       }
     }
 
     if (action === 'cancel' && lead.calendarEventId) {
       await this.calendarService.cancelAppointment(lead.calendarEventId);
-      await this.leadsService.update(lead.id, { calendarEventId: null, appointmentAt: null });
+      await this.leadsService.update(lead.id, { calendarEventId: null, calendarEventLink: null, appointmentAt: null });
     }
 
     if (action === 'reschedule' && aiResponse.appointmentDateTime) {
@@ -209,14 +209,14 @@ export class EvolutionController {
         await this.calendarService.updateAppointment(lead.calendarEventId, newDateTime);
         await this.leadsService.update(lead.id, { appointmentAt: newDateTime });
       } else {
-        const eventId = await this.calendarService.createAppointment({
+        const event = await this.calendarService.createAppointment({
           leadName: lead.name || lead.phone,
           phone: lead.phone,
           symptoms: lead.symptoms || '',
           startDateTime: newDateTime,
         });
-        if (eventId) {
-          await this.leadsService.update(lead.id, { calendarEventId: eventId, appointmentAt: newDateTime });
+        if (event) {
+          await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: newDateTime });
         }
       }
     }

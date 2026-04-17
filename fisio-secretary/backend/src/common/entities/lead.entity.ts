@@ -66,6 +66,9 @@ export class Lead {
   @Column({ name: 'calendar_event_id', nullable: true, type: 'text' })
   calendarEventId: string | null;
 
+  @Column({ name: 'calendar_event_link', nullable: true, type: 'text' })
+  calendarEventLink: string | null;
+
   @Column({ name: 'last_message_at', nullable: true, type: 'timestamp' })
   lastMessageAt: Date;
 
