@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from '../leads/leads.service';
 import { AiAnalysisService } from '../ai-analysis/ai-analysis.service';
+import { MessagingService } from '../messaging/messaging.service';
 import { Lead, EnrichmentData } from '../common/entities/lead.entity';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class EnrichmentService {
     private config: ConfigService,
     private leadsService: LeadsService,
     private aiAnalysisService: AiAnalysisService,
+    private messagingService: MessagingService,
   ) {
     this.rapidapiKey = config.get('RAPIDAPI_KEY') || '';
     this.rapidapiHost = config.get('RAPIDAPI_HOST') || 'instagram120.p.rapidapi.com';
@@ -54,6 +56,12 @@ export class EnrichmentService {
       });
 
       this.logger.log(`Lead ${leadId} enriquecido: +${bonusScore}pts (total: ${newScore})`);
+
+      // Enviar mensagem enriquecida via WhatsApp
+      this.sendEnrichedMessage(updated, aiInsight).catch(err =>
+        this.logger.error(`Erro ao enviar mensagem enriquecida: ${err.message}`),
+      );
+
       return updated;
     } catch (err) {
       this.logger.error(`Erro ao enriquecer lead ${leadId}: ${err.message}`);
@@ -122,6 +130,21 @@ export class EnrichmentService {
     } catch (err: any) {
       this.logger.error(`RapidAPI posts error: ${err.message}`);
       return [];
+    }
+  }
+
+  private async sendEnrichedMessage(lead: Lead, aiInsight: any): Promise<void> {
+    if (!lead.phone || !aiInsight?.outreach_message) {
+      return;
+    }
+
+    try {
+      await this.messagingService.sendMessage({
+        leadId: lead.id,
+        text: aiInsight.outreach_message,
+      });
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível enviar mensagem enriquecida: ${err.message}`);
     }
   }
 
