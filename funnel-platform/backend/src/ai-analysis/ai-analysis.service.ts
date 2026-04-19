@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Post } from '../common/entities/lead.entity';
 
+export type Niche = 'health' | 'ecommerce' | 'food' | 'services' | 'marketing' | 'education' | 'generic';
+
 export interface LeadInsight {
-  niche: string;
+  niche: Niche;
   engagement_level: string;
   audience_profile: string;
   content_pattern: string;
@@ -18,9 +20,143 @@ export class AiAnalysisService {
   private readonly logger = new Logger(AiAnalysisService.name);
   private openai: OpenAI;
 
+  private readonly NICHE_KEYWORDS: Record<Niche, string[]> = {
+    health: [
+      'fisio', 'clínica', 'médico', 'médica', 'saúde', 'odonto', 'dentist',
+      'nutriç', 'psicólog', 'terapeut', 'ortoped', 'pediatr', 'cardiolog',
+      'esteticist', 'dermatolog', 'biomédic', 'enfermei', 'farmac', 'hospital',
+    ],
+    ecommerce: [
+      'loja', 'shop', 'store', 'moda', 'roupas', 'produtos', 'atacado',
+      'varejo', 'boutique', 'e-commerce', 'ecommerce', 'vendas online',
+    ],
+    food: [
+      'restaurante', 'café', 'confeitari', 'doceria', 'salgados', 'pizza',
+      'hambúrgu', 'gastronom', 'culinári', 'bistrô', 'padaria', 'açaí',
+      'delivery', 'chef', 'buffet',
+    ],
+    services: [
+      'advocaci', 'advogad', 'contabilidade', 'contador', 'seguros',
+      'financeiro', 'finanças', 'imóveis', 'imobiliária', 'corretor',
+      'arquitet', 'engenhei', 'construç', 'reform',
+    ],
+    marketing: [
+      'marketing', 'agência', 'agencia', 'tráfego', 'trafego', 'ads',
+      'social media', 'conteúdo', 'copywriter', 'branding', 'designer',
+      'criativo', 'digital',
+    ],
+    education: [
+      'coach', 'mentor', 'cursо', 'curso', 'professor', 'educaç',
+      'treinamento', 'aula', 'capacitaç', 'palest', 'consultoria',
+    ],
+    generic: [],
+  };
+
   constructor(private config: ConfigService) {
     const apiKey = config.get('OPENAI_API_KEY');
     this.openai = new OpenAI({ apiKey });
+  }
+
+  private detectNiche(bio: string): Niche {
+    const lower = bio.toLowerCase();
+    for (const [niche, keywords] of Object.entries(this.NICHE_KEYWORDS) as [Niche, string[]][]) {
+      if (niche === 'generic') continue;
+      if (keywords.some(kw => lower.includes(kw))) return niche;
+    }
+    return 'generic';
+  }
+
+  private getNicheContext(niche: Niche): string {
+    const contexts: Record<Niche, string> = {
+      health: 'profissional de saúde (clínica, consultório, fisioterapia, etc) que vende serviços de consulta/atendimento',
+      ecommerce: 'empreendedor de e-commerce que vende produtos online',
+      food: 'dono de negócio de alimentação (restaurante, café, delivery, etc)',
+      services: 'prestador de serviço B2B (advocacia, contabilidade, arquitetura, etc)',
+      marketing: 'agência ou profissional de marketing/publicidade que vende serviços de marketing',
+      education: 'educador, coach ou creator que vende cursos, mentorias ou formações',
+      generic: 'empreendedor/negociante genérico',
+    };
+    return contexts[niche];
+  }
+
+  private getPromptByNiche(
+    name: string,
+    instagram: string,
+    followers: number,
+    engagementRate: number,
+    biography: string,
+    postsData: string,
+    niche: Niche,
+  ): string {
+    const nicheContext = this.getNicheContext(niche);
+
+    const nicheSpecificPrompts: Record<Niche, string> = {
+      health: `Você é especialista em vendas de software de automação para profissionais de saúde. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Aumentar o número de consultas/atendimentos sem contratar mais pessoas
+- Automatizar agendamentos e follow-ups com pacientes
+- Reduzir o tempo de resposta nas DMs do Instagram
+- Criar um funil de conversão de seguidores → pacientes`,
+
+      ecommerce: `Você é especialista em vendas de software de automação para e-commerces. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Aumentar o ticket médio com recomendações automáticas
+- Recuperar carrinhos abandonados automaticamente
+- Responder dúvidas de clientes 24h sem contratação
+- Criar fluxo de vendas do Instagram direto para o checkout`,
+
+      food: `Você é especialista em vendas de automação para negócios de alimentação. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Aumentar o volume de pedidos sem sobrecarregar a equipe
+- Automatizar reservas e agendamentos
+- Responder perguntas frequentes (horário, cardápio, valor) automaticamente
+- Criar um funil que converte seguidores em clientes recorrentes`,
+
+      services: `Você é especialista em vendas de automação para prestadores de serviço B2B. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Qualificar leads automaticamente antes de passar para o vendedor
+- Reduzir ciclo de vendas com follow-up automático inteligente
+- Criar autoridade demonstrando expertise no Instagram
+- Converter seguidores desengajados em clientes qualificados`,
+
+      marketing: `Você é especialista em vendas de automação para agências e profissionais de marketing. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Demonstrar na prática a automação que você vende para clientes
+- Criar um case study vivo do seu próprio negócio
+- Gerar leads qualificados automaticamente do Instagram
+- Escalar prospecção sem aumentar custos operacionais`,
+
+      education: `Você é especialista em vendas de automação para educadores e coaches. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
+- Converter seguidores engajados em alunos/clientes da sua formação
+- Criar um funil automático de nutrição de leads
+- Escalar o impacto sem sobrecarregar com atendimento manual
+- Aumentar a taxa de conversão de lançamentos`,
+
+      generic: `Você é especialista em vendas de software de automação para empresas. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode ajudar a crescer o negócio dele.`,
+    };
+
+    const basePrompt = nicheSpecificPrompts[niche];
+
+    return `${basePrompt}
+
+DADOS DO LEAD (${nicheContext}):
+Nome: ${name}
+Instagram: ${instagram}
+Seguidores: ${followers.toLocaleString()}
+Taxa de Engajamento: ${(engagementRate * 100).toFixed(2)}%
+Bio: "${biography}"
+
+CONTEÚDO RECENTE:
+${postsData}
+
+Analise e gere um JSON com os seguintes campos:
+{
+  "niche": "${niche}",
+  "engagement_level": "Nível de engajamento (baixo/médio/alto)",
+  "audience_profile": "Tipo de público que ele atrai (descrever em 1 frase)",
+  "content_pattern": "Padrão de conteúdo (educacional, vendas, inspiracional, etc)",
+  "selling_angle": "Oportunidade específica de automação/IA para seu negócio (máx 100 chars)",
+  "outreach_message": "Mensagem persuasiva e personalizada para iniciar conversa (máx 180 chars, português, sensível ao nicho)",
+  "confidence_score": "Confiança (0-100)"
+}
+
+Foque em: demonstrar conhecimento profundo do segmento dele, mencionar benefício ESPECÍFICO de automação para seu tipo de negócio, criar urgência subtil.
+Responda APENAS com o JSON, sem markdown.`;
   }
 
   async analyzeLeadInstagram(
@@ -32,6 +168,8 @@ export class AiAnalysisService {
     posts: Post[],
   ): Promise<LeadInsight> {
     try {
+      const niche = this.detectNiche(biography);
+
       const postsData = posts
         .map(
           (p) =>
@@ -39,33 +177,15 @@ export class AiAnalysisService {
         )
         .join('\n');
 
-      const prompt = `Você é um especialista em vendas de implementação de IA para empresas. Analise o perfil do empresário no Instagram e gere uma abordagem persuasiva focada em como IA pode potencializar o negócio dele.
-
-DADOS DO LEAD (Empresário):
-Nome: ${name}
-Instagram: ${instagram}
-Seguidores: ${followers.toLocaleString()}
-Taxa de Engajamento: ${(engagementRate * 100).toFixed(2)}%
-Bio: "${biography}"
-
-CONTEÚDO RECENTE:
-${postsData}
-
-CONTEXTO: Você vende implementação de IA para automação, análise de dados, chatbots e otimização de processos.
-
-Analise e gere um JSON com os seguintes campos:
-{
-  "niche": "Identificar o segmento/indústria do empresário (ex: e-commerce, consultoria, agência, etc)",
-  "engagement_level": "Nível de engajamento (baixo/médio/alto) - indica quanto tempo tem para inovação",
-  "audience_profile": "Tipo de público que ele atrai (B2B, B2C, profissionais, etc)",
-  "content_pattern": "Padrão: educacional, vendas, inspirational, etc - mostra sua abordagem de negócio",
-  "selling_angle": "Oportunidade específica de IA para seu negócio baseada no que vemos (máx 100 chars)",
-  "outreach_message": "Mensagem de abertura persuasiva para iniciar conversa sobre implementação de IA (máx 180 chars, português)",
-  "confidence_score": "Confiança (0-100)"
-}
-
-Foque em: demonstrar conhecimento do negócio dele, mencionar benefício específico de IA, criar urgência subtil.
-Responda APENAS com o JSON, sem markdown.`;
+      const prompt = this.getPromptByNiche(
+        name,
+        instagram,
+        followers,
+        engagementRate,
+        biography,
+        postsData,
+        niche,
+      );
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -81,27 +201,36 @@ Responda APENAS com o JSON, sem markdown.`;
 
       const content = response.choices[0].message.content;
       if (!content) {
-        return this.getDefaultInsight();
+        return this.getDefaultInsight(niche);
       }
       const insight = JSON.parse(content) as LeadInsight;
 
-      this.logger.log(`Lead ${name} analisado com sucesso`);
+      this.logger.log(`Lead ${name} analisado com sucesso - Nicho: ${niche}`);
       return insight;
     } catch (err: any) {
       this.logger.error(`Erro ao analisar lead: ${err.message}`);
-      return this.getDefaultInsight();
+      return this.getDefaultInsight(this.detectNiche(biography));
     }
   }
 
-  private getDefaultInsight(): LeadInsight {
+  private getDefaultInsight(niche: Niche = 'generic'): LeadInsight {
+    const defaultMessages: Record<Niche, string> = {
+      health: 'Olá! Vi seu perfil e achei interessante. Tenho uma solução que pode aumentar suas consultas automaticamente. Podemos conversar?',
+      ecommerce: 'Oi! Vimos sua loja e a audiência que você tem. Temos uma solução que aumenta conversões em até 3x. Quer conhecer?',
+      food: 'E aí! Vi seu negócio de alimentação crescendo. Temos uma forma de aumentar seus pedidos sem sobrecarregar a equipe. Posso te mostrar?',
+      services: 'Olá! Vi seu trabalho e achei excelente. Temos uma solução que qualifica leads automaticamente. Quer conversar?',
+      marketing: 'Oi! Vi que você trabalha com marketing. Temos uma automação que você mesmo pode usar como case com seus clientes.',
+      education: 'Oi! Vi seu conteúdo de qualidade. Temos uma forma de converter seguidores em alunos/clientes automaticamente. Quer explorar?',
+      generic: 'Olá! Vimos seu conteúdo e gostaríamos de conversar sobre uma oportunidade de crescimento com automação.',
+    };
+
     return {
-      niche: 'Não identificado',
+      niche,
       engagement_level: 'Dados insuficientes',
       audience_profile: 'Análise não disponível',
       content_pattern: 'Análise não disponível',
-      selling_angle: 'Abordagem manual recomendada',
-      outreach_message:
-        'Olá! Vimos seu conteúdo e gostaríamos de conversar sobre uma oportunidade.',
+      selling_angle: 'Análise automática indisponível',
+      outreach_message: defaultMessages[niche],
       confidence_score: 0,
     };
   }
