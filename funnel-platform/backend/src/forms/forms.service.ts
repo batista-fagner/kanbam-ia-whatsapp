@@ -45,6 +45,28 @@ export class FormsService {
     return this.formsRepo.save(form);
   }
 
+  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string }): Promise<{ success: boolean; leadId: string }> {
+    const lead = await this.leadsService.create({
+      name: dto.name,
+      phone: dto.phone,
+      email: dto.email,
+      instagram: dto.instagram,
+      status: 'novo',
+      score: 0,
+      utmSource: 'leadscomia',
+      utmMedium: dto.revenue,
+    });
+
+    if (dto.instagram) {
+      this.enrichmentService.enrichLeadFromInstagram(lead.id).catch(err =>
+        this.logger.error(`Erro ao enriquecer lead capturado: ${err.message}`),
+      );
+    }
+
+    this.logger.log(`Lead capturado via leadscomia: ${lead.id} - ${lead.name}`);
+    return { success: true, leadId: lead.id };
+  }
+
   async submit(formId: string, dto: SubmitFormDto): Promise<{ success: boolean; leadId: string }> {
     await this.findById(formId);
 

@@ -19,6 +19,14 @@ interface CreateFormDto {
   thankYouUrl?: string;
 }
 
+interface CaptureDto {
+  name: string;
+  phone: string;
+  email?: string;
+  instagram?: string;
+  revenue?: string;
+}
+
 @Controller('forms')
 export class FormsController {
   constructor(private formsService: FormsService) {}
@@ -31,5 +39,10 @@ export class FormsController {
   @Post(':id/submit')
   async submit(@Param('id') id: string, @Body() body: SubmitFormDto) {
     return this.formsService.submit(id, body);
+  }
+
+  @Post('capture')
+  async capture(@Body() body: CaptureDto) {
+    return this.formsService.capture(body);
   }
 }
