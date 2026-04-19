@@ -88,75 +88,48 @@ export class AiAnalysisService {
     postsData: string,
     niche: Niche,
   ): string {
-    const nicheContext = this.getNicheContext(niche);
+    const engagementPercent = (engagementRate * 100).toFixed(2);
 
-    const nicheSpecificPrompts: Record<Niche, string> = {
-      health: `Você é especialista em vendas de software de automação para profissionais de saúde. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Aumentar o número de consultas/atendimentos sem contratar mais pessoas
-- Automatizar agendamentos e follow-ups com pacientes
-- Reduzir o tempo de resposta nas DMs do Instagram
-- Criar um funil de conversão de seguidores → pacientes`,
+    return `Você é um especialista em IA e automação para negócios digitais. Seu trabalho é analisar o perfil de Instagram de um ${this.getNicheContext(niche)} e gerar insights MUITO ESPECÍFICOS e PERSONALIZADOS sobre como IA pode potencializar esse negócio.
 
-      ecommerce: `Você é especialista em vendas de software de automação para e-commerces. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Aumentar o ticket médio com recomendações automáticas
-- Recuperar carrinhos abandonados automaticamente
-- Responder dúvidas de clientes 24h sem contratação
-- Criar fluxo de vendas do Instagram direto para o checkout`,
+⚠️ IMPORTANTE: Gere respostas ÚNICAS e DINÂMICAS. Não use respostas genéricas. Analise:
+1. O que especificamente essa pessoa vende (olhe a bio e posts)
+2. Qual é o seu diferencial (promises específicas, prova social, urgência)
+3. Qual é o maior gargalo de vendas para esse tipo de negócio
+4. Como IA pode resolver ESPECIFICAMENTE esse gargalo
 
-      food: `Você é especialista em vendas de automação para negócios de alimentação. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Aumentar o volume de pedidos sem sobrecarregar a equipe
-- Automatizar reservas e agendamentos
-- Responder perguntas frequentes (horário, cardápio, valor) automaticamente
-- Criar um funil que converte seguidores em clientes recorrentes`,
-
-      services: `Você é especialista em vendas de automação para prestadores de serviço B2B. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Qualificar leads automaticamente antes de passar para o vendedor
-- Reduzir ciclo de vendas com follow-up automático inteligente
-- Criar autoridade demonstrando expertise no Instagram
-- Converter seguidores desengajados em clientes qualificados`,
-
-      marketing: `Você é especialista em vendas de automação para agências e profissionais de marketing. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Demonstrar na prática a automação que você vende para clientes
-- Criar um case study vivo do seu próprio negócio
-- Gerar leads qualificados automaticamente do Instagram
-- Escalar prospecção sem aumentar custos operacionais`,
-
-      education: `Você é especialista em vendas de automação para educadores e coaches. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode:
-- Converter seguidores engajados em alunos/clientes da sua formação
-- Criar um funil automático de nutrição de leads
-- Escalar o impacto sem sobrecarregar com atendimento manual
-- Aumentar a taxa de conversão de lançamentos`,
-
-      generic: `Você é especialista em vendas de software de automação para empresas. Analise o perfil do ${nicheContext} e gere uma abordagem focada em como IA pode ajudar a crescer o negócio dele.`,
-    };
-
-    const basePrompt = nicheSpecificPrompts[niche];
-
-    return `${basePrompt}
-
-DADOS DO LEAD (${nicheContext}):
+DADOS DO LEAD:
 Nome: ${name}
 Instagram: ${instagram}
 Seguidores: ${followers.toLocaleString()}
-Taxa de Engajamento: ${(engagementRate * 100).toFixed(2)}%
+Taxa de Engajamento: ${engagementPercent}%
 Bio: "${biography}"
 
 CONTEÚDO RECENTE:
 ${postsData}
 
-Analise e gere um JSON com os seguintes campos:
+TAREFA: Gere um JSON com análise PROFUNDA e ESPECÍFICA desse perfil:
 {
   "niche": "${niche}",
-  "engagement_level": "Nível de engajamento (baixo/médio/alto)",
-  "audience_profile": "Tipo de público que ele atrai (descrever em 1 frase)",
-  "content_pattern": "Padrão de conteúdo (educacional, vendas, inspiracional, etc)",
-  "selling_angle": "Oportunidade específica de automação/IA para seu negócio (máx 100 chars)",
-  "outreach_message": "Mensagem persuasiva e personalizada para iniciar conversa (máx 180 chars, português, sensível ao nicho)",
-  "confidence_score": "Confiança (0-100)"
+  "engagement_level": "Nível (baixo/médio/alto) - justifique brevemente olhando os números",
+  "audience_profile": "Descrição ESPECÍFICA do tipo de pessoa que segue (gênero, idade, problema que tem, etc)",
+  "content_pattern": "Qual é o PADRÃO específico de conteúdo (não genérico - detalhe o que realmente está postando)",
+  "selling_angle": "Qual é o PRINCIPAL gargalo desse tipo de negócio no Instagram e como IA resolve (máx 100 chars, específico)",
+  "outreach_message": "Mensagem que RECONHEÇA especificamente o que vê no perfil dele, não genérica (máx 180 chars, português)",
+  "confidence_score": "Confiança na análise (0-100)"
 }
 
-Foque em: demonstrar conhecimento profundo do segmento dele, mencionar benefício ESPECÍFICO de automação para seu tipo de negócio, criar urgência subtil.
-Responda APENAS com o JSON, sem markdown.`;
+EXEMPLOS DO QUE EVITAR (genérico e ruim):
+❌ "IA que otimiza cada etapa do seu funil"
+❌ "Sua taxa de conversão pode triplicar"
+❌ "Automação inteligente para seu negócio"
+
+EXEMPLOS DO QUE FAZER (específico e bom):
+✅ "Responder as 10 perguntas mais frequentes sobre resultados/timing/valor de forma automática"
+✅ "Follow-up automático com quem visitou seu link mas não clicou no CTA"
+✅ "Análise inteligente de qual conteúdo converte leads em clientes reais"
+
+Responda APENAS com o JSON, sem markdown, sem explicações extras.`;
   }
 
   async analyzeLeadInstagram(
