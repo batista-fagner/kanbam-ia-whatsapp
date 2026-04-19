@@ -39,33 +39,49 @@ export class AiAnalysisService {
         )
         .join('\n');
 
-      const prompt = `Você é um especialista em vendas de implementação de IA para empresas. Analise o perfil do empresário no Instagram e gere uma abordagem persuasiva focada em como IA pode potencializar o negócio dele.
+      const firstName = name.split(' ')[0];
 
-DADOS DO LEAD (Empresário):
-Nome: ${name}
+      const prompt = `Você é um especialista em funis de vendas com IA. Analise o perfil do Instagram abaixo e gere insights + uma mensagem de WhatsApp que pareça HUMANA e PERSONALIZADA — não um template de bot.
+
+PERFIL:
+Nome: ${name} (chame apenas de ${firstName})
 Instagram: ${instagram}
 Seguidores: ${followers.toLocaleString()}
-Taxa de Engajamento: ${(engagementRate * 100).toFixed(2)}%
+Engajamento: ${(engagementRate * 100).toFixed(2)}%
 Bio: "${biography}"
 
-CONTEÚDO RECENTE:
+POSTS RECENTES:
 ${postsData}
 
-CONTEXTO: Você vende implementação de IA para automação, análise de dados, chatbots e otimização de processos.
+REGRAS PARA A MENSAGEM DE WHATSAPP:
+1. Parecer que foi escrita por uma pessoa real, não um bot
+2. Citar algo ESPECÍFICO da bio ou posts dele (mostrar que você realmente olhou)
+3. Mencionar o gargalo REAL desse tipo de negócio (onde ele perde clientes)
+4. Falar sobre FUNIL DE VENDAS com IA, não "chatbot" ou "automação genérica"
+5. Máximo 2 frases curtas + 1 pergunta direta
+6. Tom: direto, informal, confiante — como uma mensagem de alguém que entende do negócio
 
-Analise e gere um JSON com os seguintes campos:
+ERROS COMUNS A EVITAR:
+❌ "Imagine atender 24/7 com um chatbot"
+❌ "Vamos explorar como a IA pode acelerar seu sucesso"
+❌ "Olá! Vimos seu conteúdo e gostaríamos de conversar"
+❌ Qualquer frase genérica que poderia ser enviada para qualquer pessoa
+
+EXEMPLOS DO QUE FAZER:
+✅ Para fisioterapeuta: "${firstName}, vi que você tem [X]k seguidores mas provavelmente perde pacientes que não recebem resposta rápida. Já estruturou algum funil pra converter essas DMs em consultas?"
+✅ Para e-commerce: "${firstName}, conteúdo forte como o seu devia converter mais. O gargalo geralmente é o funil pós-seguidor. Já testou alguma automação nisso?"
+✅ Para coach: "${firstName}, sua audiência é engajada. O funil entre 'seguidor' e 'aluno' costuma vazar muito. Posso te mostrar como estruturamos isso com IA?"
+
+Responda APENAS com este JSON, sem markdown:
 {
-  "niche": "Identificar o segmento/indústria do empresário (ex: e-commerce, consultoria, agência, etc)",
-  "engagement_level": "Nível de engajamento (baixo/médio/alto) - indica quanto tempo tem para inovação",
-  "audience_profile": "Tipo de público que ele atrai (B2B, B2C, profissionais, etc)",
-  "content_pattern": "Padrão: educacional, vendas, inspirational, etc - mostra sua abordagem de negócio",
-  "selling_angle": "Oportunidade específica de IA para seu negócio baseada no que vemos (máx 100 chars)",
-  "outreach_message": "Mensagem de abertura persuasiva para iniciar conversa sobre implementação de IA (máx 180 chars, português)",
-  "confidence_score": "Confiança (0-100)"
-}
-
-Foque em: demonstrar conhecimento do negócio dele, mencionar benefício específico de IA, criar urgência subtil.
-Responda APENAS com o JSON, sem markdown.`;
+  "niche": "segmento específico (ex: fisioterapia, e-commerce moda, coaching fitness)",
+  "engagement_level": "baixo/médio/alto",
+  "audience_profile": "descrição concreta do público (ex: mulheres 30-50 buscando rejuvenescimento natural)",
+  "content_pattern": "padrão real dos posts (ex: storytelling emocional + antes/depois + provas sociais)",
+  "selling_angle": "gargalo específico do funil desse negócio (máx 100 chars)",
+  "outreach_message": "mensagem WhatsApp humana e personalizada, máx 200 chars, português informal",
+  "confidence_score": 0-100
+}`;
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
