@@ -54,23 +54,23 @@ POSTS RECENTES:
 ${postsData}
 
 REGRAS PARA A MENSAGEM DE WHATSAPP:
-1. Parecer que foi escrita por uma pessoa real, não um bot
-2. Citar algo ESPECÍFICO da bio ou posts dele (mostrar que você realmente olhou)
-3. Mencionar o gargalo REAL desse tipo de negócio (onde ele perde clientes)
+1. Abrir com parabéns/reconhecimento genuíno — elogie algo ESPECÍFICO (audiência, método, resultado, prova social)
+2. Criar rapport mostrando que você realmente olhou o perfil dele
+3. Transicionar naturalmente para o gargalo REAL do funil
 4. Falar sobre FUNIL DE VENDAS com IA, não "chatbot" ou "automação genérica"
-5. Máximo 2 frases curtas + 1 pergunta direta
-6. Tom: direto, informal, confiante — como uma mensagem de alguém que entende do negócio
+5. Máximo 3 frases curtas + 1 pergunta direta
+6. Tom: caloroso, informal, confiante — como alguém que admira o trabalho e quer ajudar
 
 ERROS COMUNS A EVITAR:
 ❌ "Imagine atender 24/7 com um chatbot"
 ❌ "Vamos explorar como a IA pode acelerar seu sucesso"
-❌ "Olá! Vimos seu conteúdo e gostaríamos de conversar"
-❌ Qualquer frase genérica que poderia ser enviada para qualquer pessoa
+❌ "Parabéns pelo seu negócio!" (elogio genérico que vale para qualquer um)
+❌ Qualquer frase que poderia ser enviada para qualquer pessoa
 
 EXEMPLOS DO QUE FAZER:
-✅ Para fisioterapeuta: "${firstName}, vi que você tem [X]k seguidores mas provavelmente perde pacientes que não recebem resposta rápida. Já estruturou algum funil pra converter essas DMs em consultas?"
-✅ Para e-commerce: "${firstName}, conteúdo forte como o seu devia converter mais. O gargalo geralmente é o funil pós-seguidor. Já testou alguma automação nisso?"
-✅ Para coach: "${firstName}, sua audiência é engajada. O funil entre 'seguidor' e 'aluno' costuma vazar muito. Posso te mostrar como estruturamos isso com IA?"
+✅ Para fisioterapeuta com 50k: "${firstName}, 50 mil seguidores num nicho tão concorrido como fisio é resultado de muito trabalho sério. Mas audiência assim costuma vazar no funil — leads que olham e somem. Já pensou em estruturar isso com IA?"
+✅ Para e-commerce: "${firstName}, produto bom + conteúdo consistente como o seu é raro de ver. O problema quase sempre é o funil pós-clique. Já testou automação pra fechar quem visita mas não compra?"
+✅ Para coach com prova social: "${firstName}, [X] alunos transformados é uma prova social poderosa. Com um funil com IA você consegue converter muito mais de quem já te segue. Quer ver como funciona?"
 
 Responda APENAS com este JSON, sem markdown:
 {
