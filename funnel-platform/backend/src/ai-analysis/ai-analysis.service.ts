@@ -90,46 +90,48 @@ export class AiAnalysisService {
   ): string {
     const engagementPercent = (engagementRate * 100).toFixed(2);
 
-    return `Você é um especialista em IA e automação para negócios digitais. Seu trabalho é analisar o perfil de Instagram de um ${this.getNicheContext(niche)} e gerar insights MUITO ESPECÍFICOS e PERSONALIZADOS sobre como IA pode potencializar esse negócio.
+    return `Você é um especialista em automação e IA que entende profundamente CADA tipo de negócio. Sua tarefa é analisar este perfil de Instagram ESPECÍFICO e gerar insights que DEMONSTREM que você realmente entendeu:
+- EXATAMENTE o que essa pessoa vende
+- COMO ela vende (seu método específico)
+- QUAL é o seu maior gargalo operacional
+- COMO IA resolve especificamente esse gargalo
 
-⚠️ IMPORTANTE: Gere respostas ÚNICAS e DINÂMICAS. Não use respostas genéricas. Analise:
-1. O que especificamente essa pessoa vende (olhe a bio e posts)
-2. Qual é o seu diferencial (promises específicas, prova social, urgência)
-3. Qual é o maior gargalo de vendas para esse tipo de negócio
-4. Como IA pode resolver ESPECIFICAMENTE esse gargalo
-
-DADOS DO LEAD:
+PERFIL A ANALISAR:
 Nome: ${name}
 Instagram: ${instagram}
-Seguidores: ${followers.toLocaleString()}
-Taxa de Engajamento: ${engagementPercent}%
 Bio: "${biography}"
+Seguidores: ${followers.toLocaleString()} | Engajamento: ${engagementPercent}%
 
-CONTEÚDO RECENTE:
+POSTS RECENTES:
 ${postsData}
 
-TAREFA: Gere um JSON com análise PROFUNDA e ESPECÍFICA desse perfil:
+⚠️ REGRA CRÍTICA:
+- NÃO repita templates genéricos (tipo "automação inteligente", "otimizar funil", "taxa de conversão")
+- CITE ESPECIFICAMENTE palavras/conceitos da BIO e POSTS dela
+- RECONHEÇA o diferencial ÚNICO dela (prova social, timing, promises específicas, etc)
+- A resposta deve mostrar que você LEU e ENTENDEU esse Instagram específico, não um template
+
+EXEMPLOS DE ANÁLISE REAL (boa):
+Para bio "Rejuvenescimento facial natural • 46mil mulheres • 40 dias • 5min/dia":
+- selling_angle: "Qualificar leads que veem 'antes/depois' — muitos clicam mas têm dúvidas sobre tempo/esforço"
+- outreach: "Vi sua abordagem dos 5min/dia funcionando — qual % dessas visualizações vira cliente?"
+
+Para bio "Advocacia especializada em direito civil":
+- selling_angle: "Classificar automaticamente consultas por urgência — economiza seu tempo inicial"
+- outreach: "Vejo seu Instagram gerando demanda — automação pode filtrar leads que realmente fecham"
+
+Gere um JSON SIMPLES e DIRETO:
 {
   "niche": "${niche}",
-  "engagement_level": "Nível (baixo/médio/alto) - justifique brevemente olhando os números",
-  "audience_profile": "Descrição ESPECÍFICA do tipo de pessoa que segue (gênero, idade, problema que tem, etc)",
-  "content_pattern": "Qual é o PADRÃO específico de conteúdo (não genérico - detalhe o que realmente está postando)",
-  "selling_angle": "Qual é o PRINCIPAL gargalo desse tipo de negócio no Instagram e como IA resolve (máx 100 chars, específico)",
-  "outreach_message": "Mensagem que RECONHEÇA especificamente o que vê no perfil dele, não genérica (máx 180 chars, português)",
-  "confidence_score": "Confiança na análise (0-100)"
+  "engagement_level": "baixo/médio/alto + número real",
+  "audience_profile": "descrição concreta (ex: mulheres 30-50 inseguras com envelhecimento, buscando alternativa a procedimentos)",
+  "content_pattern": "padrão específico visto (ex: storytelling emocional + antes/depois + provas sociais de clientes)",
+  "selling_angle": "gargalo específico deste negócio + solução (máx 100 chars)",
+  "outreach_message": "reconheça algo específico da bio/posts + pergunta que mostra você entendeu (máx 180 chars, português)",
+  "confidence_score": "0-100"
 }
 
-EXEMPLOS DO QUE EVITAR (genérico e ruim):
-❌ "IA que otimiza cada etapa do seu funil"
-❌ "Sua taxa de conversão pode triplicar"
-❌ "Automação inteligente para seu negócio"
-
-EXEMPLOS DO QUE FAZER (específico e bom):
-✅ "Responder as 10 perguntas mais frequentes sobre resultados/timing/valor de forma automática"
-✅ "Follow-up automático com quem visitou seu link mas não clicou no CTA"
-✅ "Análise inteligente de qual conteúdo converte leads em clientes reais"
-
-Responda APENAS com o JSON, sem markdown, sem explicações extras.`;
+Responda APENAS o JSON, sem formatação markdown, sem texto extra.`;
   }
 
   async analyzeLeadInstagram(
