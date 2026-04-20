@@ -161,23 +161,29 @@ Mensagem enviada via WhatsApp (uazapi) em ~10 segundos
 Dashboard mostra todas as mensagens
 ```
 
-### Commits Recentes
-- **b697da4** — Prompt de IA otimizado para venda de implementação de IA
-- **ca102e2** — Envio automático de mensagens WhatsApp ao enriquecer leads
-- **a3a326f** — Scaffolding completo do funnel-platform
-- **ff3906f** — Análise IA de leads do Instagram com OpenAI GPT-4o-mini
-
 ### Status Geral
-**Branches:** 11 commits à frente de origin/main  
-**Implementado:** 
+**Implementado:**
 - ✅ Análise de Instagram com IA (RapidAPI + OpenAI)
 - ✅ Envio automático de WhatsApp (uazapi)
 - ✅ Dashboard de Leads com mensagens enviadas
 - ✅ Card visual com insights da IA
 - ✅ Form público + enriquecimento automático
+- ✅ Facebook Conversions API — eventos Lead e Purchase (SHA256)
+- ✅ Meta Pixel no form — PageView + Lead browser-side
+- ✅ Captura de fbclid e UTMs (source, medium, campaign, content) da URL
+- ✅ Dashboard com origem do anúncio + botão "Marcar como Convertido"
+- ✅ Modal com imagem real do criativo em alta resolução via Marketing API
+- ✅ URLs de API via VITE_API_URL (pronto para produção)
 
-**Pronto para:** Testes com novos leads, refinamento de prompts de venda, otimizações de UX
+### Integrações Facebook
+- **FB_PIXEL_ID** — Pixel do Meta Ads (964343959626807)
+- **FB_ACCESS_TOKEN** — Token do Conversions API (curta duração, específico para envio de eventos)
+- **FB_ADS_TOKEN** — Token do app CRM-IA com ads_read, ads_management, business_management (expira em ~1-2h, ver pendências)
+- **FB_AD_ACCOUNT_ID** — act_690814526400981 (conta "Lançamento")
+
+### ⚠️ Pendências
+- [ ] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — token atual expira em ~1-2h. Fazer via Graph API: `GET /oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={token_curto}`
 
 ---
 
-**Última atualização:** 2026-04-17
+**Última atualização:** 2026-04-20
