@@ -183,6 +183,7 @@ Dashboard mostra todas as mensagens
 
 ### ⚠️ Pendências
 - [ ] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — token atual expira em ~1-2h. Fazer via Graph API: `GET /oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={token_curto}`
+- [ ] **Remover DEMO_LEAD do Leads.jsx** — lead fictício "João Silva" está hardcoded em `frontend/src/pages/Leads.jsx` para visualização. Remover quando houver leads reais de campanha.
 
 ---
 
