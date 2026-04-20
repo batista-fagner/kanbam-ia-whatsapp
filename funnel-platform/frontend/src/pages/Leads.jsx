@@ -28,7 +28,6 @@ export default function Leads() {
 
   const openCreativeModal = async (adId) => {
     setCreativeModal({ adId, data: null, loading: true, error: null })
-    // DEMO: simula delay de rede e retorna dados fake
     try {
       const res = await fetch(`http://localhost:3001/api/facebook/creative/${adId}`)
       if (!res.ok) throw new Error('Erro ao buscar criativo')
