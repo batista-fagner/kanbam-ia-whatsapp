@@ -10,6 +10,8 @@ interface SubmitFormDto {
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
+  utmContent?: string;
+  fbclid?: string;
 }
 
 interface CreateFormDto {
@@ -25,6 +27,7 @@ interface CaptureDto {
   email?: string;
   instagram?: string;
   revenue?: string;
+  fbclid?: string;
 }
 
 @Controller('forms')

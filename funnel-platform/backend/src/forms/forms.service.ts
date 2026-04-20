@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Form } from '../common/entities/form.entity';
 import { LeadsService } from '../leads/leads.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
+import { FacebookService } from '../facebook/facebook.service';
 import { ScoringEngine, FormResponses } from './scoring.engine';
 
 interface SubmitFormDto {
@@ -15,6 +16,8 @@ interface SubmitFormDto {
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
+  utmContent?: string;
+  fbclid?: string;
 }
 
 @Injectable()
@@ -27,6 +30,7 @@ export class FormsService {
     private formsRepo: Repository<Form>,
     private leadsService: LeadsService,
     private enrichmentService: EnrichmentService,
+    private facebookService: FacebookService,
   ) {}
 
   async findById(id: string): Promise<Form> {
@@ -45,7 +49,7 @@ export class FormsService {
     return this.formsRepo.save(form);
   }
 
-  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string }): Promise<{ success: boolean; leadId: string }> {
+  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string; fbclid?: string }): Promise<{ success: boolean; leadId: string }> {
     const lead = await this.leadsService.create({
       name: dto.name,
       phone: dto.phone,
@@ -55,6 +59,7 @@ export class FormsService {
       score: 0,
       utmSource: 'leadscomia',
       utmMedium: dto.revenue,
+      fbclid: dto.fbclid,
     });
 
     if (dto.instagram) {
@@ -62,6 +67,10 @@ export class FormsService {
         this.logger.error(`Erro ao enriquecer lead capturado: ${err.message}`),
       );
     }
+
+    this.facebookService.sendLeadEvent(lead).catch(err =>
+      this.logger.error(`Erro ao enviar Lead event ao Facebook: ${err.message}`),
+    );
 
     this.logger.log(`Lead capturado via leadscomia: ${lead.id} - ${lead.name}`);
     return { success: true, leadId: lead.id };
@@ -85,6 +94,8 @@ export class FormsService {
       utmSource: dto.utmSource,
       utmMedium: dto.utmMedium,
       utmCampaign: dto.utmCampaign,
+      utmContent: dto.utmContent,
+      fbclid: dto.fbclid,
       status: 'novo',
     });
 
@@ -93,6 +104,10 @@ export class FormsService {
         this.logger.error(`Erro ao enriquecer lead ${lead.id}: ${err.message}`),
       );
     }
+
+    this.facebookService.sendLeadEvent(lead).catch(err =>
+      this.logger.error(`Erro ao enviar Lead event ao Facebook: ${err.message}`),
+    );
 
     this.logger.log(`Form ${formId} submetido - Lead criado: ${lead.id}`);
     return { success: true, leadId: lead.id };

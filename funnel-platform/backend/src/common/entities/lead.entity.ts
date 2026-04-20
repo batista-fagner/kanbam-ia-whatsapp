@@ -62,6 +62,12 @@ export class Lead {
   @Column({ name: 'utm_campaign', type: 'varchar', nullable: true })
   utmCampaign?: string;
 
+  @Column({ name: 'utm_content', type: 'varchar', nullable: true })
+  utmContent?: string;
+
+  @Column({ name: 'fbclid', type: 'varchar', nullable: true })
+  fbclid?: string;
+
   @Column({ name: 'vsl_percentage', type: 'int', default: 0 })
   vslPercentage: number;
 

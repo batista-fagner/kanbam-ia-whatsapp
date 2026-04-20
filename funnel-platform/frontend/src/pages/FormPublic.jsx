@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 
@@ -37,6 +37,36 @@ export default function FormPublic() {
   if (id === 'default') {
     id = '00000000-0000-0000-0000-000000000001'
   }
+
+  useEffect(() => {
+    // Inicializa Meta Pixel apenas no form público
+    const script = document.createElement('script')
+    script.innerHTML = `
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '964343959626807');
+      fbq('track', 'PageView');
+    `
+    document.head.appendChild(script)
+
+    const params = new URLSearchParams(window.location.search)
+    const fbclid = params.get('fbclid')
+    if (fbclid) localStorage.setItem('fbclid', fbclid)
+    const utmSource = params.get('utm_source')
+    const utmMedium = params.get('utm_medium')
+    const utmCampaign = params.get('utm_campaign')
+    const utmContent = params.get('utm_content')
+    if (utmSource) localStorage.setItem('utm_source', utmSource)
+    if (utmMedium) localStorage.setItem('utm_medium', utmMedium)
+    if (utmCampaign) localStorage.setItem('utm_campaign', utmCampaign)
+    if (utmContent) localStorage.setItem('utm_content', utmContent)
+  }, [])
 
   const [step, setStep] = useState(0)
   const [submitted, setSubmitted] = useState(false)
@@ -99,12 +129,22 @@ export default function FormPublic() {
       responses[q.id] = answers[q.id]
     })
 
+    const fbclid = localStorage.getItem('fbclid')
+    const utmSource = localStorage.getItem('utm_source')
+    const utmMedium = localStorage.getItem('utm_medium')
+    const utmCampaign = localStorage.getItem('utm_campaign')
+    const utmContent = localStorage.getItem('utm_content')
     const payload = {
       name: personal.name.trim(),
       email: personal.email.trim(),
       phone: personal.whatsapp.replace(/\D/g, ''),
       instagram: personal.instagram.replace('@', '').trim(),
       responses,
+      ...(fbclid ? { fbclid } : {}),
+      ...(utmSource ? { utmSource } : {}),
+      ...(utmMedium ? { utmMedium } : {}),
+      ...(utmCampaign ? { utmCampaign } : {}),
+      ...(utmContent ? { utmContent } : {}),
     }
 
     try {
@@ -118,6 +158,7 @@ export default function FormPublic() {
         throw new Error('Erro ao enviar formulário')
       }
 
+      if (window.fbq) window.fbq('track', 'Lead')
       setLoading(false)
       setSubmitted(true)
     } catch (err) {

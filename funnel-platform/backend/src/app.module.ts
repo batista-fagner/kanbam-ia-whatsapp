@@ -8,6 +8,7 @@ import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { FormsModule } from './forms/forms.module';
+import { FacebookModule } from './facebook/facebook.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FormsModule } from './forms/forms.module';
     EnrichmentModule,
     // MessagingModule, // TODO: Ficar para depois
     FormsModule,
+    FacebookModule,
   ],
 })
 export class AppModule {}

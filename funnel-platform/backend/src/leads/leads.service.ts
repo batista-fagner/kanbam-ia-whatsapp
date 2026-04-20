@@ -52,6 +52,10 @@ export class LeadsService {
     return new Map(leads.map(l => [l.phone, l.name]));
   }
 
+  async markAsConverted(id: string): Promise<Lead> {
+    return this.update(id, { status: 'convertido' });
+  }
+
   async clearAll(): Promise<{ deleted: number }> {
     const result = await this.leadsRepo.createQueryBuilder().delete().from(Lead).execute();
     this.logger.warn(`Todos os ${result.affected} leads foram deletados`);
