@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+
 const QUESTIONS = [
   {
     id: 'revenue',
@@ -148,7 +150,7 @@ export default function FormPublic() {
     }
 
     try {
-      const res = await fetch(`http://localhost:3001/api/forms/${id}/submit`, {
+      const res = await fetch(`${API}/forms/${id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

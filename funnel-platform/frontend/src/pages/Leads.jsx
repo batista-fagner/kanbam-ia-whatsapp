@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Users, MessageCircle, Copy, CheckCircle2, Megaphone, X, Loader2, ExternalLink } from 'lucide-react'
 
+const API = import.meta.env.VITE_API_URL || '${API}'
+
 const STATUS_CONFIG = {
   novo:       { label: 'Novo',       className: 'bg-slate-100 text-slate-600' },
   contatado:  { label: 'Contatado',  className: 'bg-blue-100 text-blue-700' },
@@ -29,7 +31,7 @@ export default function Leads() {
   const openCreativeModal = async (adId) => {
     setCreativeModal({ adId, data: null, loading: true, error: null })
     try {
-      const res = await fetch(`http://localhost:3001/api/facebook/creative/${adId}`)
+      const res = await fetch(`${API}/facebook/creative/${adId}`)
       if (!res.ok) throw new Error('Erro ao buscar criativo')
       const data = await res.json()
       setCreativeModal({ adId, data, loading: false, error: null })
@@ -61,7 +63,7 @@ export default function Leads() {
   }
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/leads')
+    fetch('${API}/leads')
       .then(r => r.json())
       .then(data => {
         setLeads([DEMO_LEAD, ...(Array.isArray(data) ? data : [])])
@@ -83,7 +85,7 @@ export default function Leads() {
     if (!selectedLead) return
     setConverting(true)
     try {
-      const res = await fetch(`http://localhost:3001/api/leads/${selectedLead.id}/convert`, {
+      const res = await fetch(`${API}/leads/${selectedLead.id}/convert`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: convertValue }),
