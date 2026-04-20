@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, MessageCircle, Copy, CheckCircle2, Megaphone } from 'lucide-react'
+import { Users, MessageCircle, Copy, CheckCircle2, Megaphone, X, Loader2, ExternalLink } from 'lucide-react'
 
 const STATUS_CONFIG = {
   novo:       { label: 'Novo',       className: 'bg-slate-100 text-slate-600' },
@@ -15,6 +15,29 @@ export default function Leads() {
   const [copiedMessage, setCopiedMessage] = useState(false)
   const [converting, setConverting] = useState(false)
   const [convertValue, setConvertValue] = useState(3000)
+  const [creativeModal, setCreativeModal] = useState(null) // { adId, data, loading, error }
+
+  const DEMO_CREATIVE = {
+    name: '[LP] AD2',
+    creative: {
+      thumbnail_url: 'https://placehold.co/600x400/1877f2/white?text=LP+AD2',
+      title: 'Automatize sua prospecção com IA',
+      body: 'Pare de perder tempo com leads frios. Nossa IA analisa o Instagram, gera mensagem personalizada e envia no WhatsApp em 10 segundos.',
+    },
+  }
+
+  const openCreativeModal = async (adId) => {
+    setCreativeModal({ adId, data: null, loading: true, error: null })
+    // DEMO: simula delay de rede e retorna dados fake
+    try {
+      const res = await fetch(`http://localhost:3001/api/facebook/creative/${adId}`)
+      if (!res.ok) throw new Error('Erro ao buscar criativo')
+      const data = await res.json()
+      setCreativeModal({ adId, data, loading: false, error: null })
+    } catch (err) {
+      setCreativeModal({ adId, data: null, loading: false, error: 'Não foi possível carregar o criativo. Verifique a permissão ads_read no token.' })
+    }
+  }
 
   const DEMO_LEAD = {
     id: 'demo-lead-1',
@@ -27,7 +50,7 @@ export default function Leads() {
     utmCampaign: 'janeiro-2025',
     utmSource: 'facebook',
     utmMedium: 'publico-frio',
-    utmContent: 'video-depoimento-cliente',
+    utmContent: '120243183052410667',
     fbclid: 'IwAR2xK9abc123',
     aiInsight: {
       outreach_message: 'Oi João! Vi que você trabalha com marketing digital e percebi que seu engajamento caiu nos últimos posts. Tenho uma solução de IA que pode triplicar seus resultados. Posso te mostrar em 15 minutos?',
@@ -83,6 +106,70 @@ export default function Leads() {
 
   return (
     <div className="p-8 space-y-8 bg-gradient-to-br from-blue-50 to-slate-50 min-h-screen">
+
+      {/* Modal do Criativo */}
+      {creativeModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCreativeModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-violet-500 to-indigo-600 text-white">
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-5 h-5" />
+                <p className="font-bold">Criativo do Anúncio</p>
+              </div>
+              <button onClick={() => setCreativeModal(null)} className="hover:opacity-70 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {creativeModal.loading && (
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                  <p className="text-slate-500 text-sm">Buscando criativo no Facebook...</p>
+                </div>
+              )}
+
+              {creativeModal.error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                  <p className="text-red-600 text-sm font-medium">{creativeModal.error}</p>
+                  <p className="text-xs text-slate-400 mt-2">Ad ID: {creativeModal.adId}</p>
+                </div>
+              )}
+
+              {creativeModal.data && (
+                <div className="space-y-4">
+                  {(creativeModal.data.creative?.image_url || creativeModal.data.creative?.thumbnail_url) && (
+                    <img
+                      src={creativeModal.data.creative.image_url || creativeModal.data.creative.thumbnail_url}
+                      alt="Criativo"
+                      className="w-full rounded-xl border border-slate-200 object-contain max-h-80"
+                    />
+                  )}
+                  {creativeModal.data.name && (
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-0.5">Nome do anúncio</p>
+                      <p className="text-sm font-bold text-slate-800">{creativeModal.data.name}</p>
+                    </div>
+                  )}
+                  {creativeModal.data.creative?.title && (
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-0.5">Título</p>
+                      <p className="text-sm font-bold text-slate-800">{creativeModal.data.creative.title}</p>
+                    </div>
+                  )}
+                  {creativeModal.data.creative?.body && (
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500 mb-0.5">Texto do anúncio</p>
+                      <p className="text-sm text-slate-700 leading-relaxed">{creativeModal.data.creative.body}</p>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-400 text-center">Ad ID: {creativeModal.adId}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
           <Users className="w-6 h-6 text-white" />
@@ -186,9 +273,15 @@ export default function Leads() {
                         </div>
                       )}
                       {selectedLead.utmContent && (
-                        <div className="bg-white rounded-lg p-2 border border-violet-100">
-                          <p className="text-xs text-slate-500 mb-0.5">Criativo</p>
-                          <p className="text-sm font-bold text-violet-700">{selectedLead.utmContent}</p>
+                        <div
+                          className="bg-white rounded-lg p-2 border border-violet-200 cursor-pointer hover:bg-violet-50 transition"
+                          onClick={() => openCreativeModal(selectedLead.utmContent)}
+                        >
+                          <p className="text-xs text-slate-500 mb-0.5 flex items-center gap-1">
+                            Criativo <ExternalLink className="w-3 h-3" />
+                          </p>
+                          <p className="text-sm font-bold text-violet-700">Ver criativo</p>
+                          <p className="text-xs text-violet-400 mt-0.5">Clique para abrir</p>
                         </div>
                       )}
                       {selectedLead.utmMedium && (

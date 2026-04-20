@@ -61,6 +61,46 @@ export class FacebookService {
     }
   }
 
+  async getAdCreative(adId: string): Promise<any> {
+    const accessToken = this.config.get('FB_ADS_TOKEN');
+    const adAccountId = this.config.get('FB_AD_ACCOUNT_ID');
+    if (!accessToken) throw new Error('FB_ADS_TOKEN não configurado');
+
+    // Busca o anúncio com creative e asset_feed_spec para pegar hashes de imagem
+    const adResponse = await axios.get(`https://graph.facebook.com/v21.0/${adId}`, {
+      params: {
+        fields: 'name,creative{thumbnail_url,title,body,asset_feed_spec}',
+        access_token: accessToken,
+      },
+    });
+
+    const data = adResponse.data;
+    const imageHash = data.creative?.asset_feed_spec?.images?.[0]?.hash;
+
+    // Se tem hash e account ID, busca a imagem em alta resolução
+    if (imageHash && adAccountId) {
+      try {
+        const imgResponse = await axios.get(`https://graph.facebook.com/v21.0/${adAccountId}/adimages`, {
+          params: {
+            hashes: JSON.stringify([imageHash]),
+            fields: 'url,width,height',
+            access_token: accessToken,
+          },
+        });
+        const fullImage = imgResponse.data?.data?.[0];
+        if (fullImage?.url) {
+          data.creative.image_url = fullImage.url;
+          data.creative.image_width = fullImage.width;
+          data.creative.image_height = fullImage.height;
+        }
+      } catch {
+        // fallback para thumbnail se falhar
+      }
+    }
+
+    return data;
+  }
+
   async sendLeadEvent(lead: Lead): Promise<void> {
     const userData = this.buildUserData(lead);
     await this.sendEvent('Lead', userData);
