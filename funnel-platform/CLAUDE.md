@@ -154,8 +154,9 @@ UAZAPI_TOKEN=seu_token_uazapi
 
 ### Fluxo Implementado (✅ Testado e Funcionando)
 
+**Opção 1: Formulário público**
 ```
-Lead preenche form
+Lead preenche form (/f/default)
   ↓
 Instagram enriquecido (RapidAPI)
   ↓
@@ -166,6 +167,34 @@ Mensagem personalizada gerada (OpenAI GPT-4o-mini)
 Mensagem enviada via WhatsApp (uazapi) em ~10 segundos
   ↓
 Dashboard mostra todas as mensagens
+```
+
+**Opção 2: Landing Page (leadscomia) + WhatsApp direto**
+```
+Ad (Meta) → LP (leadscomia) → Dados coletados
+  ↓
+POST /api/forms/capture (com fbclid + UTMs)
+  ↓
+Lead salvo + IA enriquece + msg gerada
+  ↓
+WhatsApp automático disparado em ~10 segundos
+  ↓
+Dashboard mostra todas as mensagens
+```
+
+**Payload esperado em /api/forms/capture:**
+```json
+{
+  "name": "João Silva",
+  "email": "joao@email.com",
+  "phone": "11999999999",
+  "instagram": "joaosilva",
+  "fbclid": "IwAR...",
+  "utmSource": "facebook",
+  "utmMedium": "publico-frio",
+  "utmCampaign": "janeiro-2025",
+  "utmContent": "ad-id-123"
+}
 ```
 
 ### Status Geral
