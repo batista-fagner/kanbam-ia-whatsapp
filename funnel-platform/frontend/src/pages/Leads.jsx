@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Users, MessageCircle, Copy, CheckCircle2, Megaphone, X, Loader2, ExternalLink } from 'lucide-react'
 
-const API = import.meta.env.VITE_API_URL || '${API}'
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 const STATUS_CONFIG = {
   novo:       { label: 'Novo',       className: 'bg-slate-100 text-slate-600' },
@@ -63,7 +63,7 @@ export default function Leads() {
   }
 
   useEffect(() => {
-    fetch('${API}/leads')
+    fetch(`${API}/leads`)
       .then(r => r.json())
       .then(data => {
         setLeads([DEMO_LEAD, ...(Array.isArray(data) ? data : [])])
@@ -214,7 +214,8 @@ export default function Leads() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-800 text-sm truncate">{lead.name}</p>
-                        <p className="text-xs text-slate-500 mt-1 truncate">{lead.phone}</p>
+                        {lead.email && <p className="text-xs text-blue-600 mt-0.5 truncate">{lead.email}</p>}
+                        {!lead.phone?.startsWith('ig_') && <p className="text-xs text-slate-500 mt-0.5 truncate">{lead.phone}</p>}
                         {lead.utmCampaign && (
                           <p className="text-xs text-violet-600 font-medium mt-1 truncate">🎯 {lead.utmCampaign}</p>
                         )}
@@ -244,7 +245,8 @@ export default function Leads() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-bold text-lg">{selectedLead.name}</p>
-                    <p className="text-blue-100 text-sm mt-1">{selectedLead.phone}</p>
+                    {selectedLead.email && <p className="text-blue-100 text-sm mt-1">{selectedLead.email}</p>}
+                    {!selectedLead.phone?.startsWith('ig_') && <p className="text-blue-100 text-sm">{selectedLead.phone}</p>}
                     {selectedLead.instagram && (
                       <p className="text-blue-100 text-sm">@{selectedLead.instagram}</p>
                     )}

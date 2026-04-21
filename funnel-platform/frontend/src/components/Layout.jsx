@@ -43,7 +43,8 @@ const NAV_GROUPS = [
   {
     label: 'Integrações',
     items: [
-      { icon: MessageCircle, label: 'Instagram', path: '/instagram' },
+      { icon: MessageCircle, label: 'Instagram Leads', path: '/instagram' },
+      { icon: Zap, label: 'IG Automação', path: '/instagram-auto' },
     ],
   },
   {
@@ -63,6 +64,7 @@ const PAGE_TITLES = {
   '/email-sequences': 'Email Sequences',
   '/whatsapp': 'WhatsApp & Leads',
   '/instagram': 'Instagram Leads',
+  '/instagram-auto': 'IG Automação',
   '/settings': 'Configurações',
 }
 

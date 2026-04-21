@@ -4,11 +4,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Lead } from './common/entities/lead.entity';
 import { Campaign } from './common/entities/campaign.entity';
 import { Form } from './common/entities/form.entity';
+import { InstagramAutomation } from './instagram-automation/instagram-automation.entity';
+import { IgConversation } from './instagram-automation/ig-conversation.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
+import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
 
 @Module({
   imports: [
@@ -22,7 +25,7 @@ import { FacebookModule } from './facebook/facebook.module';
         type: 'postgres' as const,
         url: config.get('DATABASE_URL') || config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation],
         synchronize: true,
         logging: false,
       }),
@@ -32,6 +35,7 @@ import { FacebookModule } from './facebook/facebook.module';
     // MessagingModule, // TODO: Ficar para depois
     FormsModule,
     FacebookModule,
+    InstagramAutomationModule,
   ],
 })
 export class AppModule {}

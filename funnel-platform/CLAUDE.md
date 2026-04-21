@@ -42,9 +42,10 @@ funnel-platform/
 | Dashboard | 125 | ✅ Estrutura base |
 | Forms | 365 | ✅ Form builder UI |
 | FormPublic | 274 | ✅ Página pública para leads |
-| **Leads** | **480** | **✅ Completa com mensagens** |
+| **Leads** | **480** | **✅ Completa com mensagens + email de leads IG** |
 | **InstagramLeads** | **200** | **✅ Análise IA + Card insights** |
 | **WhatsAppLeads** | **152** | **✅ Envio de mensagens** |
+| **InstagramAutomation** | **490** | **✅ Automação completa comentários → DM → Lead** |
 | Campaigns | 22 | ⚠️ Stub |
 | EmailSequences | 22 | ⚠️ Stub |
 | Analytics | 17 | ⚠️ Stub |
@@ -108,6 +109,12 @@ npm run dev  # Vite dev server na porta 5173
    - Análise completa do Instagram
    - Insights de nicho, engajamento, público
    - Card visual com ângulo de venda
+
+4. **Instagram Automação:** http://localhost:5173/instagram-auto
+   - Cria automações: post → palavra-chave → DM automático
+   - Fluxo conversacional: confirmação (Sim/Não) + captura de email
+   - Leads salvos automaticamente no banco ao capturar email
+   - Ver perfis que dispararam cada automação
 
 ### Variáveis de Ambiente (`.env`)
 ```env
@@ -174,6 +181,23 @@ Dashboard mostra todas as mensagens
 - ✅ Dashboard com origem do anúncio + botão "Marcar como Convertido"
 - ✅ Modal com imagem real do criativo em alta resolução via Marketing API
 - ✅ URLs de API via VITE_API_URL (pronto para produção)
+- ✅ Instagram Automação de Comentários — comentário → DM automático
+- ✅ Fluxo conversacional no DM: confirmação (Quick Replies Sim/Não) → captura de email → salva Lead → envia link
+- ✅ Botão clicável no DM (template button com URL)
+- ✅ Resposta pública no comentário após disparo
+- ✅ Normalização de keywords (maiúsculas, acentos, minúsculas)
+- ✅ Edição de automações existentes
+- ✅ Modal com perfis que dispararam cada automação (username, email, status da conversa)
+- ✅ Leads do Instagram DM aparecem na página /leads com email visível
+
+### Integrações Instagram (app CRM-CLAUDE-IG)
+- **Token:** IGAAX — usa `graph.instagram.com` (NÃO `graph.facebook.com`)
+- **IG_USER_ID:** 26565250533125084
+- **IG_WEBHOOK_VERIFY_TOKEN:** funnel-platform-ig-2026
+- **Webhook campos ativos:** `comments` + `messages`
+- **App modo:** Ao vivo (Live) — funciona para qualquer usuário
+- **Tabelas criadas:** `ig_automations`, `ig_conversations`
+- **Fluxo de steps em ig_conversations:** `waiting_confirmation` → `waiting_email` → `completed`
 
 ### Integrações Facebook
 - **FB_PIXEL_ID** — Pixel do Meta Ads (964343959626807)
@@ -182,9 +206,10 @@ Dashboard mostra todas as mensagens
 - **FB_AD_ACCOUNT_ID** — act_690814526400981 (conta "Lançamento")
 
 ### ⚠️ Pendências
-- [ ] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — token atual expira em ~1-2h. Fazer via Graph API: `GET /oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={token_curto}`
-- [ ] **Remover DEMO_LEAD do Leads.jsx** — lead fictício "João Silva" está hardcoded em `frontend/src/pages/Leads.jsx` para visualização. Remover quando houver leads reais de campanha.
+- [ ] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — token expira em ~1-2h. Via Graph API Explorer: gerar com `ads_read`, `ads_management`, `business_management` + clicar "Extend access token"
+- [ ] **Remover DEMO_LEAD do Leads.jsx** — lead fictício "João Silva" hardcoded em `frontend/src/pages/Leads.jsx`. Remover quando houver leads reais de campanha.
+- [ ] **Renovar IG_TOKEN (IGAAX) antes de 60 dias** — token gerado no app CRM-CLAUDE-IG, expira em ~60 dias. Regerar no painel do app Meta.
 
 ---
 
-**Última atualização:** 2026-04-20
+**Última atualização:** 2026-04-21
