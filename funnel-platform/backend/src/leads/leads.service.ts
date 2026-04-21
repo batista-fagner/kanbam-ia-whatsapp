@@ -29,10 +29,28 @@ export class LeadsService {
     return this.leadsRepo.findOne({ where: { phone } });
   }
 
-  async findAll(campaignId?: string): Promise<Lead[]> {
+  async findAll(opts?: { campaignId?: string; page?: number; limit?: number; source?: 'all' | 'ig_dm' | 'paid' }): Promise<{ data: Lead[]; total: number; page: number; totalPages: number }> {
+    const page = opts?.page || 1;
+    const limit = opts?.limit || 6;
+    const source = opts?.source || 'all';
+    const skip = (page - 1) * limit;
+
     const query = this.leadsRepo.createQueryBuilder('lead');
-    if (campaignId) query.where('lead.campaign_id = :campaignId', { campaignId });
-    return query.orderBy('lead.created_at', 'DESC').getMany();
+
+    if (opts?.campaignId) query.where('lead.campaign_id = :campaignId', { campaignId: opts.campaignId });
+
+    if (source === 'ig_dm') {
+      query.andWhere('lead.utm_source = :utmSource', { utmSource: 'instagram' });
+      query.andWhere('lead.utm_medium = :utmMedium', { utmMedium: 'dm-automation' });
+    } else if (source === 'paid') {
+      query.andWhere('(lead.fbclid IS NOT NULL OR lead.utm_source IN (:...sources))', { sources: ['facebook', 'leadscomia'] });
+    }
+
+    const total = await query.getCount();
+    const data = await query.orderBy('lead.created_at', 'DESC').skip(skip).take(limit).getMany();
+    const totalPages = Math.ceil(total / limit);
+
+    return { data, total, page, totalPages };
   }
 
   async update(id: string, dto: Partial<Lead>): Promise<Lead> {

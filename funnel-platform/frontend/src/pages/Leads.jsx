@@ -18,6 +18,9 @@ export default function Leads() {
   const [converting, setConverting] = useState(false)
   const [convertValue, setConvertValue] = useState(3000)
   const [creativeModal, setCreativeModal] = useState(null) // { adId, data, loading, error }
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [source, setSource] = useState('all') // 'all' | 'ig_dm' | 'paid'
 
   const DEMO_CREATIVE = {
     name: '[LP] AD2',
@@ -63,17 +66,19 @@ export default function Leads() {
   }
 
   useEffect(() => {
-    fetch(`${API}/leads`)
+    setLoading(true)
+    fetch(`${API}/leads?page=${page}&limit=6&source=${source}`)
       .then(r => r.json())
       .then(data => {
-        setLeads([DEMO_LEAD, ...(Array.isArray(data) ? data : [])])
+        setLeads([DEMO_LEAD, ...(Array.isArray(data.data) ? data.data : [])])
+        setTotalPages(data.totalPages || 1)
         setLoading(false)
       })
       .catch(err => {
         console.error(err)
         setLoading(false)
       })
-  }, [])
+  }, [page, source])
 
   const copyMessage = (text) => {
     navigator.clipboard.writeText(text)
@@ -101,12 +106,8 @@ export default function Leads() {
     }
   }
 
-  if (loading) {
-    return <div className="p-6"><p>Carregando...</p></div>
-  }
-
   return (
-    <div className="p-8 space-y-8 bg-gradient-to-br from-blue-50 to-slate-50 min-h-screen">
+    <div className="h-full flex flex-col p-6 gap-4 bg-gradient-to-br from-blue-50 to-slate-50">
 
       {/* Modal do Criativo */}
       {creativeModal && (
@@ -181,7 +182,28 @@ export default function Leads() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Filtros por Origem */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { id: 'all', label: 'Todos' },
+          { id: 'ig_dm', label: 'Instagram DM' },
+          { id: 'paid', label: 'Tráfego Pago' },
+        ].map(filter => (
+          <button
+            key={filter.id}
+            onClick={() => { setSource(filter.id); setPage(1) }}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              source === filter.id
+                ? 'bg-violet-600 text-white shadow-lg'
+                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
         {/* Lista de Leads */}
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
           <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-100 border-b border-slate-200">
@@ -191,7 +213,11 @@ export default function Leads() {
           </div>
 
           <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
-            {leads.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
+              </div>
+            ) : leads.length === 0 ? (
               <div className="p-8 text-center text-slate-400 flex items-center justify-center h-full">
                 <div>
                   <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -235,10 +261,54 @@ export default function Leads() {
               })
             )}
           </div>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed bg-white border border-slate-200 hover:bg-slate-100 transition"
+              >
+                ← Anterior
+              </button>
+
+              <div className="flex gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => Math.abs(p - page) <= 2 || p === 1 || p === totalPages)
+                  .map((p, idx, arr) => {
+                    const showDots = idx > 0 && arr[idx - 1] !== p - 1;
+                    return (
+                      <div key={p}>
+                        {showDots && <span className="px-1 text-slate-400">...</span>}
+                        <button
+                          onClick={() => setPage(p)}
+                          className={`w-8 h-8 rounded-lg text-xs font-bold transition ${
+                            page === p
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed bg-white border border-slate-200 hover:bg-slate-100 transition"
+              >
+                Próximo →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Detalhes da Mensagem */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col overflow-y-auto">
           {selectedLead ? (
             <>
               <div className="px-6 py-5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white">

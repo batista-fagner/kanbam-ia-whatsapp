@@ -161,14 +161,13 @@ export class InstagramAutomationService {
   // ─── Resposta via DM ─────────────────────────────────────────────────────────
 
   private async handleMessagingEvent(messaging: any) {
+    // Ignora ecos (mensagens enviadas pela própria conta)
+    if (messaging.is_echo) return;
+
     const senderIgId: string = messaging.sender?.id;
     const text: string = messaging.message?.text?.trim();
     const quickReplyPayload: string = messaging.message?.quick_reply?.payload;
     if (!senderIgId || !text) return;
-
-    // Ignora eco (mensagens enviadas pela própria conta)
-    const igUserId = await this.getIgUserId();
-    if (senderIgId === igUserId) return;
 
     this.logger.log(`DM de ${senderIgId}: "${text}" | payload: ${quickReplyPayload}`);
 

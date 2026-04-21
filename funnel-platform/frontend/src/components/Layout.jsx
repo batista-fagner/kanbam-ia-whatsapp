@@ -74,7 +74,7 @@ export default function Layout() {
 
   const pageTitle = PAGE_TITLES[location.pathname] || 'Funnel Platform'
   const isActive = (path) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
+    path === '/' ? location.pathname === '/' : location.pathname === path
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">

@@ -28,6 +28,10 @@ interface CaptureDto {
   instagram?: string;
   revenue?: string;
   fbclid?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
 }
 
 @Controller('forms')

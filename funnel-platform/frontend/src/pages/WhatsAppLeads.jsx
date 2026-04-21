@@ -8,10 +8,10 @@ export default function WhatsAppLeads() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/leads')
+    fetch('http://localhost:3001/api/leads?limit=100')
       .then(r => r.json())
       .then(data => {
-        setLeads(Array.isArray(data) ? data : [])
+        setLeads(Array.isArray(data.data) ? data.data : [])
         setLoading(false)
       })
       .catch(err => {

@@ -218,6 +218,9 @@ Dashboard mostra todas as mensagens
 - ✅ Edição de automações existentes
 - ✅ Modal com perfis que dispararam cada automação (username, email, status da conversa)
 - ✅ Leads do Instagram DM aparecem na página /leads com email visível
+- ✅ Paginação na página /leads (6 leads por página, botões anterior/próximo/números)
+- ✅ Filtros por origem na página /leads: Todos / Instagram DM / Tráfego Pago
+- ✅ Integração leadscomia → /api/forms/capture com fbclid + UTMs capturados da URL
 
 ### Integrações Instagram (app CRM-CLAUDE-IG)
 - **Token:** IGAAX — usa `graph.instagram.com` (NÃO `graph.facebook.com`)
@@ -231,14 +234,41 @@ Dashboard mostra todas as mensagens
 ### Integrações Facebook
 - **FB_PIXEL_ID** — Pixel do Meta Ads (964343959626807)
 - **FB_ACCESS_TOKEN** — Token do Conversions API (curta duração, específico para envio de eventos)
-- **FB_ADS_TOKEN** — Token do app CRM-IA com ads_read, ads_management, business_management (expira em ~1-2h, ver pendências)
+- **FB_ADS_TOKEN** — Token do app CRM-IA com ads_read, ads_management, business_management (✅ renovado 60 dias em 2026-04-21)
 - **FB_AD_ACCOUNT_ID** — act_690814526400981 (conta "Lançamento")
 
+### 🏷️ Identificação de Origem dos Leads
+
+Os leads são classificados por origem com base nos campos `utmSource`, `utmMedium` e `fbclid` salvos no banco.
+
+| Origem | Critério | Como é setado |
+|---|---|---|
+| **Instagram DM** | `utmSource = 'instagram'` AND `utmMedium = 'dm-automation'` | Automático pelo `instagram-automation.service.ts` ao salvar lead via DM |
+| **Tráfego Pago** | `fbclid IS NOT NULL` OR `utmSource IN ('facebook', 'leadscomia')` | Capturado da URL quando lead vem de anúncio Meta Ads |
+| **Sem origem** | Nenhum dos campos acima | Lead veio de form direto sem rastreamento |
+
+**Filtros disponíveis na página `/leads`:**
+- **Todos** — sem filtro
+- **Instagram DM** — leads captados pela automação de comentários → DM
+- **Tráfego Pago** — leads com fbclid (clicaram em anúncio) ou utmSource facebook/leadscomia
+
+**Fluxo de cada origem:**
+```
+Instagram DM:
+  Comentou no post → automação dispara → DM conversacional → captura email
+  → salva Lead com utmSource='instagram', utmMedium='dm-automation'
+
+Tráfego Pago:
+  Ad Meta → LP (leadscomia) com ?fbclid=...&utm_source=facebook
+  → lead preenche modal → POST /api/forms/capture
+  → salva Lead com fbclid + UTMs da URL
+```
+
 ### ⚠️ Pendências
-- [ ] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — token expira em ~1-2h. Via Graph API Explorer: gerar com `ads_read`, `ads_management`, `business_management` + clicar "Extend access token"
-- [ ] **Remover DEMO_LEAD do Leads.jsx** — lead fictício "João Silva" hardcoded em `frontend/src/pages/Leads.jsx`. Remover quando houver leads reais de campanha.
-- [ ] **Renovar IG_TOKEN (IGAAX) antes de 60 dias** — token gerado no app CRM-CLAUDE-IG, expira em ~60 dias. Regerar no painel do app Meta.
+- [x] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — ✅ CONCLUÍDO em 2026-04-21
+- [x] **Renovar IG_TOKEN (IGAAX) para 60 dias** — ✅ CONCLUÍDO em 2026-04-20 (renovado ontem)
+- [x] **DEMO_LEAD no Leads.jsx** — ℹ️ Mantido propositalmente para ajudar no desenvolvimento
 
 ---
 
-**Última atualização:** 2026-04-21
+**Última atualização:** 2026-04-21 (FB_ADS_TOKEN renovado para 60 dias ✅)

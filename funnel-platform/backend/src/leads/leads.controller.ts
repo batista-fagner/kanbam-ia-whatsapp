@@ -10,8 +10,18 @@ export class LeadsController {
   ) {}
 
   @Get()
-  async findAll(@Query('campaignId') campaignId?: string) {
-    return this.leadsService.findAll(campaignId);
+  async findAll(
+    @Query('campaignId') campaignId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('source') source?: 'all' | 'ig_dm' | 'paid',
+  ) {
+    return this.leadsService.findAll({
+      campaignId,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 6,
+      source: source || 'all',
+    });
   }
 
   @Get(':id')

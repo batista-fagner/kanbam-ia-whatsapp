@@ -183,15 +183,6 @@ export default function InstagramAutomation() {
     setAutomations(prev => prev.filter(a => a.id !== id))
   }
 
-  async function handleSubscribe() {
-    try {
-      await fetch(`${API}/ig-auto/subscribe`, { method: 'POST' })
-      alert('Webhook inscrito com sucesso!')
-    } catch {
-      alert('Erro ao inscrever webhook.')
-    }
-  }
-
   const thumbnail = (post) => {
     if (!post) return null
     if (post._thumbnail) return post._thumbnail
@@ -219,12 +210,6 @@ export default function InstagramAutomation() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSubscribe}
-            className="flex items-center gap-1.5 text-sm text-slate-500 border border-slate-200 hover:border-slate-300 px-3 py-2 rounded-lg transition"
-          >
-            <Zap className="w-4 h-4" /> Ativar Webhook
-          </button>
           <button
             onClick={openCreate}
             className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"

@@ -13,12 +13,11 @@ export default function InstagramLeads() {
   }
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/leads')
+    fetch('http://localhost:3001/api/leads?limit=100')
       .then(r => r.json())
       .then(data => {
-        const instagramLeads = Array.isArray(data)
-          ? data.filter(l => l.enrichmentData && l.enrichmentData.followers)
-          : []
+        const all = Array.isArray(data.data) ? data.data : []
+        const instagramLeads = all.filter(l => l.enrichmentData && l.enrichmentData.followers)
         setLeads(instagramLeads)
         setLoading(false)
       })

@@ -49,7 +49,7 @@ export class FormsService {
     return this.formsRepo.save(form);
   }
 
-  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string; fbclid?: string }): Promise<{ success: boolean; leadId: string }> {
+  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string; fbclid?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string }): Promise<{ success: boolean; leadId: string }> {
     const lead = await this.leadsService.create({
       name: dto.name,
       phone: dto.phone,
@@ -57,9 +57,12 @@ export class FormsService {
       instagram: dto.instagram,
       status: 'novo',
       score: 0,
-      utmSource: 'leadscomia',
-      utmMedium: dto.revenue,
+      utmSource: dto.utmSource || 'leadscomia',
+      utmMedium: dto.utmMedium,
+      utmCampaign: dto.utmCampaign,
+      utmContent: dto.utmContent,
       fbclid: dto.fbclid,
+      revenueRange: dto.revenue,
     });
 
     if (dto.instagram) {
