@@ -68,6 +68,9 @@ export class Lead {
   @Column({ name: 'fbclid', type: 'varchar', nullable: true })
   fbclid?: string;
 
+  @Column({ name: 'click_id', type: 'varchar', nullable: true })
+  clickId?: string;
+
   @Column({ name: 'vsl_percentage', type: 'int', default: 0 })
   vslPercentage: number;
 

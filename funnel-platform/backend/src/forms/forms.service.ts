@@ -49,7 +49,7 @@ export class FormsService {
     return this.formsRepo.save(form);
   }
 
-  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string; fbclid?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string }): Promise<{ success: boolean; leadId: string }> {
+  async capture(dto: { name: string; phone: string; email?: string; instagram?: string; revenue?: string; fbclid?: string; clickId?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string }): Promise<{ success: boolean; leadId: string }> {
     const lead = await this.leadsService.create({
       name: dto.name,
       phone: dto.phone,
@@ -62,6 +62,7 @@ export class FormsService {
       utmCampaign: dto.utmCampaign,
       utmContent: dto.utmContent,
       fbclid: dto.fbclid,
+      clickId: dto.clickId,
       revenueRange: dto.revenue,
     });
 

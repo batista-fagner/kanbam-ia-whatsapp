@@ -369,6 +369,12 @@ export default function Leads() {
                           <p className="text-sm font-bold text-green-600">✓ Meta Ads</p>
                         </div>
                       )}
+                      {selectedLead.clickId && (
+                        <div className="bg-white rounded-lg p-2 border border-violet-100 col-span-2">
+                          <p className="text-xs text-slate-500 mb-0.5">Click ID</p>
+                          <p className="text-xs font-mono text-slate-600 truncate">{selectedLead.clickId}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

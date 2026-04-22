@@ -28,6 +28,7 @@ interface CaptureDto {
   instagram?: string;
   revenue?: string;
   fbclid?: string;
+  clickId?: string;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
