@@ -68,6 +68,9 @@ export default function FormPublic() {
     if (utmMedium) localStorage.setItem('utm_medium', utmMedium)
     if (utmCampaign) localStorage.setItem('utm_campaign', utmCampaign)
     if (utmContent) localStorage.setItem('utm_content', utmContent)
+    if (!localStorage.getItem('click_id')) {
+      localStorage.setItem('click_id', crypto.randomUUID())
+    }
   }, [])
 
   const [step, setStep] = useState(0)
@@ -136,6 +139,7 @@ export default function FormPublic() {
     const utmMedium = localStorage.getItem('utm_medium')
     const utmCampaign = localStorage.getItem('utm_campaign')
     const utmContent = localStorage.getItem('utm_content')
+    const clickId = localStorage.getItem('click_id')
     const payload = {
       name: personal.name.trim(),
       email: personal.email.trim(),
@@ -147,6 +151,7 @@ export default function FormPublic() {
       ...(utmMedium ? { utmMedium } : {}),
       ...(utmCampaign ? { utmCampaign } : {}),
       ...(utmContent ? { utmContent } : {}),
+      ...(clickId ? { clickId } : {}),
     }
 
     try {
