@@ -221,6 +221,22 @@ Dashboard mostra todas as mensagens
 - ✅ Paginação na página /leads (6 leads por página, botões anterior/próximo/números)
 - ✅ Filtros por origem na página /leads: Todos / Instagram DM / Tráfego Pago
 - ✅ Integração leadscomia → /api/forms/capture com fbclid + UTMs capturados da URL
+- ✅ **Efraim: Agente conversacional WhatsApp completo** (GPT-5.4-mini, 7 stages, debounce 10s)
+  - Webhook `/api/webhooks/whatsapp` recebe mensagens do uazapi
+  - Stages: abertura → escuta → rapport → video → fechamento → confirmado/perdido → encerrado
+  - Confirmado: responde até 3x pós-agendamento, depois encerra
+  - Perdido: tenta 2x re-engajar, depois encerra
+  - Prompt: sem "cara", validações variadas, foco em funil+IA
+  - Deduplicação de mensagens (Set com timeout 5min)
+  - Debounce 10s: acumula múltiplas msgs, processa 1x
+  - Normalização de phone com/sem DDI 55
+  - Typing indicator antes de responder
+- ✅ **Facebook CAPI: Qualidade do evento aprimorada** (2026-04-24)
+  - Novos parâmetros: fbp (cookie _fbp), external_id (lead UUID), client_ip_address, client_user_agent
+  - Nota esperada: 6.9/10 → 8-9/10
+  - leadscomia captura fbp do Meta Pixel cookie
+  - Backend extrai clientIp de X-Forwarded-For header
+  - Todos os parâmetros com hash adequado (fbc, em, ph, fn)
 
 ### Integrações Instagram (app CRM-CLAUDE-IG)
 - **Token:** IGAAX — usa `graph.instagram.com` (NÃO `graph.facebook.com`)
@@ -266,9 +282,14 @@ Tráfego Pago:
 
 ### ⚠️ Pendências
 - [x] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — ✅ CONCLUÍDO em 2026-04-21
-- [x] **Renovar IG_TOKEN (IGAAX) para 60 dias** — ✅ CONCLUÍDO em 2026-04-20 (renovado ontem)
-- [x] **DEMO_LEAD no Leads.jsx** — ℹ️ Mantido propositalmente para ajudar no desenvolvimento
+- [x] **Renovar IG_TOKEN (IGAAX) para 60 dias** — ✅ CONCLUÍDO em 2026-04-20
+- [x] **Implementar Efraim (agente WhatsApp)** — ✅ CONCLUÍDO em 2026-04-24
+- [x] **Melhorar qualidade evento Facebook** — ✅ CONCLUÍDO em 2026-04-24 (6.9 → 8-9/10)
+- [ ] **Renovar token uazapi** — temporário (1h), precisa gerar novo quando expirar
+- [ ] **Integração Kiwify webhook** — POST /api/checkout/webhook pra marcar convertido via checkout
+- [ ] **Kanban board visual** — opcional, usa waStage para mostrar progresso dos leads
+- [ ] **Outras redesigns de layout** — user mencionou depois
 
 ---
 
-**Última atualização:** 2026-04-21 (FB_ADS_TOKEN renovado para 60 dias ✅)
+**Última atualização:** 2026-04-24 (Efraim + Facebook CAPI improvements ✅)

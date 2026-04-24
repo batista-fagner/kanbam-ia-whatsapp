@@ -25,6 +25,7 @@ export class FacebookService {
     if (lead.phone) userData['ph'] = this.sha256(`55${lead.phone.replace(/\D/g, '')}`);
     if (lead.name) userData['fn'] = this.sha256(lead.name.split(' ')[0]);
     if (lead.fbclid) userData['fbc'] = this.buildFbc(lead.fbclid);
+    if (lead.id) userData['external_id'] = lead.id;
     return userData;
   }
 
