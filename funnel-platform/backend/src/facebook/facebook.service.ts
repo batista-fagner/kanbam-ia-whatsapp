@@ -101,8 +101,11 @@ export class FacebookService {
     return data;
   }
 
-  async sendLeadEvent(lead: Lead): Promise<void> {
+  async sendLeadEvent(lead: Lead, extra?: { fbp?: string; userAgent?: string; clientIp?: string }): Promise<void> {
     const userData = this.buildUserData(lead);
+    if (extra?.fbp) userData['fbp'] = extra.fbp;
+    if (extra?.clientIp) userData['client_ip_address'] = extra.clientIp;
+    if (extra?.userAgent) userData['client_user_agent'] = extra.userAgent;
     await this.sendEvent('Lead', userData);
   }
 

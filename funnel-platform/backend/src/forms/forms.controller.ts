@@ -1,4 +1,5 @@
-import { Controller, Post, Param, Body } from '@nestjs/common';
+import { Controller, Post, Param, Body, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { FormsService } from './forms.service';
 
 interface SubmitFormDto {
@@ -33,6 +34,8 @@ interface CaptureDto {
   utmMedium?: string;
   utmCampaign?: string;
   utmContent?: string;
+  fbp?: string;
+  userAgent?: string;
 }
 
 @Controller('forms')
@@ -50,7 +53,8 @@ export class FormsController {
   }
 
   @Post('capture')
-  async capture(@Body() body: CaptureDto) {
-    return this.formsService.capture(body);
+  async capture(@Body() body: CaptureDto, @Req() req: Request) {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    return this.formsService.capture({ ...body, clientIp });
   }
 }
