@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 export type LeadClassification = 'otimo' | 'bom' | 'frio';
 export type LeadStatus = 'novo' | 'contatado' | 'convertido' | 'perdido';
+export type WaStage = 'abertura' | 'escuta' | 'rapport' | 'video' | 'fechamento' | 'confirmado' | 'perdido';
 
 export interface Post {
   code: string;
@@ -82,6 +83,15 @@ export class Lead {
 
   @Column({ name: 'last_event_at', type: 'timestamp', nullable: true })
   lastEventAt?: Date;
+
+  @Column({ name: 'wa_stage', type: 'varchar', nullable: true })
+  waStage?: WaStage;
+
+  @Column({ name: 'ai_context', type: 'jsonb', nullable: true })
+  aiContext?: any[];
+
+  @Column({ name: 'wa_last_message_at', type: 'timestamp', nullable: true })
+  waLastMessageAt?: Date;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

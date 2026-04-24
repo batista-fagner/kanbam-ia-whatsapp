@@ -12,6 +12,7 @@ import { MessagingModule } from './messaging/messaging.module';
 import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
+import { EfraimModule } from './efraim/efraim.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { InstagramAutomationModule } from './instagram-automation/instagram-auto
     FormsModule,
     FacebookModule,
     InstagramAutomationModule,
+    EfraimModule,
   ],
 })
 export class AppModule {}
