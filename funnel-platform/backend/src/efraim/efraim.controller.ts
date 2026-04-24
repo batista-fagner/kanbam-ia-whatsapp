@@ -4,13 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { EfraimService } from './efraim.service';
 import { LeadsService } from '../leads/leads.service';
-import { WaStage } from '../common/entities/lead.entity';
+import { Lead, WaStage } from '../common/entities/lead.entity';
 
 @Controller('webhooks')
 export class EfraimController {
   private readonly logger = new Logger(EfraimController.name);
   private readonly processedIds = new Set<string>();
-  private readonly messageQueues = new Map<string, Promise<void>>();
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[] }>();
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
 
@@ -60,25 +60,36 @@ export class EfraimController {
 
     this.logger.log(`Mensagem recebida de ${phone}: "${text}"`);
 
-    // Message queue por phone (evita race conditions)
-    const current = this.messageQueues.get(phone) ?? Promise.resolve();
-    const next = current.then(() =>
-      this.processMessage(phone, text).catch((err) =>
+    // Debounce: acumula mensagens por 10s antes de processar
+    const pending = this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] as string[] };
+    pending.texts.push(text);
+
+    if (pending.timer) clearTimeout(pending.timer);
+
+    pending.timer = setTimeout(() => {
+      const combinedText = pending.texts.join('\n');
+      this.pendingBuffer.delete(phone);
+      this.logger.log(`Processando ${pending.texts.length} mensagem(ns) de ${phone}`);
+      this.processMessage(phone, combinedText).catch((err) =>
         this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`),
-      ),
-    );
-    this.messageQueues.set(phone, next);
-    next.finally(() => {
-      if (this.messageQueues.get(phone) === next) {
-        this.messageQueues.delete(phone);
-      }
-    });
+      );
+    }, 10_000);
+
+    this.pendingBuffer.set(phone, pending);
 
     return { ok: true };
   }
 
   private async processMessage(phone: string, text: string) {
-    const lead = await this.leadsService.findByPhone(phone);
+    // Tenta com e sem DDI 55
+    const phoneVariants = phone.startsWith('55')
+      ? [phone, phone.slice(2)]
+      : [phone, `55${phone}`];
+    let lead: Lead | null = null;
+    for (const p of phoneVariants) {
+      lead = await this.leadsService.findByPhone(p);
+      if (lead) break;
+    }
     if (!lead) {
       this.logger.warn(`Nenhum lead encontrado para phone ${phone}`);
       return;
@@ -90,9 +101,9 @@ export class EfraimController {
       lead.waStage = 'abertura';
     }
 
-    // Não processa se já confirmado ou perdido
-    if (lead.waStage === 'confirmado' || lead.waStage === 'perdido') {
-      this.logger.log(`Lead ${phone} em stage "${lead.waStage}" — sem resposta automática`);
+    // Não processa se já encerrado
+    if (lead.waStage === 'encerrado') {
+      this.logger.log(`Lead ${phone} em stage "encerrado" — sem resposta automática`);
       return;
     }
 
