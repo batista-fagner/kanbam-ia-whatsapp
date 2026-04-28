@@ -13,6 +13,8 @@ import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
 import { EfraimModule } from './efraim/efraim.module';
+import { CarouselModule } from './carousel/carousel.module';
+import { Carousel } from './carousel/carousel.entity';
 
 @Module({
   imports: [
@@ -26,7 +28,7 @@ import { EfraimModule } from './efraim/efraim.module';
         type: 'postgres' as const,
         url: config.get('DATABASE_URL') || config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Carousel],
         synchronize: true,
         logging: false,
       }),
@@ -38,6 +40,7 @@ import { EfraimModule } from './efraim/efraim.module';
     FacebookModule,
     InstagramAutomationModule,
     EfraimModule,
+    CarouselModule,
   ],
 })
 export class AppModule {}

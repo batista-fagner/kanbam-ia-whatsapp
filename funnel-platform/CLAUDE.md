@@ -280,6 +280,148 @@ Tráfego Pago:
   → salva Lead com fbclid + UTMs da URL
 ```
 
+---
+
+## 🗺️ Planejamento — Próximas Features
+
+### 1. Painel do Closer (IA Auxiliar)
+
+**Objetivo:** O closer entra na reunião com brief completo do lead + pode consultar a IA durante a call.
+
+**Fluxo:**
+```
+Efraim coleta dados do lead (estágios WhatsApp)
+  → Painel gera brief automático antes da reunião
+  → Durante a reunião: closer digita situação/dúvida → IA responde com sugestão
+```
+
+**O painel tem duas partes:**
+- **Brief do lead** (gerado antes da reunião):
+  - Perfil resumido: dor principal, contexto, o que respondeu pro Efraim
+  - Pontos quentes pra explorar
+  - Possíveis objeções mapeadas
+  - Perguntas sugeridas pra abertura
+
+- **Chat com IA Closer** (durante a reunião):
+  - Closer digita situação rápida → IA sugere como conduzir
+  - Histórico do lead já carregado no contexto da IA
+
+**Identificação dos leads:** número de WhatsApp (já resolvido). Leads do form e da leadscomia cruzam pelo telefone.
+
+**O que construir:**
+- [ ] Endpoint que pega dados do lead e gera o brief via IA
+- [ ] Interface do painel (uma página por lead, simples)
+- [ ] Chat contextualizado com histórico do lead já carregado
+
+---
+
+### 2. Criação de Carrossel para Instagram
+
+**Objetivo:** Gerar carrosséis completos (texto + imagem) no template definido e postar automaticamente no Instagram.
+
+**Fluxo:**
+```
+Usuário dá inputs (tema, nº slides, tom de voz, conta IG destino)
+  → IA gera copy de todos os slides de uma vez
+  → Usuário revisa e ajusta os textos no painel
+  → Botão "Gerar imagem" por slide (ou "Gerar todas")
+    → IA lê o texto do slide e cria o prompt da imagem automaticamente
+    → Imagem aparece no painel para revisão
+  → Usuário aprova
+  → Sistema monta no template do Canva (via MCP)
+  → Publica no Instagram via Graph API
+```
+
+**Template (design já definido pelo usuário):**
+- Header fixo: foto de perfil circular + nome + @instagram
+- Corpo: texto/copy do slide (variável por slide)
+- Imagem gerada por IA na parte inferior (contexto = texto do slide)
+- Estilo: limpo, fundo claro
+
+**Módulos a construir:**
+- [ ] Input no CRM (tema, nº slides, tom, conta IG)
+- [ ] Geração de copy via LLM (todos os slides de uma vez)
+- [ ] Painel de revisão de texto por slide
+- [ ] Geração de imagem por slide via DALL-E/Ideogram (botão por slide + "gerar todas")
+- [ ] Montagem no Canva via MCP (template com áreas de texto e imagem mapeadas)
+- [ ] Publicação via Instagram Graph API (já integrada)
+
+**Pontos pendentes antes de implementar:**
+- Escolha do gerador de imagem (DALL-E 4, Ideogram, ou outro)
+- Template no Canva criado manualmente uma vez com áreas variáveis mapeadas
+- Quantidade média de slides por carrossel a definir
+
+---
+
+---
+
+## 🎨 Feature: Geração de Carrossel para Instagram ✅ IMPLEMENTADO (2026-04-28)
+
+### Fluxo
+```
+Usuário dá inputs (tema, nº slides, tom de voz)
+  → IA gera copy de todos os slides (OpenAI gpt-4o-mini / gpt-5.4-mini)
+  → Usuário revisa e edita textos no painel
+  → Botão "Gerar imagem" por slide → IA gera prompt + DALL-E 2/3 → Supabase Storage
+  → Puppeteer renderiza template HTML → PNG 1080×1350 (4:5 Instagram) → Supabase
+  → Botão "Publicar" (mínimo 2 slides com imagem) → Instagram Graph API carousel
+```
+
+### Backend — módulo `carousel`
+```
+backend/src/carousel/
+├── carousel.entity.ts      — tabela 'carousels', slides em JSONB
+├── carousel.service.ts     — toda a lógica (copy, imagem, template, publicação)
+├── carousel.controller.ts  — 8 endpoints REST
+└── carousel.module.ts
+```
+
+**Endpoints:**
+- `POST /carousel` — cria + gera copy
+- `GET /carousel` — lista
+- `GET /carousel/:id` — detalhe
+- `PATCH /carousel/:id` — atualiza slides
+- `POST /carousel/:id/generate-image/:index` — gera imagem de 1 slide
+- `POST /carousel/:id/generate-images` — gera todas
+- `POST /carousel/:id/publish` — publica no Instagram
+- `DELETE /carousel/:id`
+
+**Variáveis de ambiente:**
+```env
+SUPABASE_URL=https://vqtpzneufahhrzjklyvn.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_STORAGE_BUCKET=Crm-carrossel   # bucket público no Supabase Storage
+IG_PROFILE_NAME=Fagner Batista
+IG_PROFILE_HANDLE=fagnerbatista
+IG_PROFILE_AVATAR_URL=                  # ⚠️ URL do CDN do IG expira — fazer upload no Supabase
+```
+
+**Dependências adicionadas:** `puppeteer`, `@supabase/supabase-js`
+
+**Template Puppeteer (4:5 = 1080×1350px):**
+- Header: foto de perfil + nome + @handle
+- Texto: font 46px, line-height 2.0, ocupa espaço principal
+- Imagem IA: 380px fixo na parte inferior, border-radius 24px
+
+**Modelos de IA:**
+- Copy dos slides: `/* 'gpt-5.4-mini' */ 'gpt-4o-mini'` (comentado para teste — descomente em prod)
+- Prompt de imagem: mesmo modelo acima
+- Geração de imagem: `dall-e-2` (512×512, para teste) — trocar para `dall-e-3` + `1024×1792` em prod
+
+**⚠️ Pendência: Refinamento do prompt de copy**
+O método `generateCopy()` em `carousel.service.ts` ~L88 usa prompt genérico.
+Precisa ser refinado com: tom de voz do Fagner, estilo de escrita, regras específicas.
+Referência de estilo: Frank Costa — frases curtas, muito espaçadas, uma ideia por linha.
+
+### Frontend — `Content.jsx`
+- Rota: `/content` → sidebar grupo "Conteúdo"
+- 3 estados: formulário → revisão de slides → publicado
+- Preview modal com navegação por setas (proporção 4:5 fiel ao Instagram)
+- Botão publicar aparece sempre; desabilitado com aviso até ter ≥ 2 imagens geradas
+- Edições de texto salvas automaticamente no onBlur
+
+---
+
 ### ⚠️ Pendências
 - [x] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — ✅ CONCLUÍDO em 2026-04-21
 - [x] **Renovar IG_TOKEN (IGAAX) para 60 dias** — ✅ CONCLUÍDO em 2026-04-20
@@ -288,8 +430,11 @@ Tráfego Pago:
 - [ ] **Renovar token uazapi** — temporário (1h), precisa gerar novo quando expirar
 - [ ] **Integração Kiwify webhook** — POST /api/checkout/webhook pra marcar convertido via checkout
 - [ ] **Kanban board visual** — opcional, usa waStage para mostrar progresso dos leads
+- [x] **Copy da landing page leadscomia (página inicial)** — ✅ CONCLUÍDO em 2026-04-26
+  - `HeroContent.tsx`: título, subtítulo (em negrito) e bullets atualizados
+  - `LeadForm.tsx`: título do box, subtítulo, botão e rodapé atualizados
 - [ ] **Outras redesigns de layout** — user mencionou depois
 
 ---
 
-**Última atualização:** 2026-04-24 (Efraim + Facebook CAPI improvements ✅)
+**Última atualização:** 2026-04-28 (Feature Carrossel IG ✅ implementada e testada)

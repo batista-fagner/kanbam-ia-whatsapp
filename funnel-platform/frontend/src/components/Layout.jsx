@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Zap,
   MessageCircle,
+  Sparkles,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -48,6 +49,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'Conteúdo',
+    items: [
+      { icon: Sparkles, label: 'Carrossel IG', path: '/content' },
+    ],
+  },
+  {
     label: 'Sistema',
     items: [
       { icon: Settings, label: 'Configurações', path: '/settings' },
@@ -65,6 +72,7 @@ const PAGE_TITLES = {
   '/whatsapp': 'WhatsApp & Leads',
   '/instagram': 'Instagram Leads',
   '/instagram-auto': 'IG Automação',
+  '/content': 'Carrossel IG',
   '/settings': 'Configurações',
 }
 

@@ -11,6 +11,7 @@ import InstagramLeads from './pages/InstagramLeads'
 import Settings from './pages/Settings'
 import FormPublic from './pages/FormPublic'
 import InstagramAutomation from './pages/InstagramAutomation'
+import Content from './pages/Content'
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/whatsapp" element={<WhatsAppLeads />} />
           <Route path="/instagram" element={<InstagramLeads />} />
           <Route path="/instagram-auto" element={<InstagramAutomation />} />
+          <Route path="/content" element={<Content />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
