@@ -25,7 +25,8 @@
       "Read(//Users/fagnerbatista/**)",
       "Bash(./node_modules/.bin/vite --port 5174)",
       "Bash(pkill -f \"vite.*5174\")",
-      "Bash(./node_modules/.bin/vite)"
+      "Bash(./node_modules/.bin/vite)",
+      "Bash(git commit *)"
     ]
   }
 }

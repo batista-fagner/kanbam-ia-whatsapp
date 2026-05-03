@@ -1,4 +1,6 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Res, Logger } from '@nestjs/common';
+import type { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { LeadsService } from '../leads/leads.service';
@@ -22,6 +24,7 @@ export class EvolutionController {
     private readonly leadsGateway: LeadsGateway,
     private readonly calendarService: CalendarService,
     private readonly audioService: AudioService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Post('uazapi')
@@ -244,6 +247,92 @@ export class EvolutionController {
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
+  }
+
+  // Verificação de webhook exigida pela Meta
+  @Get('whatsapp')
+  handleMetaVerification(@Query() query: any, @Res() res: Response) {
+    const mode = query['hub.mode'];
+    const token = query['hub.verify_token'];
+    const challenge = query['hub.challenge'];
+
+    if (mode === 'subscribe' && token === this.configService.get('WHATSAPP_VERIFY_TOKEN')) {
+      this.logger.log('Webhook Meta verificado com sucesso');
+      return res.status(200).send(challenge);
+    }
+
+    this.logger.warn('Falha na verificação do webhook Meta — token inválido');
+    return res.status(403).send('Forbidden');
+  }
+
+  @Post('whatsapp')
+  async handleMetaWebhook(@Body() body: any) {
+    if (body.object !== 'whatsapp_business_account') return { ok: true };
+
+    const entry = body.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
+    const messages: any[] = value?.messages ?? [];
+
+    for (const message of messages) {
+      if (message.type === 'reaction') continue;
+
+      const rawPhone: string = message.from ?? '';
+      const phone = rawPhone.replace(/\D/g, '');
+      if (!phone) continue;
+
+      // Ignora mensagens antigas
+      const ageSeconds = (Date.now() / 1000) - Number(message.timestamp);
+      if (ageSeconds > 300) {
+        this.logger.warn(`Mensagem Meta ignorada — muito antiga (${Math.round(ageSeconds)}s): ${phone}`);
+        continue;
+      }
+
+      // Deduplicação
+      const messageId: string = message.id;
+      if (this.processedIds.has(messageId)) {
+        this.logger.warn(`Webhook Meta duplicado ignorado: ${messageId}`);
+        continue;
+      }
+      this.processedIds.add(messageId);
+      setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+
+      const isAudio = message.type === 'audio';
+      this.lastMessageWasAudio.set(phone, isAudio);
+
+      if (isAudio) {
+        const mediaId: string = message.audio?.id;
+        if (!mediaId) continue;
+        this.transcribeAndEnqueueMeta(phone, mediaId, messageId).catch((err) =>
+          this.logger.error(`Erro ao transcrever áudio Meta de ${phone}: ${err.message}`),
+        );
+        continue;
+      }
+
+      const text: string = message.text?.body ?? '';
+      if (!text) continue;
+
+      this.logger.log(`Mensagem Meta recebida de ${phone}: ${text}`);
+      this.messageQueue.enqueue(phone, text, (combinedText) => {
+        this.processMessage(phone, combinedText, messageId).catch((err) =>
+          this.logger.error(`Erro ao processar mensagem Meta de ${phone}: ${err.message}`),
+        );
+      });
+    }
+
+    return { ok: true };
+  }
+
+  private async transcribeAndEnqueueMeta(phone: string, mediaId: string, messageId: string) {
+    this.logger.log(`Transcrevendo áudio Meta de ${phone}...`);
+    const transcribedText = await this.evolutionService.transcribeAudio(mediaId);
+    this.logger.log(`Áudio Meta transcrito de ${phone}: "${transcribedText}"`);
+
+    this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
+      this.processMessage(phone, combinedText, messageId).catch((err) =>
+        this.logger.error(`Erro ao processar áudio Meta de ${phone}: ${err.message}`),
+      );
+    });
   }
 
   @Post('manual')

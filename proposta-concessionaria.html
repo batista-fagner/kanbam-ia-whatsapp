@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Proposta Comercial — Assistente Virtual WhatsApp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f4f6f9;
+      color: #1a1a2e;
+      padding: 40px 20px;
+    }
+
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    }
+
+    /* HEADER */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+      padding: 48px 48px 40px;
+      color: #fff;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #e2e8f0;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+
+    .date {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .header h1 {
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .header h1 span {
+      color: #38bdf8;
+    }
+
+    .header p {
+      color: #94a3b8;
+      font-size: 15px;
+      max-width: 500px;
+      line-height: 1.6;
+    }
+
+    /* BODY */
+    .body {
+      padding: 48px;
+    }
+
+    .section {
+      margin-bottom: 44px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #0f3460;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e2e8f0;
+    }
+
+    /* PROBLEMA / SOLUCAO */
+    .intro-text {
+      font-size: 15px;
+      color: #475569;
+      line-height: 1.8;
+      background: #f8fafc;
+      border-left: 3px solid #0f3460;
+      padding: 16px 20px;
+      border-radius: 0 8px 8px 0;
+    }
+
+    /* FEATURES */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .feature-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .feature-item strong {
+      display: block;
+      font-size: 13px;
+      color: #1a1a2e;
+      margin-bottom: 3px;
+    }
+
+    .feature-item span {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    /* INVESTIMENTO */
+    .investment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .investment-card {
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+
+    .investment-card .card-header {
+      padding: 16px 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .investment-card.implantacao .card-header {
+      background: #0f3460;
+      color: #fff;
+    }
+
+    .investment-card.mensal .card-header {
+      background: #38bdf8;
+      color: #0f172a;
+    }
+
+    .investment-card .card-body {
+      padding: 20px;
+      background: #f8fafc;
+    }
+
+    .investment-card .price {
+      font-size: 32px;
+      font-weight: 800;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+
+    .investment-card .price-label {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+
+    .investment-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .investment-card ul li {
+      font-size: 13px;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .investment-card ul li::before {
+      content: '✓';
+      color: #0f3460;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .investment-card.mensal ul li::before {
+      color: #0284c7;
+    }
+
+    /* DESTAQUE */
+    .highlight-box {
+      background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+      border: 1px solid #bae6fd;
+      border-radius: 10px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .highlight-box .icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+
+    .highlight-box p {
+      font-size: 14px;
+      color: #0369a1;
+      line-height: 1.6;
+    }
+
+    .highlight-box strong {
+      color: #0f3460;
+    }
+
+    /* PROXIMOS PASSOS */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #0f3460;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step p {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .step strong {
+      color: #1a1a2e;
+    }
+
+    /* FOOTER */
+    .footer {
+      background: #1a1a2e;
+      padding: 28px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer p {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .footer strong {
+      color: #e2e8f0;
+    }
+
+    @media print {
+      body { background: #fff; padding: 0; }
+      .page { box-shadow: none; border-radius: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-top">
+        <span class="badge">Proposta Comercial</span>
+        <span class="date">Abril / 2026</span>
+      </div>
+      <h1>Assistente Virtual com <span>IA</span><br>para Concessionárias</h1>
+      <p>Atendimento automático no WhatsApp, qualificação de leads e envio de fotos dos veículos — tudo sem precisar do vendedor.</p>
+    </div>
+
+    <!-- BODY -->
+    <div class="body">
+
+      <!-- O PROBLEMA -->
+      <div class="section">
+        <div class="section-title">O Cenário Atual</div>
+        <p class="intro-text">
+          Vendedores perdem horas respondendo as mesmas perguntas no WhatsApp — preço, disponibilidade, fotos dos carros — enquanto leads qualificados esperam atendimento.
+          O resultado: <strong>oportunidades perdidas</strong> e equipe sobrecarregada com curiosos que nunca compram.
+        </p>
+      </div>
+
+      <!-- O QUE O SISTEMA FAZ -->
+      <div class="section">
+        <div class="section-title">O que o Sistema Faz</div>
+        <div class="features-grid">
+          <div class="feature-item">
+            <span class="feature-icon">🤖</span>
+            <div>
+              <strong>Atendimento 24/7</strong>
+              <span>Responde clientes a qualquer hora, sem precisar do vendedor online</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🎯</span>
+            <div>
+              <strong>Qualificação Automática</strong>
+              <span>Identifica orçamento, urgência e intenção real de compra</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">📸</span>
+            <div>
+              <strong>Envio de Fotos dos Veículos</strong>
+              <span>Cliente pede foto do Civic, a IA envia automaticamente do catálogo</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🔍</span>
+            <div>
+              <strong>Separação Curioso vs Comprador</strong>
+              <span>Filtra quem está só pesquisando de quem tem real interesse</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">📅</span>
+            <div>
+              <strong>Agendamento de Visitas</strong>
+              <span>Marca visita à concessionária direto no WhatsApp</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🔔</span>
+            <div>
+              <strong>Notificação ao Vendedor</strong>
+              <span>Vendedor recebe apenas leads prontos, com resumo completo</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">📊</span>
+            <div>
+              <strong>Painel Kanban em Tempo Real</strong>
+              <span>Visão completa de todos os leads e etapas do funil</span>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🎙️</span>
+            <div>
+              <strong>Áudio e Texto</strong>
+              <span>Transcreve áudios do cliente e responde em áudio ou texto</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVESTIMENTO -->
+      <div class="section">
+        <div class="section-title">Investimento</div>
+        <div class="investment-grid">
+          <div class="investment-card implantacao">
+            <div class="card-header">Implantação</div>
+            <div class="card-body">
+              <div class="price">R$ 6.000</div>
+              <div class="price-label">pagamento único</div>
+              <ul>
+                <li>Configuração completa do sistema</li>
+                <li>Treinamento da IA com perfil da concessionária</li>
+                <li>Catálogo de veículos com fotos</li>
+                <li>Integração WhatsApp</li>
+                <li>Painel Kanban para a equipe</li>
+                <li>Suporte durante implantação</li>
+              </ul>
+            </div>
+          </div>
+          <div class="investment-card mensal">
+            <div class="card-header">Manutenção Mensal</div>
+            <div class="card-body">
+              <div class="price">R$ 500</div>
+              <div class="price-label">por mês — tudo incluído</div>
+              <ul>
+                <li>Servidores e banco de dados</li>
+                <li>WhatsApp (uazapi)</li>
+                <li>Processamento de IA</li>
+                <li>Suporte técnico</li>
+                <li>Monitoramento contínuo</li>
+                <li>Ajustes de comportamento da IA</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DESTAQUE -->
+      <div class="section">
+        <div class="highlight-box">
+          <span class="icon">💡</span>
+          <p>
+            <strong>Sem surpresas no custo.</strong> O valor mensal já inclui todos os custos operacionais — servidores, WhatsApp e IA. Você não paga nada além do combinado.
+          </p>
+        </div>
+      </div>
+
+      <!-- PROXIMOS PASSOS -->
+      <div class="section">
+        <div class="section-title">Próximos Passos</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <p><strong>Aprovação da proposta</strong> — confirmação dos detalhes e assinatura</p>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <p><strong>Coleta de informações</strong> — modelos de veículos, fotos do catálogo, perfil de atendimento</p>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <p><strong>Implantação</strong> — configuração, testes e treinamento da IA (prazo estimado: 7-10 dias úteis)</p>
+          </div>
+          <div class="step">
+            <div class="step-number">4</div>
+            <p><strong>Go live</strong> — sistema em produção com acompanhamento nos primeiros dias</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <p>Proposta válida por <strong>15 dias</strong></p>
+      <p>Dúvidas? <strong>bbfagner2222@gmail.com</strong></p>
+    </div>
+
+  </div>
+</body>
+</html>

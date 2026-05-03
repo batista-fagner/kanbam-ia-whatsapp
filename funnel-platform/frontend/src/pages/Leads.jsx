@@ -73,6 +73,11 @@ export default function Leads() {
   const [converting, setConverting] = useState(false)
   const [convertValue, setConvertValue] = useState(3000)
   const [creativeModal, setCreativeModal] = useState(null)
+  const [followupLoading, setFollowupLoading] = useState(false)
+  const [followupData, setFollowupData] = useState(null)
+  const [followupEdited, setFollowupEdited] = useState('')
+  const [followupSending, setFollowupSending] = useState(false)
+  const [followupSent, setFollowupSent] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -165,6 +170,42 @@ export default function Leads() {
       alert('Erro ao marcar como convertido')
     } finally {
       setConverting(false)
+    }
+  }
+
+  const generateFollowup = async () => {
+    if (!selectedLead) return
+    setFollowupLoading(true)
+    setFollowupData(null)
+    setFollowupSent(false)
+    try {
+      const res = await fetch(`${API}/leads/${selectedLead.id}/followup`, { method: 'POST' })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setFollowupData(data)
+      setFollowupEdited(data.message)
+    } catch {
+      alert('Erro ao gerar follow-up')
+    } finally {
+      setFollowupLoading(false)
+    }
+  }
+
+  const sendFollowup = async () => {
+    if (!selectedLead || !followupEdited) return
+    setFollowupSending(true)
+    try {
+      const res = await fetch(`${API}/leads/${selectedLead.id}/send-followup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: followupEdited }),
+      })
+      if (!res.ok) throw new Error()
+      setFollowupSent(true)
+    } catch {
+      alert('Erro ao enviar follow-up')
+    } finally {
+      setFollowupSending(false)
     }
   }
 
@@ -294,7 +335,7 @@ export default function Leads() {
                   return (
                     <div
                       key={lead.id}
-                      onClick={() => setSelectedLead(lead)}
+                      onClick={() => { setSelectedLead(lead); setFollowupData(null); setFollowupSent(false); }}
                       className={`flex items-start gap-3 px-4 py-4 cursor-pointer transition-all border-l-4 ${
                         selected
                           ? 'bg-violet-50 border-l-violet-500'
@@ -467,6 +508,77 @@ export default function Leads() {
                               className="flex items-center gap-1.5 text-slate-500 hover:text-violet-600 transition font-medium"
                             >
                               <Send className="w-3.5 h-3.5" /> Reenviar no WhatsApp
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Follow-up com Stories */}
+                    {sel.instagram && (
+                      <div className="bg-white rounded-lg border border-slate-200 p-5">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Send className="w-4 h-4 text-violet-500" />
+                            <h3 className="text-sm font-bold text-slate-700">Follow-up com Stories</h3>
+                          </div>
+                          {followupData && (
+                            <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${followupData.hasStories ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {followupData.hasStories ? `${followupData.storiesCount} stories encontrados` : 'Conta privada'}
+                            </span>
+                          )}
+                        </div>
+
+                        {!followupData && (
+                          <p className="text-xs text-slate-500 mb-4">
+                            Busca os stories recentes de <span className="font-medium">@{sel.instagram}</span> e gera uma mensagem personalizada. Se o perfil for privado, usa os dados já analisados do lead.
+                          </p>
+                        )}
+
+                        {followupData && (
+                          <div className="mb-4">
+                            <textarea
+                              value={followupEdited}
+                              onChange={e => setFollowupEdited(e.target.value)}
+                              rows={4}
+                              className="w-full border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+                            />
+                            <div className="flex items-center gap-4 mt-2 text-xs">
+                              <button
+                                onClick={() => copyMessage(followupEdited)}
+                                className="flex items-center gap-1.5 text-slate-500 hover:text-violet-600 transition font-medium"
+                              >
+                                <Copy className="w-3.5 h-3.5" /> Copiar
+                              </button>
+                              <button
+                                onClick={generateFollowup}
+                                className="flex items-center gap-1.5 text-slate-500 hover:text-violet-600 transition font-medium"
+                              >
+                                <Loader2 className={`w-3.5 h-3.5 ${followupLoading ? 'animate-spin' : ''}`} /> Regerar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-3">
+                          {!followupData && (
+                            <button
+                              onClick={generateFollowup}
+                              disabled={followupLoading}
+                              className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-lg transition"
+                            >
+                              {followupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                              {followupLoading ? 'Buscando stories...' : 'Gerar Follow-up'}
+                            </button>
+                          )}
+                          {followupData && formatPhone(sel.phone) && (
+                            <button
+                              onClick={sendFollowup}
+                              disabled={followupSending || followupSent}
+                              className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-lg transition"
+                            >
+                              {followupSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                              {followupSent ? 'Enviado!' : followupSending ? 'Enviando...' : 'Enviar via WhatsApp'}
                             </button>
                           )}
                         </div>

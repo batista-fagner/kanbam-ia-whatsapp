@@ -70,23 +70,44 @@ export class EnrichmentService {
   }
 
   private async fetchInstagramData(handle: string): Promise<EnrichmentData> {
+    const headers = {
+      'x-rapidapi-key': this.rapidapiKey,
+      'x-rapidapi-host': this.rapidapiHost,
+      'Content-Type': 'application/json',
+    };
+
+    // Tenta endpoint principal /profile
     try {
       const response = await axios.post(
         `https://${this.rapidapiHost}/api/instagram/profile`,
         { username: handle },
-        {
-          headers: {
-            'x-rapidapi-key': this.rapidapiKey,
-            'x-rapidapi-host': this.rapidapiHost,
-            'Content-Type': 'application/json',
-          },
-        },
+        { headers },
       );
-
       const data = response.data.result;
       const followers = data.edge_followed_by?.count || 0;
       const posts = data.edge_owner_to_timeline_media?.count || 0;
+      return {
+        followers,
+        engagement_rate: followers > 0 ? posts / followers : 0,
+        content_type: data.biography || '',
+        recent_stories: [],
+        enrichment_bonus: 0,
+      };
+    } catch {
+      this.logger.warn(`/profile falhou para ${handle}, tentando /userInfo`);
+    }
 
+    // Fallback: /userInfo
+    try {
+      const response = await axios.post(
+        `https://${this.rapidapiHost}/api/instagram/userInfo`,
+        { username: handle },
+        { headers },
+      );
+      const data = response.data?.result?.[0]?.user;
+      if (!data) throw new Error('userInfo sem dados');
+      const followers = data.follower_count || 0;
+      const posts = data.media_count || 0;
       return {
         followers,
         engagement_rate: followers > 0 ? posts / followers : 0,
@@ -145,6 +166,55 @@ export class EnrichmentService {
       });
     } catch (err: any) {
       this.logger.warn(`Não foi possível enviar mensagem enriquecida: ${err.message}`);
+    }
+  }
+
+  async generateFollowupForLead(leadId: string): Promise<{ message: string; hasStories: boolean; storiesCount: number }> {
+    const lead = await this.leadsService.findById(leadId);
+
+    let stories: any[] = [];
+    if (lead.instagram) {
+      const handle = lead.instagram.replace(/^@/, '');
+      stories = await this.fetchInstagramStories(handle);
+    }
+
+    const analyzedStories = stories.length > 0
+      ? await this.aiAnalysisService.analyzeStoryImages(stories)
+      : [];
+
+    const message = await this.aiAnalysisService.generateFollowupMessage(lead, analyzedStories);
+    return { message, hasStories: stories.length > 0, storiesCount: stories.length };
+  }
+
+  async sendFollowupMessage(leadId: string, message: string): Promise<{ sent: boolean }> {
+    await this.messagingService.sendMessage({ leadId, text: message });
+    return { sent: true };
+  }
+
+  private async fetchInstagramStories(handle: string): Promise<any[]> {
+    try {
+      const response = await axios.post(
+        `https://${this.rapidapiHost}/api/instagram/stories`,
+        { username: handle },
+        {
+          headers: {
+            'x-rapidapi-key': this.rapidapiKey,
+            'x-rapidapi-host': this.rapidapiHost,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      const items: any[] = response.data?.result || [];
+      return items.slice(0, 5).map((story: any) => ({
+        takenAt: story.taken_at,
+        mediaType: story.media_type === 2 ? 'video' : 'foto',
+        caption: story.caption?.text || '',
+        imageUrl: story.image_versions2?.candidates?.[0]?.url || '',
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Stories indisponíveis para ${handle} (provavelmente conta privada): ${err.message}`);
+      return [];
     }
   }
 

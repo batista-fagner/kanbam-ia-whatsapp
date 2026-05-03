@@ -231,6 +231,16 @@ Dashboard mostra todas as mensagens
   - Debounce 10s: acumula múltiplas msgs, processa 1x
   - Normalização de phone com/sem DDI 55
   - Typing indicator antes de responder
+- ✅ **Follow-up com Stories + Visão Computacional** (2026-05-02)
+  - Endpoints: `POST /leads/:id/followup` (gera mensagem) + `POST /leads/:id/send-followup` (envia)
+  - Busca stories via RapidAPI `/api/instagram/stories` (máx 5 stories)
+  - Backend baixa cada imagem com headers de browser e converte para base64
+  - GPT-4o Vision analisa cada imagem (foto ou thumbnail de vídeo) em paralelo
+  - Gera mensagem de follow-up citando conteúdo visual específico do story
+  - Se conta privada ou sem stories: usa dados existentes do lead (nicho, ângulo de venda)
+  - Frontend: card "Follow-up com Stories" na página /leads com textarea editável + botão enviar
+  - **RapidAPI fallback**: `/profile` → se 500 → tenta `/userInfo` automaticamente (backend e leadscomia)
+  - leadscomia: `instagramApi.ts` também tem o mesmo fallback para o form da LP
 - ✅ **Facebook CAPI: Qualidade do evento aprimorada** (2026-04-24)
   - Novos parâmetros: fbp (cookie _fbp), external_id (lead UUID), client_ip_address, client_user_agent
   - Nota esperada: 6.9/10 → 8-9/10
@@ -422,6 +432,31 @@ Referência de estilo: Frank Costa — frases curtas, muito espaçadas, uma idei
 
 ---
 
+### 3. Agente Pós-Imersão (segundo agente WhatsApp)
+
+**Problema:** O Efraim atual só cobre o funil de primeira abordagem. Se o lead responder ao follow-up de stories, cai no Efraim com o prompt errado.
+
+**Objetivo:** Criar um segundo agente com prompt e objetivo diferentes — contexto de pós-evento/imersão (reativar, coletar feedback, aquecer para próxima oferta).
+
+**O que construir:**
+- [ ] Definir objetivo do agente pós-imersão (reengajamento, feedback, nova oferta?) — **a definir com Fagner**
+- [ ] Novo prompt com contexto de pós-imersão
+- [ ] Campo `agentMode` no lead ou uso do `waStage` para identificar qual agente responde
+- [ ] Roteamento no webhook (`/api/webhooks/whatsapp`): se lead veio do follow-up → agente B, senão → Efraim padrão
+
+**Roteamento sugerido:**
+```
+Webhook recebe mensagem do lead
+  ↓
+Verifica agentMode do lead (ou waStage)
+  ↓
+agentMode = 'efraim'      → prompt funil primeira abordagem
+agentMode = 'pos-imersao' → prompt pós-evento
+agentMode = null          → Efraim padrão
+```
+
+---
+
 ### ⚠️ Pendências
 - [x] **Renovar FB_ADS_TOKEN para token de longa duração (60 dias)** — ✅ CONCLUÍDO em 2026-04-21
 - [x] **Renovar IG_TOKEN (IGAAX) para 60 dias** — ✅ CONCLUÍDO em 2026-04-20
@@ -434,7 +469,28 @@ Referência de estilo: Frank Costa — frases curtas, muito espaçadas, uma idei
   - `HeroContent.tsx`: título, subtítulo (em negrito) e bullets atualizados
   - `LeadForm.tsx`: título do box, subtítulo, botão e rodapé atualizados
 - [ ] **Outras redesigns de layout** — user mencionou depois
+- [x] **Meta Pixel no leadscomia** — ✅ CONCLUÍDO em 2026-05-02
+  - Script instalado no `index.html` (ID: 964343959626807 — mesmo do funnel-platform)
+  - `PageView` — dispara ao entrar na home
+  - `ViewContent` — dispara ao chegar na página `/resultado`
+  - `Lead` — dispara após preencher nome + WhatsApp e enviar o form (só no sucesso)
+  - Visível no Gerenciador de Eventos do Meta com taxa de conversão por etapa
+- [x] **leadscomia — melhorias de UX e copy (2026-05-02)**
+  - Modal de confirmação ao avançar sem Instagram (design glass-card da página)
+  - Bullets do fallback (sem Instagram) atualizados com dores reais do funil
+  - CTA dos dois botões da página de resultado: "Quero ver ao vivo!"
+  - Headline da home atualizada
+  - Estatística social proof atualizada (83% vs 66%)
+  - Espaçamentos das seções ajustados
+  - Fix email vazio → `null` no backend (evitava erro unique constraint)
+
+### 📊 Analytics — Decisão (2026-05-02)
+- **Meta Pixel** instalado — suficiente para analisar funil de tráfego pago
+- **Google Analytics 4** — avaliado, decidido não instalar por enquanto
+  - Seria útil para visão de tráfego orgânico/direto independente do Meta
+  - Para adicionar: criar propriedade GA4, pegar ID `G-XXXXXXXXXX`, instalar no `index.html` e `Result.tsx`
+  - O Meta Ads Manager já resolve o necessário para a fase atual
 
 ---
 
-**Última atualização:** 2026-04-28 (Feature Carrossel IG ✅ implementada e testada)
+**Última atualização:** 2026-05-02 (Meta Pixel leadscomia ✅ | UX/copy leadscomia ✅ | Follow-up Stories + Visão ✅ | Fallback RapidAPI ✅)

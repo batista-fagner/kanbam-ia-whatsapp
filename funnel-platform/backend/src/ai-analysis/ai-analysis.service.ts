@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { Post } from '../common/entities/lead.entity';
+import axios from 'axios';
+import { Post, Lead } from '../common/entities/lead.entity';
 
 export interface LeadInsight {
   niche: string;
@@ -117,6 +118,118 @@ Responda APENAS com este JSON, sem markdown:
     } catch (err: any) {
       this.logger.error(`Erro ao analisar lead: ${err.message}`);
       return this.getDefaultInsight();
+    }
+  }
+
+  async analyzeStoryImages(stories: { imageUrl: string; mediaType: string; caption: string }[]): Promise<{ mediaType: string; caption: string; description: string }[]> {
+    const results = await Promise.all(
+      stories.map(async (story) => {
+        if (!story.imageUrl) {
+          return { mediaType: story.mediaType, caption: story.caption, description: '' };
+        }
+        try {
+          const imgResponse = await axios.get(story.imageUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Referer': 'https://www.instagram.com/',
+            },
+            timeout: 10000,
+          });
+          const base64 = Buffer.from(imgResponse.data).toString('base64');
+          const mimeType = imgResponse.headers['content-type'] || 'image/jpeg';
+          const dataUrl = `data:${mimeType};base64,${base64}`;
+
+          const response = await this.openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: { url: dataUrl, detail: 'low' },
+                },
+                {
+                  type: 'text',
+                  text: story.mediaType === 'video'
+                    ? 'Essa é a thumbnail de um vídeo/reels do Instagram Story. Descreva em 1-2 frases: tema do conteúdo, ambiente, o que a pessoa está fazendo ou mostrando, textos visíveis na tela. Seja objetivo e direto.'
+                    : 'Esse é um story do Instagram. Descreva em 1-2 frases: tema principal, o que aparece na imagem, textos visíveis, produto ou serviço mostrado, tom emocional. Seja objetivo e direto.',
+                },
+              ],
+            }],
+            max_tokens: 120,
+          });
+          const description = response.choices[0].message.content?.trim() || '';
+          this.logger.log(`Story analisado: ${description.slice(0, 60)}...`);
+          return { mediaType: story.mediaType, caption: story.caption, description };
+        } catch (err: any) {
+          this.logger.warn(`Falha ao analisar imagem do story: ${err.message}`);
+          return { mediaType: story.mediaType, caption: story.caption, description: '' };
+        }
+      }),
+    );
+    return results;
+  }
+
+  async generateFollowupMessage(lead: Lead, stories: { mediaType: string; caption: string; description: string }[]): Promise<string> {
+    const firstName = lead.name.split(' ')[0];
+    const insight = lead.aiInsight;
+    const hasStories = stories.length > 0;
+
+    const storiesContext = hasStories
+      ? `STORIES RECENTES (${stories.length} stories — analisados por visão computacional):\n${stories.map((s, i) => {
+          const lines = [`Story ${i + 1} (${s.mediaType})`];
+          if (s.description) lines.push(`  Conteúdo visual: ${s.description}`);
+          if (s.caption) lines.push(`  Legenda: "${s.caption}"`);
+          return lines.join('\n');
+        }).join('\n')}`
+      : 'Conta privada ou sem stories ativos no momento.';
+
+    const leadContext = insight
+      ? `Nicho: ${insight.niche}\nNível de engajamento: ${insight.engagement_level}\nPúblico: ${insight.audience_profile}\nAngulo de venda identificado: ${insight.selling_angle}`
+      : `Nome: ${lead.name}\nInstagram: ${lead.instagram || 'não informado'}\nEmail: ${lead.email || 'não informado'}`;
+
+    const prompt = `Você é Efraim, assistente de Fagner no WhatsApp. O lead ${firstName} já recebeu a primeira mensagem e você quer fazer um follow-up personalizado${hasStories ? ' baseado nos stories que ele postou recentemente' : ''}.
+
+CONTEXTO DO LEAD:
+${leadContext}
+
+${storiesContext}
+
+REGRAS PARA O FOLLOW-UP:
+- É uma mensagem de follow-up, não a primeira abordagem
+- ${hasStories ? 'Use a descrição visual do story para ser MUITO específico: mencione o que a pessoa estava fazendo ou mostrando, de forma natural e sem parecer stalker' : 'Como o perfil é privado, use o que você sabe do nicho e do lead para personalizar'}
+- Tom coloquial e casual, como amigo no WhatsApp
+- Máximo 3 linhas curtas
+- Use reticências (".." ou "...") para ritmo natural
+- Sem emojis ou no máximo 1
+- Termine com uma pergunta ou gancho leve, não agressivo
+- Nunca mencione "follow-up" ou que está fazendo contato de novo explicitamente
+
+EXEMPLO (com stories):
+"oi ${firstName}.. vi seu story de hoje
+gostei do [conteúdo do story].. faz muito sentido pro seu público
+e aí, ficou alguma dúvida sobre o que conversamos?"
+
+EXEMPLO (sem stories / conta privada):
+"oi ${firstName}.. passando aqui pra saber se ficou alguma dúvida
+sobre o que a gente conversou antes
+como tá indo o [contexto do nicho]?"
+
+Responda APENAS com o texto da mensagem, sem aspas, sem JSON, sem explicações.`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-5.4-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_completion_tokens: 200,
+      });
+
+      return response.choices[0].message.content?.trim() || 'oi, passando pra saber se ficou alguma dúvida sobre o que conversamos!';
+    } catch (err: any) {
+      this.logger.error(`Erro ao gerar followup: ${err.message}`);
+      return 'oi, passando pra saber se ficou alguma dúvida sobre o que conversamos!';
     }
   }
 

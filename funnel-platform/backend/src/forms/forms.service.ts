@@ -53,7 +53,7 @@ export class FormsService {
     const lead = await this.leadsService.create({
       name: dto.name,
       phone: dto.phone,
-      email: dto.email,
+      email: dto.email || undefined,
       instagram: dto.instagram,
       status: 'novo',
       score: 0,
