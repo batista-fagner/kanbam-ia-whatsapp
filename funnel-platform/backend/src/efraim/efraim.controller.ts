@@ -14,6 +14,8 @@ export class EfraimController {
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
 
+  private readonly eventDate: string;
+
   constructor(
     private readonly efraimService: EfraimService,
     private readonly leadsService: LeadsService,
@@ -22,9 +24,10 @@ export class EfraimController {
   ) {
     this.uazapiBaseUrl = config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('UAZAPI_TOKEN') || '';
+    this.eventDate = config.get('EFRAIM_EVENT_DATE') || 'terça às 20h';
   }
 
-  @Post('whatsapp')
+  @Post('uazapi')
   async handleWhatsAppWebhook(@Body() body: any) {
     // Formato uazapi
     if (body.EventType !== 'messages') return { ok: true };
@@ -110,8 +113,15 @@ export class EfraimController {
     // Mostra "digitando..." por 2s antes de responder
     await this.sendTyping(phone, 2000);
 
-    // Processa com IA
-    const aiResponse = await this.efraimService.processMessage(lead, text);
+    // Processa com IA (1 retry automático se falhar)
+    let aiResponse = await this.efraimService.processMessage(lead, text);
+    if (!aiResponse.success) {
+      this.logger.warn(`Efraim falhou, tentando novamente em 2s para ${phone}`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      aiResponse = await this.efraimService.processMessage(lead, text);
+    }
+
+    const previousStage = lead.waStage;
 
     // Atualiza contexto e stage no lead
     const updatedContext = this.efraimService.buildUpdatedContext(lead, text, aiResponse.reply);
@@ -121,8 +131,23 @@ export class EfraimController {
       waLastMessageAt: new Date(),
     });
 
-    // Envia resposta via uazapi
-    await this.sendMessage(phone, aiResponse.reply);
+    // Envia resposta via uazapi (silencioso se erro)
+    if (aiResponse.reply) await this.sendMessage(phone, aiResponse.reply);
+
+    // Se entrou no stage "video" pela primeira vez, envia follow-up automático
+    if (aiResponse.stage === 'video' && previousStage !== 'video') {
+      setTimeout(async () => {
+        try {
+          await this.sendTyping(phone, 3000);
+          const followupText = await this.efraimService.generateVideoFollowup(lead, this.eventDate);
+          await this.sendMessage(phone, followupText);
+          await this.leadsService.update(lead.id, { waStage: 'fechamento' });
+          this.logger.log(`Follow-up de vídeo enviado para ${phone}, stage → fechamento`);
+        } catch (err: any) {
+          this.logger.error(`Erro no follow-up de vídeo: ${err.message}`);
+        }
+      }, 5000);
+    }
   }
 
   private async sendMessage(phone: string, text: string) {

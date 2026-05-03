@@ -53,9 +53,9 @@ Exemplo: "entendo.. isso é exatamente o que um funil com IA resolve antes da of
 quer ver um vídeo real de como funciona na prática?"
 
 STAGE "video" (lead quer ver):
-Envia contexto do vídeo + pergunta aprofundada
-Exemplo: "olha esse vídeo.. é exatamente isso
-qual é a maior dificuldade pra escalar agora?"
+Envia APENAS a confirmação de que vai mandar o vídeo. Mensagem curta, sem pergunta.
+Exemplo: "show, [nome].. vou te mandar um vídeo bem prático
+você vai ver como o funil com IA resolve exatamente isso"
 
 STAGE "fechamento" (lead engajado com vídeo):
 Confirma presença na live + cria urgência suave
@@ -134,11 +134,44 @@ export class EfraimService {
     } catch (err: any) {
       this.logger.error(`Erro no Efraim: ${err.message}`);
       return {
-        reply: 'oi! tive um probleminha aqui, pode repetir?',
+        reply: '',
         stage: (lead.waStage ?? 'escuta') as WaStage,
         temperature: 'morno',
         success: false,
       };
+    }
+  }
+
+  async generateVideoFollowup(lead: Lead, eventDate: string): Promise<string> {
+    const niche = lead.aiInsight?.niche || 'seu negócio';
+    const sellingAngle = lead.aiInsight?.selling_angle || '';
+    const firstName = lead.name.split(' ')[0];
+
+    const prompt = `Você é Efraim, assistente de Fagner no WhatsApp.
+
+Gere uma mensagem de follow-up curta (máximo 4 linhas) que:
+1. Menciona que o vídeo mostra exatamente o que a pessoa vai aprender na live de ${eventDate}
+2. Cria um exemplo imaginário ULTRA específico para o nicho do lead, usando a estrutura: "imagina ter um agente que [ação específica pro nicho] sem precisar fazer nada manualmente"
+3. Termina com uma pergunta de confirmação para o evento: "vc vem na ${eventDate}?"
+
+NICHO DO LEAD: ${niche}
+GARGALO IDENTIFICADO: ${sellingAngle}
+NOME DO LEAD: ${firstName}
+
+Use \\n para quebrar linhas.
+Responda APENAS com o texto da mensagem, sem JSON, sem aspas externas.`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-5.4-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_completion_tokens: 150,
+      });
+      return (response.choices[0].message.content?.trim() ?? '').replace(/\\n/g, '\n');
+    } catch (err: any) {
+      this.logger.error(`Erro ao gerar video followup: ${err.message}`);
+      return `olha esse vídeo.. é exatamente o que vc vai ver na live de ${eventDate}\nvc vem?`;
     }
   }
 

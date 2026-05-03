@@ -463,6 +463,7 @@ agentMode = null          → Efraim padrão
 - [x] **Implementar Efraim (agente WhatsApp)** — ✅ CONCLUÍDO em 2026-04-24
 - [x] **Melhorar qualidade evento Facebook** — ✅ CONCLUÍDO em 2026-04-24 (6.9 → 8-9/10)
 - [ ] **Renovar token uazapi** — temporário (1h), precisa gerar novo quando expirar
+- [ ] **Otimizar prompt do follow-up de vídeo (Efraim)** — método `generateVideoFollowup()` em `efraim.service.ts`; ajustar tom, exemplo de nicho e CTA de confirmação para o evento
 - [ ] **Integração Kiwify webhook** — POST /api/checkout/webhook pra marcar convertido via checkout
 - [ ] **Kanban board visual** — opcional, usa waStage para mostrar progresso dos leads
 - [x] **Copy da landing page leadscomia (página inicial)** — ✅ CONCLUÍDO em 2026-04-26
