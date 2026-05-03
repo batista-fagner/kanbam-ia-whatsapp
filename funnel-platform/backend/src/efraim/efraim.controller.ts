@@ -41,9 +41,9 @@ export class EfraimController {
 
     if (!phone || !text) return { ok: true };
 
-    // Ignora mensagens antigas (> 5 min)
+    // Ignora mensagens antigas (> 5 min) — messageTimestamp vem em segundos do uazapi
     if (message.messageTimestamp) {
-      const ageSeconds = (Date.now() - message.messageTimestamp) / 1000;
+      const ageSeconds = (Date.now() / 1000) - message.messageTimestamp;
       if (ageSeconds > 300) {
         this.logger.warn(`Mensagem ignorada — antiga (${Math.round(ageSeconds)}s): ${phone}`);
         return { ok: true };
