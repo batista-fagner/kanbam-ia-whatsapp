@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, removeLabel } from '../services/api'
+
+const labelColor = {
+  inativo:          'bg-red-100 text-red-600 border-red-200',
+  desrespeitoso:    'bg-red-100 text-red-600 border-red-200',
+  emergencia:       'bg-red-100 text-red-600 border-red-200',
+  'fora-de-escopo': 'bg-blue-100 text-blue-600 border-blue-200',
+}
+const labelIcon = {
+  inativo:          '🚫',
+  desrespeitoso:    '⛔',
+  emergencia:       '🚨',
+  'fora-de-escopo': '📵',
+}
 
 const urgencyLabel = { alta: '⚠️ Alta', media: '🟡 Média', baixa: '🟢 Baixa' }
 const urgencyColor = { alta: 'text-red-600 bg-red-50', media: 'text-yellow-700 bg-yellow-50', baixa: 'text-green-700 bg-green-50' }
@@ -46,6 +59,7 @@ export default function LeadModal({ lead, onClose }) {
   const [history, setHistory] = useState([])
   const [manualText, setManualText] = useState('')
   const [sending, setSending] = useState(false)
+  const [labels, setLabels] = useState(lead?.labels ?? [])
 
   useEffect(() => {
     if (!lead) return
@@ -61,6 +75,15 @@ export default function LeadModal({ lead, onClose }) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight
     }
   }, [messages])
+
+  async function handleRemoveLabel(label) {
+    setLabels(prev => prev.filter(l => l !== label))
+    try {
+      await removeLabel(lead.id, label)
+    } catch {
+      setLabels(prev => [...prev, label])
+    }
+  }
 
   async function handleToggleAi() {
     const next = !aiEnabled
@@ -189,6 +212,32 @@ export default function LeadModal({ lead, onClose }) {
                   </a>
                 )}
               </div>
+
+              {/* Etiquetas */}
+              {labels.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <Tag className="w-3 h-3" /> Etiquetas
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {labels.map(label => (
+                      <span
+                        key={label}
+                        className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${labelColor[label] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}
+                      >
+                        {labelIcon[label] ?? '🏷️'} {label}
+                        <button
+                          onClick={() => handleRemoveLabel(label)}
+                          className="ml-0.5 hover:opacity-70 transition-opacity"
+                          title="Remover etiqueta"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* AI Toggle */}
               <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">

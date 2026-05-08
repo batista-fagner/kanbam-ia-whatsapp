@@ -10,6 +10,20 @@ const urgencyColor = {
   baixa: 'bg-gray-100 text-gray-500',
 }
 
+const labelColor = {
+  inativo:         'bg-red-100 text-red-600',
+  desrespeitoso:   'bg-red-100 text-red-600',
+  emergencia:      'bg-red-100 text-red-600',
+  'fora-de-escopo': 'bg-blue-100 text-blue-600',
+}
+
+const labelIcon = {
+  inativo:         '🚫',
+  desrespeitoso:   '⛔',
+  emergencia:      '🚨',
+  'fora-de-escopo': '📵',
+}
+
 const tempBadge = {
   quente: '🔥',
   morno:  '☀️',
@@ -141,6 +155,20 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
           </span>
         )}
       </div>
+
+      {/* Etiquetas de segurança */}
+      {lead.labels && lead.labels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {lead.labels.map((label) => (
+            <span
+              key={label}
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${labelColor[label] ?? 'bg-gray-100 text-gray-500'}`}
+            >
+              {labelIcon[label] ?? '🏷️'} {label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Last message timestamp */}
       {lead.lastMessageAt && (

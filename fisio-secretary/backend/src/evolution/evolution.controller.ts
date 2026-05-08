@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Query, Res, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { LeadsService } from '../leads/leads.service';
@@ -97,23 +98,23 @@ export class EvolutionController {
   private async processMessage(phone: string, combinedText: string, messageKeyId: string) {
     const { lead, conversation } = await this.leadsService.findOrCreate(phone);
 
-    // Lead perdido voltou a falar: reinicia como lead_frio
+    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
+    await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
+
+    // Se IA desativada (etiquetado como inativo), apenas salva e notifica frontend — nunca responde
+    const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
+    if (!aiEnabled) {
+      this.logger.log(`IA desativada para ${phone} — mensagem ignorada (lead etiquetado ou operador assumiu)`);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
+    // Lead perdido voltou a falar (sem estar desativado): reinicia como lead_frio
     if (lead.stage === 'perdido') {
       await this.leadsService.updateStage(lead.id, 'lead_frio' as any, 'system');
       lead.stage = 'lead_frio' as any;
       this.logger.log(`Lead ${phone} era perdido — movido para lead_frio ao retornar`);
-    }
-
-    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
-    await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
-
-    // Se IA desativada, apenas salva a mensagem e notifica o frontend
-    const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
-    if (!aiEnabled) {
-      this.logger.log(`IA desativada para ${phone} — mensagem salva, aguardando operador`);
-      const updatedLead = await this.leadsService.findOne(lead.id);
-      this.leadsGateway.emitLeadUpdated(updatedLead);
-      return;
     }
 
     // Mostra "digitando..." enquanto a IA processa
@@ -122,6 +123,36 @@ export class EvolutionController {
     // Processa com IA
     const aiResponse = await this.aiService.processMessage(lead, combinedText);
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
+
+    // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
+    if (aiResponse.shouldIgnore === true) {
+      this.logger.warn(`Lead ${phone} marcado para ignorar. Aplicando etiquetas e não respondendo mais.`);
+
+      // Envia a mensagem final UMA VEZ antes de silenciar
+      if (aiResponse.reply) {
+        await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
+      }
+
+      // Aplica etiquetas na uazapi e salva no banco
+      const tags = aiResponse.tags ?? [];
+      if (tags.length > 0) {
+        await this.applyTagsToLead(phone, tags);
+        const existingLabels: string[] = lead.labels ?? [];
+        const mergedLabels = Array.from(new Set([...existingLabels, ...tags]));
+        await this.leadsService.update(lead.id, { labels: mergedLabels } as any);
+      }
+
+      // Atualiza stage e desativa IA permanentemente para nunca mais responder
+      if (aiResponse.stage) {
+        await this.leadsService.updateStage(lead.id, aiResponse.stage as any, 'ai');
+      }
+      await this.leadsService.toggleAi(lead.id, false);
+
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
 
     // Atualiza contexto e campos do lead
     const updatedContext = aiResponse.success
@@ -344,5 +375,79 @@ export class EvolutionController {
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
     return { ok: true };
+  }
+
+  /**
+   * Aplica etiquetas em um contato via uazapi:
+   * 1. Busca etiquetas existentes (GET /labels)
+   * 2. Cria as que não existem (POST /label/edit)
+   * 3. Busca novamente para pegar IDs atualizados
+   * 4. Associa cada etiqueta ao contato (POST /chat/labels com add_labelid)
+   */
+  private async applyTagsToLead(phone: string, tags: string[]): Promise<void> {
+    const uazapiUrl = this.configService.get('UAZAPI_BASE_URL') || 'https://labsai.uazapi.com';
+    const uazapiToken = this.configService.get('UAZAPI_TOKEN');
+
+    if (!uazapiToken) {
+      this.logger.warn('UAZAPI_TOKEN não configurado — etiquetas não aplicadas');
+      return;
+    }
+
+    const headers = {
+      token: uazapiToken,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    try {
+      this.logger.log(`Aplicando etiquetas ao contato ${phone}: ${tags.join(', ')}`);
+
+      // 1. Busca etiquetas existentes
+      const labelsRes = await axios.get(`${uazapiUrl}/labels`, { headers });
+      let existingLabels: Array<{ id: string; name: string }> = labelsRes.data || [];
+      const existingByName = new Map(existingLabels.map((l) => [l.name.toLowerCase(), l.id]));
+
+      // 2. Cria etiquetas que ainda não existem (cores: 1=verde, 2=amarelo, 3=azul, 4=vermelho, 5=roxo)
+      const colorMap: Record<string, number> = {
+        inativo: 4,       // vermelho
+        desrespeitoso: 4, // vermelho
+        emergencia: 4,    // vermelho
+        'fora-de-escopo': 3, // azul
+      };
+
+      for (const tag of tags) {
+        if (!existingByName.has(tag.toLowerCase())) {
+          this.logger.log(`Criando etiqueta "${tag}"`);
+          await axios.post(
+            `${uazapiUrl}/label/edit`,
+            { labelid: 'new', name: tag, color: colorMap[tag.toLowerCase()] ?? 1, delete: false },
+            { headers },
+          );
+        }
+      }
+
+      // 3. Busca novamente para pegar IDs das recém-criadas
+      const updatedRes = await axios.get(`${uazapiUrl}/labels`, { headers });
+      existingLabels = updatedRes.data || [];
+      const updatedByName = new Map(existingLabels.map((l) => [l.name.toLowerCase(), l.id]));
+
+      // 4. Associa cada etiqueta ao contato individualmente
+      for (const tag of tags) {
+        const labelId = updatedByName.get(tag.toLowerCase());
+        if (!labelId) {
+          this.logger.warn(`Etiqueta "${tag}" não encontrada após criação`);
+          continue;
+        }
+
+        await axios.post(
+          `${uazapiUrl}/chat/labels`,
+          { number: phone, add_labelid: labelId },
+          { headers },
+        );
+        this.logger.log(`Etiqueta "${tag}" (id=${labelId}) aplicada ao contato ${phone}`);
+      }
+    } catch (err) {
+      this.logger.error(`Erro ao aplicar etiquetas para ${phone}: ${err.message}`);
+    }
   }
 }

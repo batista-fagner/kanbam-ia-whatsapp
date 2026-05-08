@@ -11,6 +11,8 @@ export interface AiResponse {
   temperature?: string;
   action?: 'schedule' | 'cancel' | 'reschedule' | 'none';
   appointmentDateTime?: string; // ISO 8601: "2026-03-28T09:00:00"
+  tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
+  shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
   fields?: {
     name?: string;
     symptoms?: string;
@@ -34,10 +36,15 @@ function buildLeadContext(lead: Lead): string {
   if (lead.appointmentAt) {
     const d = new Date(lead.appointmentAt);
     const fmt = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()} às ${d.getHours().toString().padStart(2,'0')}h${d.getMinutes().toString().padStart(2,'0').replace('00','')}`;
-    lines.push(`- Consulta agendada: ${fmt}`);
+    const isPast = d < new Date();
+    if (isPast) {
+      lines.push(`- Consulta agendada: ${fmt} ⚠️ DATA JÁ PASSOU — informe o paciente que essa data já passou e pergunte se deseja reagendar`);
+    } else {
+      lines.push(`- Consulta agendada: ${fmt}`);
+    }
   }
   if (lines.length === 0) return '';
-  return `\nCONTEXTO DO LEAD ATUAL (use para nunca perguntar o que já foi respondido):\n${lines.join('\n')}\n`;
+  return `\n\n════ DADOS REAIS DO LEAD — PRIORIDADE MÁXIMA ════\nUse APENAS estes dados. Nunca invente ou calcule datas. Nunca pergunte o que já está aqui.\n${lines.join('\n')}\n════════════════════════════════════════════════`;
 }
 
 function buildSystemPrompt(lead?: Lead): string {
@@ -63,7 +70,11 @@ Seu objetivo é qualificar leads via WhatsApp de forma natural, empática e prof
 DATA DE HOJE: ${dataHoje} (${diaSemanaHoje})
 PRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):
 ${proximosDias}
-NUNCA agende em datas anteriores à data de hoje. Use sempre a data do calendário acima ao mencionar dias da semana.
+CRÍTICO — VALIDAÇÃO DE DATA:
+- NUNCA agende em datas anteriores à data de hoje. Valide sempre!
+- Se o paciente disser "amanhã", é dia ${proximosDias.split('\n')[0].split(': ')[1]}.
+- Se disser "em 3 dias", conte exatamente 3 linhas do calendário acima.
+- Confirme SEMPRE a data completa (dia/mês) ANTES de agendar.
 
 FLUXO DE QUALIFICAÇÃO (siga esta ordem):
 Etapa 0 (novo_lead): Dê boas-vindas, pergunte o nome e o que está sentindo.
@@ -80,11 +91,15 @@ REGRAS GERAIS:
 
 REGRAS DE AGENDAMENTO:
 - NUNCA confirme agendamento sem ter data e hora exatas do paciente.
-- Se o paciente disser "sexta" ou "amanhã", calcule a data exata com base na DATA DE HOJE acima.
-- Antes de definir action="schedule", SEMPRE confirme com o paciente a data completa (dia/mês) e horário. Ex: "Ótimo! Confirmo sua consulta para sexta-feira, dia 03/04, às 14h. Está certo?"
+- Antes de definir action="schedule", SEMPRE confirme com o paciente a data completa (dia/mês) e horário. Ex: "Ótimo! Confirmo sua consulta para sexta-feira, dia 07/05, às 14h. Está certo?"
 - Só defina action="schedule" e appointmentDateTime APÓS o paciente confirmar a data e hora apresentadas.
-- O appointmentDateTime deve ser no formato ISO 8601: "2026-04-03T14:00:00"
+- O appointmentDateTime deve ser no formato ISO 8601: "2026-05-07T14:00:00"
 - Quando o sistema informar que o horário está ocupado, ofereça os horários alternativos disponíveis.
+
+REGRA CRÍTICA — CONSULTA AGENDADA:
+- Se nos dados do lead constar "Consulta agendada", use EXATAMENTE essa data ao responder. NUNCA invente outra data.
+- Se a data estiver marcada como "DATA JÁ PASSOU", informe o paciente que a data já passou e pergunte se deseja reagendar.
+- Nunca diga que a consulta é "amanhã" ou qualquer outro dia sem ter a data exata nos dados do lead.
 
 CANCELAMENTO:
 - Se o paciente quiser cancelar ("não vou poder ir", "preciso cancelar", "não consigo ir"), confirme com empatia e defina action="cancel".
@@ -107,8 +122,35 @@ REGRA CRÍTICA — ESTÁGIOS SÓ AVANÇAM:
 - Se lead cancelar mas quiser remarcar, mantenha "agendado" até confirmar nova data.
 - Exceções: "lead_frio" e "perdido" podem ocorrer a qualquer momento por desinteresse.
 
-REGRAS PARA perdido:
-- Nunca insista após recusa clara. Resposta empática de despedida e marque como perdido.
+════════════════════════════════════════════════════════════════
+⚠️ CAMADAS DE SEGURANÇA — INATIVAÇÃO DE LEAD
+════════════════════════════════════════════════════════════════
+
+CAMADA 1 — DESRESPEITO/AGRESSIVIDADE → INATIVAR (não responder mais)
+Se o lead for desrespeitoso, agressivo, xingador ou ofensivo:
+- Responda UMA ÚNICA VEZ com educação: "Respeito é fundamental. Se mudar de ideia, estaremos por aqui."
+- Defina: tags=["inativo","desrespeitoso"], shouldIgnore=true, stage="perdido"
+- Nunca responda novamente mensagens deste lead.
+
+CAMADA 2 — ASSUNTO COMPLETAMENTE FORA DE ESCOPO → INATIVAR (não responder mais)
+Se o lead mencionar problemas que a clínica NÃO trata (genitais, cirurgias, doenças sistêmicas, psicológicas):
+- Responda UMA ÚNICA VEZ com educação: "Desculpe, não trabalhamos com esse tipo de atendimento. Recomendamos consultar um especialista adequado."
+- Defina: tags=["inativo","fora-de-escopo"], shouldIgnore=true, stage="perdido"
+- Nunca responda novamente mensagens deste lead.
+
+CAMADA 3 — ASSUNTO RELACIONADO MAS FORA DE ESCOPO → CONTINUAR ATENDENDO
+Se o lead mencionar dores/problemas relacionados mas não da especialidade (dor abdominal, problemas oftalmológicos, etc):
+- Responda com empatia: "Entendo sua dor. Infelizmente, esse tipo de problema precisa de um especialista em [área]. Recomendamos consultar um [profissional]."
+- NÃO marque como inativo. Apenas continue o fluxo normal.
+- Exemplo: lumbago (costas) = trabalha | hérnia de disco cervical = trabalha | gastrite = NÃO trabalha mas não inativa
+
+CAMADA 4 — EMERGÊNCIA MÉDICA → INATIVAR (não responder mais)
+Se o lead mencionar emergência (acidente grave, dor intensa + tontura, perda de consciência, hemorragia, etc):
+- Responda com URGÊNCIA: "⚠️ PROCURE UM PRONTO SOCORRO IMEDIATAMENTE! Ligue para 192 ou vá ao hospital mais próximo. Sua saúde é prioridade!"
+- Defina: tags=["inativo","emergencia"], shouldIgnore=true, stage="perdido"
+- Nunca responda novamente mensagens deste lead (backend não envia resposta).
+
+════════════════════════════════════════════════════════════════
 
 RESPONDA SEMPRE em JSON com este formato exato:
 {
@@ -116,7 +158,9 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "stage": "novo_lead|qualificando|lead_quente|lead_frio|agendado|perdido",
   "temperature": "quente|morno|frio",
   "action": "schedule|cancel|reschedule|none",
-  "appointmentDateTime": "2026-04-03T14:00:00 ou null",
+  "appointmentDateTime": "2026-05-07T14:00:00 ou null",
+  "tags": ["tag1", "tag2"] ou [],
+  "shouldIgnore": false,
   "fields": {
     "name": "nome se coletado",
     "symptoms": "sintomas se coletados",
@@ -144,7 +188,25 @@ export class AiService {
   async processMessage(lead: Lead, incomingText: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
+    // Injeta fato da consulta como mensagem confirmada no início do histórico
+    // para a IA nunca inventar datas — ela parte do que já "confirmou"
+    const appointmentFacts: Anthropic.MessageParam[] = [];
+    if (lead.appointmentAt) {
+      const d = new Date(lead.appointmentAt);
+      const fmt = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()} às ${d.getHours().toString().padStart(2,'0')}h${d.getMinutes().toString().padStart(2,'0') || '00'}`;
+      const isPast = d < new Date();
+      const factMsg = isPast
+        ? `[Sistema] A consulta deste paciente estava agendada para ${fmt}, mas essa data já passou. Pergunte se deseja reagendar.`
+        : `[Sistema] A consulta deste paciente está confirmada para ${fmt}.`;
+      appointmentFacts.push({ role: 'user', content: factMsg });
+      appointmentFacts.push({ role: 'assistant', content: isPast
+        ? `Entendido. Vou informar que a consulta de ${fmt} já passou e oferecer reagendamento.`
+        : `Entendido. Vou confirmar a consulta agendada para ${fmt}.`
+      });
+    }
+
     const messages: Anthropic.MessageParam[] = [
+      ...appointmentFacts,
       ...history,
       { role: 'user', content: incomingText },
     ];

@@ -11,9 +11,11 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
 - **IA:** Anthropic Claude (claude-haiku-4-5-20251001)
-- **STT:** OpenAI Whisper (transcrição via uazapi)
+- **STT:** OpenAI Whisper (transcrição automática via uazapi OU manual via Meta API)
 - **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
-- **WhatsApp:** uazapi (API gerenciada, R$ 29/mês)
+- **WhatsApp:** Modular via `IWhatsAppProvider` interface — uazapi (R$ 29/mês) OU Meta Official API (badge verde + compliance)
+  - Switching em runtime via `WHATSAPP_PROVIDER` env var (sem recompilação)
+  - Strategy Pattern + Factory pattern em NestJS
 - **Infra:** Docker (apenas Redis), Backend/Frontend em localhost
 
 ---
@@ -24,10 +26,14 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 fisio-secretary/
 ├── backend/src/
 │   ├── evolution/
-│   │   ├── evolution.controller.ts   ← webhook POST /webhooks/uazapi + processMessage() privado
-│   │   ├── evolution.service.ts      ← sendTextMessage(), sendTypingIndicator(), sendAudioMessage(), transcribeAudio()
-│   │   ├── message-queue.service.ts  ← debounce de 10s por phone, callback-based
-│   │   └── evolution.module.ts
+│   │   ├── evolution.controller.ts                 ← webhook POST /webhooks/{uazapi,whatsapp} + processMessage() privado
+│   │   ├── evolution.service.ts                    ← wrapper para IWhatsAppProvider (sendTextMessage, sendAudioMessage, etc)
+│   │   ├── message-queue.service.ts                ← debounce de 10s por phone, callback-based
+│   │   ├── providers/
+│   │   │   ├── whatsapp-provider.interface.ts      ← interface abstrata para qualquer provider
+│   │   │   ├── uazapi.provider.ts                  ← implementação uazapi
+│   │   │   └── meta.provider.ts                    ← implementação Meta Official API
+│   │   └── evolution.module.ts                     ← factory que seleciona provider via WHATSAPP_PROVIDER env
 │   ├── audio/
 │   │   ├── audio.service.ts          ← transcribe() via Whisper, textToSpeech() via Google Cloud TTS
 │   │   └── audio.module.ts
@@ -106,6 +112,44 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 - **Fase 6:** ✅ Concluída — Mensagens de áudio: STT via uazapi + TTS via Google Cloud (voz pt-BR-Neural2-C)
 - **Fase 7:** ✅ Concluída — Migração Evolution API → uazapi (11/04/2026)
 - **Fase 8:** ✅ Concluída — Envio em Massa com Sidebar (11/04/2026)
+- **Fase 9:** ✅ Concluída — Meta Official API modular + provider switching (29/04/2026)
+
+---
+
+## Funcionalidades implementadas (29/04/2026 — Fase 9)
+
+### Meta Official API — Integração Modular
+- **Objetivo:** Oferecer alternativa à uazapi com badge verde no WhatsApp + compliance oficial
+- **Arquitetura:** Strategy Pattern com `IWhatsAppProvider` interface
+  - `UazapiProvider` — implementação existente (sem modificações)
+  - `MetaProvider` — implementação nova para Meta Official API
+  - Factory pattern em `evolution.module.ts` — seleciona provider via `WHATSAPP_PROVIDER` env var
+- **Switching em tempo de execução:** `WHATSAPP_PROVIDER=meta` ou `WHATSAPP_PROVIDER=uazapi` no `.env`
+  - Muda ALL operations: webhooks, envio de texto/áudio, transcrição, indicador de digitação
+  - Sem recompilação necessária
+- **MetaProvider endpoints:**
+  - Webhook verificação: `GET /webhooks/whatsapp` (desafio Meta com hub.challenge)
+  - Webhook mensagens: `POST /webhooks/whatsapp` (recebe whatsapp_business_account events)
+  - Envio de texto: `POST /v20.0/{phoneNumberId}/messages` com estrutura `messaging_product: whatsapp`
+  - Envio de áudio: 2 passos (upload media → enviar com media_id)
+  - Transcrição manual: via OpenAI Whisper (Meta não auto-transcribe como uazapi)
+- **Normalização de telefone brasileiro:** Bug descoberto — Meta retorna `wa_id` com 12 dígitos para Brasil (ex: `557192867765`) mas requer 13 dígitos (ex: `5571992867765`) com o 9 do celular após DDD. Implementado `normalizePhone()` method que detecta automaticamente
+- **Typing indicator:** `sendTypingIndicator()` é no-op para Meta (não suporta)
+- **Credenciais (modo teste — expiram em 24h):**
+  ```
+  WHATSAPP_PROVIDER=meta
+  WHATSAPP_TOKEN=<token_teste_24h>
+  WHATSAPP_PHONE_NUMBER_ID=1120226561170130
+  WHATSAPP_BUSINESS_ACCOUNT_ID=2225551044850204
+  WHATSAPP_VERIFY_TOKEN=my_webhook_verify_token_kanbam
+  ```
+- **Próximos passos para produção:**
+  1. Comprar número brdid (R$ 28,30/mês) → recebe código de verificação no painel
+  2. Registrar número no painel Meta → gera novo WHATSAPP_PHONE_NUMBER_ID
+  3. Criar System User em business.facebook.com (token permanente — não expira em 24h)
+  4. Gerar token permanente do System User → atualiza WHATSAPP_TOKEN
+  5. Assinar webhook WABA via API: `curl -X POST "https://graph.facebook.com/v20.0/{WABA_ID}/subscribed_apps"`
+  6. Testar com número real — qualquer pessoa pode mandar mensagem
 
 ---
 
@@ -196,6 +240,103 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 ---
 
+## Funcionalidades implementadas (07/05/2026 — Fase 10)
+
+### Camadas de Segurança — Inativação Automática de Leads
+
+**4 camadas implementadas no prompt da Sofia (`ai.service.ts` → `buildSystemPrompt()`):**
+
+| Situação | Resposta | Etiquetas | IA |
+|----------|----------|-----------|-----|
+| Desrespeito / xingamento | 1x educada | `inativo` + `desrespeitoso` | Desativada |
+| Fora de escopo total (genital, cirurgia, psicologia) | 1x educada | `inativo` + `fora-de-escopo` | Desativada |
+| Emergência médica (acidente, hemorragia, perda de consciência) | Alerta urgente (192 / pronto-socorro) | `inativo` + `emergencia` | Desativada |
+| Fora de escopo parcial (dor abdominal, gastrite) | Educada + sugere especialista | *(sem etiqueta)* | **Continua ativa** |
+
+**Resposta JSON da IA agora inclui:**
+```json
+{ "tags": ["inativo", "desrespeitoso"], "shouldIgnore": true }
+```
+
+**Fluxo no backend (`evolution.controller.ts`):**
+1. IA retorna `shouldIgnore=true`
+2. Backend envia a mensagem de despedida UMA VEZ
+3. Aplica etiquetas na uazapi via `POST /chat/labels` (add_labelid)
+4. Cria etiquetas se não existirem via `POST /label/edit`
+5. Salva etiquetas no banco (`lead.labels` — campo JSONB)
+6. Chama `toggleAi(lead.id, false)` — IA desativada permanentemente
+7. Lead nunca mais é respondido
+
+**Cores das etiquetas na uazapi:**
+- Vermelho: `inativo`, `desrespeitoso`, `emergencia`
+- Azul: `fora-de-escopo`
+
+**Frontend (`LeadCard.jsx`):**
+- Etiquetas exibidas no card com ícone + cor
+  - 🚫 inativo (vermelho), ⛔ desrespeitoso (vermelho), 🚨 emergencia (vermelho), 📵 fora-de-escopo (azul)
+
+**Correção crítica na ordem de verificação (`evolution.controller.ts`):**
+- `aiEnabled` é verificado ANTES de reiniciar lead perdido
+- Lead com `aiEnabled=false` nunca é reativado mesmo mandando nova mensagem
+
+---
+
+### Fix: IA Inventando Data de Consulta
+
+**Problema:** Sofia ignorava `appointmentAt` do banco e inventava datas.
+
+**Solução (`ai.service.ts` → `processMessage()`):**
+- Antes de chamar a IA, injeta par de mensagens `user/assistant` no início do histórico com a data real do banco
+- A IA "parte do fato já confirmado" e não consegue inventar outra data
+- Se data já passou: injeta aviso "DATA JÁ PASSOU" + instrução para oferecer reagendamento
+
+**Código:**
+```typescript
+appointmentFacts.push({ role: 'user', content: '[Sistema] A consulta está confirmada para DD/MM/YYYY às HHh' });
+appointmentFacts.push({ role: 'assistant', content: 'Entendido. Vou confirmar para DD/MM/YYYY às HHh.' });
+// Injetado ANTES do histórico da conversa
+messages = [...appointmentFacts, ...history, { role: 'user', content: incomingText }]
+```
+
+**Importante:** Ao testar datas de consulta, apagar o lead e começar do zero — histórico anterior com data errada influencia a IA.
+
+---
+
+### Etiquetas uazapi — Endpoints
+
+```bash
+# Criar/editar etiqueta
+POST /label/edit
+{ "labelid": "new", "name": "inativo", "color": 4, "delete": false }
+
+# Buscar todas etiquetas
+GET /labels
+
+# Associar etiqueta ao contato (usar APENAS um dos três campos)
+POST /chat/labels
+{ "number": "5511999999999", "add_labelid": "id_da_etiqueta" }
+# ou "remove_labelid" para remover
+# ou "labelids": ["id1","id2"] para definir todas de uma vez
+```
+
+---
+
+## Checklist de Testes — Sofia
+
+### ✅ Testado e aprovado (07/05/2026)
+- [x] Xingamento → etiqueta `desrespeitoso` + `inativo` + IA desativada + msg respeitosa
+- [x] Data de consulta passada → informa que passou + oferece reagendamento
+
+### ⏳ Pendente de teste
+- [ ] **Emergência** — "tive um acidente", "estou passando muito mal, tontura e hemorragia"
+- [ ] **Fora de escopo total** — "estou com problema no pênis" → etiquetar + inativar
+- [ ] **Fora de escopo parcial** — "estou com dor de barriga" → responder educadamente, NÃO inativar
+- [ ] **Consulta futura** — agendar consulta → perguntar quando é → deve informar data correta do banco
+- [ ] **Reagendamento** — data passada → confirmar passou → reagendar → verificar Google Calendar
+- [ ] **Áudio + emergência** — mandar áudio de emergência → Sofia deve responder em áudio com alerta
+
+---
+
 ## Bugs corrigidos
 
 **[30/03] Resposta sem JSON:** `buildUpdatedContext()` passou a salvar o JSON completo (`rawJson`) no histórico em vez do texto puro do `reply`. Impedia o Claude de "esquecer" o formato JSON nas mensagens seguintes.
@@ -212,6 +353,10 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 
 **[11/04] Migração para uazapi:** Evolution API substituída por uazapi (R$ 29/mês, suporte, sem Docker). Adaptados endpoints de webhook, envio de texto/áudio, transcrição automática de áudio (eliminou necessidade de chamar Whisper manualmente).
 
+**[07/05] IA inventava data de consulta:** Sofia ignorava `appointmentAt` do banco e calculava/inventava datas. Corrigido injetando fato da consulta como par `user/assistant` no início do histórico antes de chamar a IA.
+
+**[07/05] Lead inativado continuava recebendo respostas:** `shouldIgnore=true` desativava apenas aquela mensagem mas não persistia. Corrigido chamando `toggleAi(lead.id, false)` que persiste no banco. Verificação de `aiEnabled` movida para ANTES do reinício de lead perdido.
+
 ---
 
 ## Variáveis de ambiente (.env)
@@ -226,9 +371,18 @@ SUPABASE_ANON_KEY=...
 # Redis
 REDIS_PASSWORD=...
 
+# WhatsApp Provider — trocar entre 'uazapi' e 'meta'
+WHATSAPP_PROVIDER=uazapi
+
 # uazapi (WhatsApp)
 UAZAPI_BASE_URL=https://free.uazapi.com
 UAZAPI_TOKEN=...
+
+# Meta Official API (WhatsApp Business)
+WHATSAPP_TOKEN=...                           # 24h test token ou System User token permanente
+WHATSAPP_PHONE_NUMBER_ID=...                 # ID do número de telefone (Meta)
+WHATSAPP_BUSINESS_ACCOUNT_ID=...             # ID da conta de negócios (Meta)
+WHATSAPP_VERIFY_TOKEN=my_webhook_verify_token_kanbam
 
 # Backend
 SERVER_URL=http://localhost:3000
@@ -242,10 +396,12 @@ CACHE_REDIS_URI=redis://:REDIS_PASSWORD@fisio_redis:6379/1
 ANTHROPIC_API_KEY=...
 JWT_SECRET=...
 WEBHOOK_SECRET=...
-OPENAI_API_KEY=...              # Transcrição (usado pela uazapi internamente)
+OPENAI_API_KEY=...              # Transcrição (uazapi internamente ou Meta manual)
 GOOGLE_SERVICE_ACCOUNT_EMAIL=... # Google Cloud TTS
 GOOGLE_PRIVATE_KEY="..."         # Google Cloud TTS
 GOOGLE_CALENDAR_ID=...
+ELEVENLABS_API_KEY=...           # TTS alternativo (não usado atualmente)
+ELEVENLABS_VOICE_ID=...
 ```
 
 ---
@@ -258,7 +414,7 @@ GOOGLE_CALENDAR_ID=...
 | Backend NestJS | 3000 | Local (npm run start:dev) |
 | Frontend React | 5173 | Local (npm run dev) |
 
-**Observação:** PostgreSQL (Supabase), WhatsApp (uazapi) e Google Calendar são serviços externos (não Docker).
+**Observação:** PostgreSQL (Supabase), WhatsApp (uazapi OU Meta Official API), Google Calendar e Google Cloud TTS são serviços externos (não Docker).
 
 ---
 

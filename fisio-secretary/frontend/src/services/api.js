@@ -46,6 +46,9 @@ export const sendManualMessage = (phone, text) =>
 export const deleteLead = (id) =>
   fetch(`${BASE}/leads/${id}`, { method: 'DELETE' }).then(json)
 
+export const removeLabel = (id, label) =>
+  fetch(`${BASE}/leads/${id}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }).then(json)
+
 export const sendBulkMessage = (payload) =>
   fetch(`${BASE}/bulk-message`, {
     method: 'POST',

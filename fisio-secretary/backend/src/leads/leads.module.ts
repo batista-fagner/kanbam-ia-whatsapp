@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Lead } from '../common/entities/lead.entity';
 import { Conversation } from '../common/entities/conversation.entity';
@@ -9,7 +10,7 @@ import { LeadsController } from './leads.controller';
 import { LeadsGateway } from './leads.gateway';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Lead, Conversation, Message, LeadStageHistory])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([Lead, Conversation, Message, LeadStageHistory])],
   providers: [LeadsService, LeadsGateway],
   controllers: [LeadsController],
   exports: [LeadsService, LeadsGateway],

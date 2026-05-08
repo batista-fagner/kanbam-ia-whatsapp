@@ -72,6 +72,9 @@ export class Lead {
   @Column({ name: 'last_message_at', nullable: true, type: 'timestamp' })
   lastMessageAt: Date;
 
+  @Column({ type: 'jsonb', default: [] })
+  labels: string[];
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
