@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { Lead } from '../common/entities/lead.entity';
 
 export interface AiResponse {
@@ -202,10 +203,14 @@ RESPONDA SEMPRE em JSON com este formato exato:
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly client: OpenAI;
+  private readonly anthropic: Anthropic;
 
   constructor(private config: ConfigService) {
     this.client = new OpenAI({
       apiKey: config.get('OPENAI_API_KEY'),
+    });
+    this.anthropic = new Anthropic({
+      apiKey: config.get('ANTHROPIC_API_KEY'),
     });
   }
 
@@ -256,7 +261,7 @@ export class AiService {
 
       // HAIKU (teste)
       const response = await callWithRetry(
-        () => (this.client as any).messages.create({
+        () => this.anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
           system: buildSystemPrompt(lead),
@@ -418,7 +423,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
 
       // HAIKU (teste)
       const response = await callWithRetry(
-        () => (this.client as any).messages.create({
+        () => this.anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
           system: systemPrompt,
