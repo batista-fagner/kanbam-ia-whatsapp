@@ -82,9 +82,10 @@ export class EvolutionController {
 
     this.messageQueue.enqueue(phone, text, (combinedText) => {
       this.logger.log(`[PROCESSANDO] messageId=${messageId}, phone=${phone}, texto="${combinedText.substring(0, 40)}..."`);
-      this.processMessage(phone, combinedText, messageId).catch((err) =>
-        this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`),
-      );
+      this.processMessage(phone, combinedText, messageId).catch((err) => {
+        this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`);
+        this.logger.error(`❌ [ERRO AO PROCESSAR] Stack: ${err.stack}`);
+      });
     });
 
     return { ok: true };
@@ -147,6 +148,7 @@ export class EvolutionController {
 
       // Envia a mensagem final UMA VEZ antes de silenciar
       if (aiResponse.reply) {
+        this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
         await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
       }
@@ -230,6 +232,7 @@ export class EvolutionController {
       if (!available) {
         this.logger.warn(`Horário ocupado: ${startDateTime.toISOString()} (${conflictingEvent})`);
         const busyReply = `Ops! Esse horário já está ocupado (${conflictingEvent}). Por favor, escolha outro horário ou dia 😊`;
+        this.logger.log(`📤 [BUSY SLOT] Enviando: ${busyReply.substring(0, 40)}...`);
         await this.evolutionService.sendTextMessage(phone, busyReply);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
@@ -312,7 +315,7 @@ export class EvolutionController {
       } catch (err) {
         const status = err?.response?.status ?? err?.status ?? 'N/A';
         this.logger.warn(`Falha ao gerar/enviar áudio [HTTP ${status}], enviando como texto: ${err.message}`);
-        this.logger.log(`📤 [TEXT FALLBACK] Enviando fallback para ${phone}: ${aiResponse.reply.substring(0, 50)}...`);
+        this.logger.log(`📤 [AUDIO FALLBACK] Enviando fallback: ${aiResponse.reply.substring(0, 50)}...`);
         await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
       }
     } else {
@@ -416,6 +419,7 @@ export class EvolutionController {
   @Post('manual')
   async sendManual(@Body() body: { phone: string; text: string }) {
     const { lead, conversation } = await this.leadsService.findOrCreate(body.phone);
+    this.logger.log(`📤 [MANUAL] Enviando para ${body.phone}: ${body.text.substring(0, 50)}...`);
     await this.evolutionService.sendTextMessage(body.phone, body.text);
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', body.text);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
