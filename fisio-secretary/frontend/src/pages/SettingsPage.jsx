@@ -591,7 +591,7 @@ export default function SettingsPage() {
       {!bootstrapping && instanceConfig && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
           <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da IA</h2>
-          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento de cada agente. As datas e mídias disponíveis são injetadas automaticamente pelo sistema.</p>
+          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento de cada agente (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
 
           {/* Tabs */}
           <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">

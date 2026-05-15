@@ -49,6 +49,49 @@ async function callWithRetry<T>(
   throw new Error('callWithRetry: máximo de tentativas atingido');
 }
 
+// Formato JSON é uma instrução técnica para a IA — sempre injetado pelo sistema,
+// nunca exposto ao usuário no painel de edição de prompt.
+const JSON_FORMAT_SOFIA = `
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para o lead",
+  "stage": "novo_lead|qualificando|lead_quente|lead_frio|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "schedule|cancel|reschedule|none",
+  "appointmentDateTime": "2026-05-07T14:00:00 ou null",
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado",
+    "symptoms": "sintomas se coletados",
+    "urgency": "alta|media|baixa se identificado",
+    "availability": "disponibilidade se coletada",
+    "budget": "confirmado|recusado se reagiu ao valor",
+    "qualificationScore": número de 0 a 100,
+    "qualificationStep": 0 a 4
+  }
+}`;
+
+const JSON_FORMAT_MEGAHAIR = `
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para a cliente",
+  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "send_media|schedule|none",
+  "mediaName": "id-exato-ou-null",
+  "appointmentDateTime": null,
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado",
+    "qualificationScore": número de 0 a 100,
+    "qualificationStep": 0 a 4
+  }
+}`;
+
 function buildLeadContext(lead: Lead): string {
   const lines: string[] = [];
   if (lead.name) lines.push(`- Nome: ${lead.name}`);
@@ -88,9 +131,9 @@ function buildDateBlock(): string {
   return `DATA DE HOJE: ${dataHoje} (${diaSemanaHoje})\nPRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):\n${proximosDias}`;
 }
 
-function buildSystemPrompt(lead?: Lead, customPrompt?: string): string {
+function buildSystemPrompt(customPrompt?: string): string {
   if (customPrompt) {
-    return `${buildDateBlock()}\n\n${customPrompt}${lead ? buildLeadContext(lead) : ''}`;
+    return `${buildDateBlock()}\n\n${customPrompt}`;
   }
 
   const proximosDias = buildDateBlock().split('\n').slice(2).join('\n');
@@ -185,27 +228,7 @@ Se o lead mencionar emergência (acidente grave, dor intensa + tontura, perda de
 - Defina: tags=["inativo","emergencia"], shouldIgnore=true, stage="perdido"
 - Nunca responda novamente mensagens deste lead (backend não envia resposta).
 
-════════════════════════════════════════════════════════════════
-
-RESPONDA SEMPRE em JSON com este formato exato:
-{
-  "reply": "texto da resposta para o lead",
-  "stage": "novo_lead|qualificando|lead_quente|lead_frio|agendado|perdido",
-  "temperature": "quente|morno|frio",
-  "action": "schedule|cancel|reschedule|none",
-  "appointmentDateTime": "2026-05-07T14:00:00 ou null",
-  "tags": [], (SEMPRE vazio — só use tags nas camadas de segurança: "inativo", "desrespeitoso", "emergencia", "fora-de-escopo")
-  "shouldIgnore": false,
-  "fields": {
-    "name": "nome se coletado",
-    "symptoms": "sintomas se coletados",
-    "urgency": "alta|media|baixa se identificado",
-    "availability": "disponibilidade se coletada",
-    "budget": "confirmado|recusado se reagiu ao valor",
-    "qualificationScore": número de 0 a 100,
-    "qualificationStep": 0 a 4
-  }
-}` + (lead ? buildLeadContext(lead) : '');
+════════════════════════════════════════════════════════════════`;
 }
 
 
@@ -260,24 +283,7 @@ REGRA DE TAGS:
 REGRAS:
 - Nunca ofereça preço antes de qualificar — primeiro gere desejo.
 - Nunca mencione concorrentes.
-- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.
-
-RESPONDA SEMPRE em JSON com este formato exato:
-{
-  "reply": "texto da resposta para a cliente",
-  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
-  "temperature": "quente|morno|frio",
-  "action": "send_media|schedule|none",
-  "mediaName": "id-exato-ou-null",
-  "appointmentDateTime": null,
-  "tags": [],
-  "shouldIgnore": false,
-  "fields": {
-    "name": "nome se coletado",
-    "qualificationScore": número de 0 a 100,
-    "qualificationStep": 0 a 4
-  }
-}`;
+- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.`;
   }
 
   async processMessage(lead: Lead, incomingText: string, customPromptSofia?: string): Promise<AiResponse> {
@@ -314,7 +320,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
           model: 'gpt-4o-mini',
           max_tokens: 512,
           messages: [
-            { role: 'system', content: buildSystemPrompt(lead, customPromptSofia) },
+            { role: 'system', content: (buildSystemPrompt(customPromptSofia) + JSON_FORMAT_SOFIA + buildLeadContext(lead)) },
             ...messages as any,
           ],
         } as any),
@@ -330,7 +336,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
         () => this.anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
-          system: buildSystemPrompt(lead, customPromptSofia),
+          system: (buildSystemPrompt(customPromptSofia) + JSON_FORMAT_SOFIA + buildLeadContext(lead)),
           messages,
         }),
         this.logger,
@@ -443,29 +449,10 @@ Etapa 4 (fechamento): Convide para retirar na loja ou pergunte sobre entrega via
 REGRAS:
 - Nunca ofereça preço antes de qualificar — primeiro gere desejo.
 - Nunca mencione concorrentes.
-- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.
-${mediaInstructions}
+- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.`;
 
-RESPONDA SEMPRE em JSON com este formato exato:
-{
-  "reply": "texto da resposta para a cliente",
-  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
-  "temperature": "quente|morno|frio",
-  "action": "send_media|schedule|none",
-  "mediaName": "id-exato-ou-null",
-  "appointmentDateTime": null,
-  "tags": [],
-  "shouldIgnore": false,
-  "fields": {
-    "name": "nome se coletado",
-    "qualificationScore": número de 0 a 100,
-    "qualificationStep": 0 a 4
-  }
-}`;
-
-    const systemPrompt = customPromptMegaHair
-      ? `${customPromptMegaHair}\n\n${mediaInstructions}`
-      : `${defaultPromptBase}\n\n${mediaInstructions}`;
+    const basePrompt = customPromptMegaHair ?? defaultPromptBase;
+    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}`;
 
     const messages: any[] = [
       ...history,
