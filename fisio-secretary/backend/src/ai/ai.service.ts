@@ -259,8 +259,9 @@ export class AiService {
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`Erro ao chamar Claude: ${err.message}`);
-      this.logger.error(err.stack);
+      this.logger.error(`❌ [SOFIA] Erro ao chamar Claude: ${err.message}`);
+      this.logger.error(`❌ [SOFIA] Stack: ${err.stack}`);
+      this.logger.error(`❌ [SOFIA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Olá! Tive um probleminha aqui, pode repetir?', success: false };
     }
   }
@@ -397,7 +398,9 @@ RESPONDA SEMPRE em JSON com este formato exato:
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`[MegaHair] Erro ao chamar Claude: ${err.message}`);
+      this.logger.error(`❌ [LINDONA] Erro ao chamar Claude: ${err.message}`);
+      this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);
+      this.logger.error(`❌ [LINDONA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
     }
   }

@@ -81,8 +81,9 @@ export class EvolutionController {
     this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
 
     this.messageQueue.enqueue(phone, text, (combinedText) => {
+      this.logger.log(`[PROCESSANDO] messageId=${messageId}, phone=${phone}, texto="${combinedText.substring(0, 40)}..."`);
       this.processMessage(phone, combinedText, messageId).catch((err) =>
-        this.logger.error(`Erro ao processar mensagem de ${phone}: ${err.message}`),
+        this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`),
       );
     });
 
@@ -307,14 +308,17 @@ export class EvolutionController {
         const audioBuffer = await this.audioService.textToSpeech(aiResponse.reply);
         this.logger.log(`TTS gerado (${audioBuffer.length} bytes), enviando áudio para ${phone}...`);
         await this.evolutionService.sendAudioMessage(phone, audioBuffer);
-        this.logger.log(`Resposta enviada como áudio para ${phone}`);
+        this.logger.log(`✅ [AUDIO] Resposta enviada como áudio para ${phone}`);
       } catch (err) {
         const status = err?.response?.status ?? err?.status ?? 'N/A';
         this.logger.warn(`Falha ao gerar/enviar áudio [HTTP ${status}], enviando como texto: ${err.message}`);
+        this.logger.log(`📤 [TEXT FALLBACK] Enviando fallback para ${phone}: ${aiResponse.reply.substring(0, 50)}...`);
         await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
       }
     } else {
+      this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
       await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+      this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
     }
 
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
