@@ -400,23 +400,23 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-600">Conexão <span className="font-medium">{instanceConfig.profileName}</span> pronta. Escolha como quer conectar:</p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               <button
                 onClick={() => setConnectMode('qrcode')}
-                className={`flex-1 py-2 text-sm rounded-lg border transition ${
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${
                   connectMode === 'qrcode'
-                    ? 'bg-teal-700 text-white border-teal-700'
-                    : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 QR Code
               </button>
               <button
                 onClick={() => setConnectMode('paircode')}
-                className={`flex-1 py-2 text-sm rounded-lg border transition ${
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${
                   connectMode === 'paircode'
-                    ? 'bg-teal-700 text-white border-teal-700'
-                    : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Código de Pareamento
