@@ -29,6 +29,12 @@ export class WhatsappConfig {
   @Column({ name: 'agent_type', default: 'fisio' })
   agentType: string; // 'fisio' | 'megahair'
 
+  @Column({ name: 'custom_prompt_sofia', nullable: true, type: 'text' })
+  customPromptSofia: string | null;
+
+  @Column({ name: 'custom_prompt_megahair', nullable: true, type: 'text' })
+  customPromptMegaHair: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

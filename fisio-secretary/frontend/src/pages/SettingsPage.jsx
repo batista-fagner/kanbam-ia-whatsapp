@@ -49,6 +49,11 @@ export default function SettingsPage() {
   const [error, setError] = useState(null)
   const [instanceName, setInstanceName] = useState('')
   const [creatingInstance, setCreatingInstance] = useState(false)
+  const [customPromptSofia, setCustomPromptSofia] = useState('')
+  const [customPromptMegaHair, setCustomPromptMegaHair] = useState('')
+  const [defaultPrompts, setDefaultPrompts] = useState({ sofia: '', megahair: '' })
+  const [activePromptTab, setActivePromptTab] = useState('sofia')
+  const [savingPrompt, setSavingPrompt] = useState(false)
   const pollingRef = useRef(null)
 
   const fetchStatus = async () => {
@@ -71,11 +76,24 @@ export default function SettingsPage() {
       setInstanceConfig(data)
       setWebhookConfigured(data?.webhookConfigured ?? false)
       if (data?.agentType) setAgentType(data.agentType)
+      if (data?.customPromptSofia != null) setCustomPromptSofia(data.customPromptSofia)
+      if (data?.customPromptMegaHair != null) setCustomPromptMegaHair(data.customPromptMegaHair)
       return data
     } catch {
       setInstanceConfig(null)
       return null
     }
+  }
+
+  const fetchDefaultPrompts = async () => {
+    try {
+      const res = await fetch(`${API_URL}/instance/default-prompts`)
+      const data = await res.json()
+      setDefaultPrompts(data)
+      // Só preenche com padrão se ainda não tem customizado
+      setCustomPromptSofia(prev => prev || data.sofia)
+      setCustomPromptMegaHair(prev => prev || data.megahair)
+    } catch { /* silencioso */ }
   }
 
   const startPolling = () => {
@@ -117,6 +135,10 @@ export default function SettingsPage() {
       setSettingUpWebhook(false)
     }
   }
+
+  useEffect(() => {
+    fetchDefaultPrompts()
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -562,6 +584,81 @@ export default function SettingsPage() {
             {savingAgent ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {savingAgent ? 'Salvando...' : 'Salvar agente'}
           </button>
+        </div>
+      )}
+
+      {/* Card de prompt customizado */}
+      {!bootstrapping && instanceConfig && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
+          <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da IA</h2>
+          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento de cada agente. As datas e mídias disponíveis são injetadas automaticamente pelo sistema.</p>
+
+          {/* Tabs */}
+          <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
+            {[
+              { key: 'sofia', label: 'Sofia (Fisioterapia)' },
+              { key: 'megahair', label: 'Lindona (Mega Hair)' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActivePromptTab(tab.key)}
+                className={`px-4 py-1.5 text-xs font-medium rounded-md transition ${
+                  activePromptTab === tab.key
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Textarea */}
+          <textarea
+            value={activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair}
+            onChange={e => activePromptTab === 'sofia'
+              ? setCustomPromptSofia(e.target.value)
+              : setCustomPromptMegaHair(e.target.value)
+            }
+            className="w-full h-80 text-xs font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+            placeholder="Digite o prompt da IA aqui..."
+            spellCheck={false}
+          />
+
+          {/* Botões */}
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={async () => {
+                setSavingPrompt(true)
+                try {
+                  await fetch(`${API_URL}/instance/config`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      customPromptSofia: customPromptSofia || null,
+                      customPromptMegaHair: customPromptMegaHair || null,
+                    }),
+                  })
+                } finally {
+                  setSavingPrompt(false)
+                }
+              }}
+              disabled={savingPrompt}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
+            >
+              {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {savingPrompt ? 'Salvando...' : 'Salvar prompt'}
+            </button>
+            <button
+              onClick={() => {
+                if (activePromptTab === 'sofia') setCustomPromptSofia(defaultPrompts.sofia)
+                else setCustomPromptMegaHair(defaultPrompts.megahair)
+              }}
+              className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+            >
+              Restaurar padrão
+            </button>
+          </div>
         </div>
       )}
 

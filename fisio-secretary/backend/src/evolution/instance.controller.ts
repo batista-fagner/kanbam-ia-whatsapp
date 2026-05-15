@@ -1,12 +1,14 @@
 import { Controller, Post, Get, Delete, Body, Patch } from '@nestjs/common';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { WhatsappConfigService } from './whatsapp-config.service';
+import { AiService } from '../ai/ai.service';
 
 @Controller('instance')
 export class InstanceController {
   constructor(
     private readonly uazapi: UazapiProvider,
     private readonly whatsappConfigService: WhatsappConfigService,
+    private readonly aiService: AiService,
   ) {}
 
   @Post('connect')
@@ -52,7 +54,15 @@ export class InstanceController {
   }
 
   @Patch('config')
-  async updateConfig(@Body() body: { agentType?: string }) {
+  async updateConfig(@Body() body: { agentType?: string; customPromptSofia?: string | null; customPromptMegaHair?: string | null }) {
     return this.whatsappConfigService.updateConfig(body);
+  }
+
+  @Get('default-prompts')
+  async getDefaultPrompts() {
+    return {
+      sofia: this.aiService.getDefaultPromptSofia(),
+      megahair: this.aiService.getDefaultPromptMegaHair(),
+    };
   }
 }

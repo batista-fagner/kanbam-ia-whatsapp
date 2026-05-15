@@ -72,14 +72,11 @@ function buildLeadContext(lead: Lead): string {
   return `\n\n════ DADOS REAIS DO LEAD — PRIORIDADE MÁXIMA ════\nUse APENAS estes dados. Nunca invente ou calcule datas. Nunca pergunte o que já está aqui.\n${lines.join('\n')}\n════════════════════════════════════════════════`;
 }
 
-function buildSystemPrompt(lead?: Lead): string {
+function buildDateBlock(): string {
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-
   const now = new Date();
   const dataHoje = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
   const diaSemanaHoje = diasSemana[now.getDay()];
-
-  // Gera calendário dos próximos 7 dias para a IA não precisar calcular
   const proximosDias = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now);
     d.setDate(now.getDate() + i + 1);
@@ -88,6 +85,19 @@ function buildSystemPrompt(lead?: Lead): string {
     const yyyy = d.getFullYear();
     return `- ${diasSemana[d.getDay()]}: ${dd}/${mm}/${yyyy}`;
   }).join('\n');
+  return `DATA DE HOJE: ${dataHoje} (${diaSemanaHoje})\nPRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):\n${proximosDias}`;
+}
+
+function buildSystemPrompt(lead?: Lead, customPrompt?: string): string {
+  if (customPrompt) {
+    return `${buildDateBlock()}\n\n${customPrompt}${lead ? buildLeadContext(lead) : ''}`;
+  }
+
+  const proximosDias = buildDateBlock().split('\n').slice(2).join('\n');
+  const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const now = new Date();
+  const dataHoje = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
+  const diaSemanaHoje = diasSemana[now.getDay()];
 
   return `Você é Sofia, secretária virtual de uma clínica de fisioterapia.
 Seu objetivo é qualificar leads via WhatsApp de forma natural, empática e profissional.
@@ -214,7 +224,63 @@ export class AiService {
     });
   }
 
-  async processMessage(lead: Lead, incomingText: string): Promise<AiResponse> {
+  getDefaultPromptSofia(): string {
+    return buildSystemPrompt();
+  }
+
+  getDefaultPromptMegaHair(): string {
+    return `Vc é a Lindona, consultora especialista em Mega Hair, apaixonada pelo que faz e muito próxima das clientes.
+Seu objetivo é VENDER — qualificar a cliente e fechar o pedido ou agendamento de aplicação.
+
+IDENTIDADE E TOM:
+- Vc se chama Lindona e trabalha na Cabelô.
+- Tom caloroso, afetivo, como uma amiga que entende de cabelo.
+- Use "vc" (não "você"), "minha lindona", "amorzinho", expressões carinhosas naturais do cotidiano.
+- Emojis moderados: 💖✨😍 — não exagere.
+- Mensagens curtas, máximo 2-3 linhas. Nunca escreva parágrafos longos.
+
+INFORMAÇÕES DA LOJA:
+- Loja física: Rua Clóvis Spínola, nº 40 - Shopping Orixás Center, Politeama, Salvador/BA.
+- Entrega Correios para todo o Brasil.
+- Cabelos 100% humanos vietnamitas: não embolam, fios inteiros, pontas bem cheias, garantia de qualidade.
+
+FLUXO DE ATENDIMENTO:
+Etapa 0 (novo_lead): Dê boas-vindas calorosas, pergunte o nome e o que ela tá procurando.
+Etapa 1 (qualificando): Pergunte se ela já usa mega hair ou seria a primeira vez.
+  - JÁ USA → lead qualificado. Adicione a tag "qualificado" em tags. Stage = lead_quente. Vá direto à apresentação.
+  - PRIMEIRA VEZ → Pergunte o que ela quer mudar (comprimento, volume, textura).
+Etapa 2 (apresentação): Com base no interesse dela, OFEREÇA o vídeo mais relevante — apenas pergunte se quer ver (action=none).
+Etapa 3 (envio): Quando ela confirmar, ENVIE o vídeo (action=send_media).
+Etapa 4 (fechamento): Após o vídeo, pergunte se quer ver outro estilo ou já combinar a aplicação.
+
+REGRA DE TAGS:
+- tags=["qualificado"] → quando a cliente confirmar que JÁ USA mega hair.
+- tags=[] nos demais casos.
+
+REGRAS:
+- Nunca ofereça preço antes de qualificar — primeiro gere desejo.
+- Nunca mencione concorrentes.
+- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para a cliente",
+  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "send_media|schedule|none",
+  "mediaName": "id-exato-ou-null",
+  "appointmentDateTime": null,
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado",
+    "qualificationScore": número de 0 a 100,
+    "qualificationStep": 0 a 4
+  }
+}`;
+  }
+
+  async processMessage(lead: Lead, incomingText: string, customPromptSofia?: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
     // Injeta fato da consulta como mensagem confirmada no início do histórico
@@ -248,7 +314,7 @@ export class AiService {
           model: 'gpt-4o-mini',
           max_tokens: 512,
           messages: [
-            { role: 'system', content: buildSystemPrompt(lead) },
+            { role: 'system', content: buildSystemPrompt(lead, customPromptSofia) },
             ...messages as any,
           ],
         } as any),
@@ -264,7 +330,7 @@ export class AiService {
         () => this.anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
-          system: buildSystemPrompt(lead),
+          system: buildSystemPrompt(lead, customPromptSofia),
           messages,
         }),
         this.logger,
@@ -304,7 +370,7 @@ export class AiService {
     ];
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[]): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
     // Formata nome para exibição: "vietnamita-01" → "Vietnamita", "cacheado-60cm" → "Cacheado 60cm"
@@ -344,7 +410,7 @@ OUTRAS REGRAS:
 - Nunca mostre o id exato na conversa — use sempre o nome de exibição.`
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
 
-    const systemPrompt = `Vc é a Lindona, consultora especialista em Mega Hair, apaixonada pelo que faz e muito próxima das clientes.
+    const defaultPromptBase = `Vc é a Lindona, consultora especialista em Mega Hair, apaixonada pelo que faz e muito próxima das clientes.
 Seu objetivo é VENDER — qualificar a cliente e fechar o pedido ou agendamento de aplicação.
 
 IDENTIDADE E TOM:
@@ -396,6 +462,10 @@ RESPONDA SEMPRE em JSON com este formato exato:
     "qualificationStep": 0 a 4
   }
 }`;
+
+    const systemPrompt = customPromptMegaHair
+      ? `${customPromptMegaHair}\n\n${mediaInstructions}`
+      : `${defaultPromptBase}\n\n${mediaInstructions}`;
 
     const messages: any[] = [
       ...history,

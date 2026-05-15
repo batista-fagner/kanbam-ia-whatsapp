@@ -136,9 +136,9 @@ export class EvolutionController {
     if (agentType === 'megahair') {
       const allMedia = await this.mediaService.listAll();
       const mediaNames = allMedia.map(m => m.name);
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined);
     } else {
-      aiResponse = await this.aiService.processMessage(lead, combinedText);
+      aiResponse = await this.aiService.processMessage(lead, combinedText, instanceConfig?.customPromptSofia ?? undefined);
     }
     this.logger.log(`IA respondeu [agent=${agentType}] [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
 
