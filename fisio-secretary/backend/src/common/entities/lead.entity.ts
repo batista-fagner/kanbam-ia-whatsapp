@@ -5,7 +5,6 @@ import {
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 import { LeadStageHistory } from './lead-stage-history.entity';
-import { Appointment } from './appointment.entity';
 
 export type LeadStage =
   | 'novo_lead' | 'qualificando' | 'lead_quente'
@@ -94,7 +93,4 @@ export class Lead {
 
   @OneToMany(() => LeadStageHistory, (h) => h.lead)
   stageHistory: LeadStageHistory[];
-
-  @OneToMany(() => Appointment, (a) => a.lead)
-  appointments: Appointment[];
 }

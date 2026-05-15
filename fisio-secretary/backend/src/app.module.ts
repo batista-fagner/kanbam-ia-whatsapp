@@ -5,7 +5,6 @@ import { Lead } from './common/entities/lead.entity';
 import { Conversation } from './common/entities/conversation.entity';
 import { Message } from './common/entities/message.entity';
 import { LeadStageHistory } from './common/entities/lead-stage-history.entity';
-import { Appointment } from './common/entities/appointment.entity';
 import { Campaign } from './common/entities/campaign.entity';
 import { WhatsappConfig } from './common/entities/whatsapp-config.entity';
 import { MediaFile } from './common/entities/media-file.entity';
@@ -24,7 +23,7 @@ import { MediaModule } from './media/media.module';
         type: 'postgres',
         url: config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Appointment, Campaign, WhatsappConfig, MediaFile],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile],
         synchronize: true, // apenas dev — gera tabelas automaticamente
         logging: false,
       }),

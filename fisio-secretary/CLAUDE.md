@@ -625,3 +625,25 @@ Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
 - Mensagem 6-7: Need-Payoff (benefícios da consulta)
 - Webhook de reativação: se lead responder durante cadência, reseta contador e volta para qualificação ativa
 - Métricas: taxa de reativação por dia, por template
+
+---
+
+### 3. Desativar `synchronize: true` e migrar para Migrations do TypeORM
+**Status:** ⏳ Pendente — **CRÍTICO antes de virar SaaS multi-tenant**
+**Risco atual:** `app.module.ts` está com `synchronize: true` em produção (Railway). Qualquer alteração em entidade (`@Column`, `@Entity`, etc) altera o schema do banco automaticamente no deploy — pode causar perda de dados ou inconsistências.
+
+**Implementação Necessária:**
+- Trocar `synchronize: true` → `synchronize: false` em `app.module.ts`
+- Criar `datasource.ts` na raiz do backend para CLI do TypeORM
+- Gerar migration inicial com o schema atual: `typeorm migration:generate -d datasource.ts InitialSchema`
+- Adicionar scripts no `package.json`:
+  - `migration:generate` — gera migration baseada nas mudanças das entidades
+  - `migration:run` — aplica migrations pendentes
+  - `migration:revert` — desfaz última migration
+- Configurar deploy no Railway para rodar `migration:run` antes de subir o backend
+- Documentar fluxo: alterar entidade → gerar migration → revisar SQL → commit → deploy roda migration
+
+**Por que é crítico para SaaS:**
+- Multi-tenant exige controle absoluto do schema (alterações precisam ser auditáveis e reversíveis)
+- Sem migrations, não dá pra fazer rollback de mudanças de schema
+- Quando tiver vários clientes, alterar schema sem controle pode quebrar produção
