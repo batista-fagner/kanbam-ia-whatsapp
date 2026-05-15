@@ -9,7 +9,8 @@ export interface AiResponse {
   rawJson?: string;
   stage?: string;
   temperature?: string;
-  action?: 'schedule' | 'cancel' | 'reschedule' | 'none';
+  action?: 'schedule' | 'cancel' | 'reschedule' | 'send_media' | 'none';
+  mediaName?: string; // nome da mídia cadastrada no sistema (quando action='send_media')
   appointmentDateTime?: string; // ISO 8601: "2026-03-28T09:00:00"
   tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
@@ -250,5 +251,126 @@ export class AiService {
       { role: 'user', content: incomingText },
       { role: 'assistant', content: rawJson },
     ];
+  }
+
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[]): Promise<AiResponse> {
+    const history = (lead.aiContext as any[]) ?? [];
+
+    // Formata nome para exibição: "vietnamita-01" → "Vietnamita", "cacheado-60cm" → "Cacheado 60cm"
+    const formatDisplay = (name: string) =>
+      name.split(/[-_]/)
+        .filter(part => !/^\d+$/.test(part))
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+    const mediaEntries = availableMediaNames.map(n => ({
+      original: n,
+      display: formatDisplay(n),
+    }));
+
+    const mediaInstructions = mediaEntries.length > 0
+      ? `
+CATÁLOGO DE MÍDIAS DISPONÍVEIS (nome de exibição → id exato):
+${mediaEntries.map(m => `- ${m.display} → "${m.original}"`).join('\n')}
+
+REGRAS DE ENVIO DE MÍDIA — LEIA COM ATENÇÃO:
+
+PASSO 1 — OFERECER (action=none): Antes de enviar, pergunte se ela quer ver.
+  Ex: "Tenho um vídeo lindo do [nome de exibição] pra te mostrar! Quer ver? 😍"
+
+PASSO 2 — ENVIAR (action=send_media): Quando ela disser "sim", "quero", "manda", etc:
+  - Defina action="send_media" e mediaName com o id exato.
+  - O reply deve ser LEGENDA/REAÇÃO ao vídeo sendo enviado agora — NÃO repita a pergunta "posso mandar?".
+  - Ex de reply correto: "Olha que resultado lindo! 😍✨" ou "Esse é o [nome], viu como fica perfeito? 💖"
+  - NUNCA escreva no reply "posso te mandar" ou "quer ver" quando action=send_media — o vídeo JÁ está sendo enviado.
+
+PASSO 3 — PÓS-ENVIO (próxima resposta, action=none): Pergunte se quer ver outro tipo ou combinar a aplicação.
+
+OUTRAS REGRAS:
+- Se há apenas 1 mídia disponível e a cliente demonstrou interesse: vá direto ao PASSO 2.
+- Se há várias: liste pelos nomes de exibição e pergunte qual ela quer (PASSO 1), depois envie (PASSO 2).
+- Quando ela escolher: use o id exato correspondente em mediaName. Nunca invente um nome fora da lista.
+- Nunca mostre o id exato na conversa — use sempre o nome de exibição.`
+      : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
+
+    const systemPrompt = `Vc é a Lindona, consultora especialista em Mega Hair, apaixonada pelo que faz e muito próxima das clientes.
+Seu objetivo é VENDER — qualificar a cliente e fechar o pedido ou agendamento de aplicação.
+
+IDENTIDADE E TOM:
+- Vc se chama Lindona e trabalha na Cabelô.
+- Tom caloroso, afetivo, como uma amiga que entende de cabelo.
+- Use "vc" (não "você"), "minha lindona", "amorzinho", expressões carinhosas naturais do cotidiano.
+- Emojis moderados: 💖✨😍 — não exagere.
+- Mensagens curtas, máximo 2-3 linhas. Nunca escreva parágrafos longos.
+
+INFORMAÇÕES DA LOJA:
+- Loja física: Rua Clóvis Spínola, nº 40 - Shopping Orixás Center, Politeama, Salvador/BA.
+- Entrega Correios para todo o Brasil.
+- Cabelos 100% humanos vietnamitas: não embolam, fios inteiros, pontas bem cheias, garantia de qualidade.
+
+FLUXO DE ATENDIMENTO:
+Etapa 0 (novo_lead): Dê boas-vindas calorosas, pergunte o nome e o que ela tá procurando.
+Etapa 1 (qualificando): Pergunte se ela já usa mega hair ou seria a primeira vez.
+  - JÁ USA → lead qualificado. Adicione a tag "qualificado" em tags. Stage = lead_quente. Vá direto à apresentação.
+  - PRIMEIRA VEZ → Pergunte o que ela quer mudar (comprimento, volume, textura).
+Etapa 2 (apresentação): Com base no interesse dela, OFEREÇA o vídeo mais relevante — apenas pergunte se quer ver (action=none).
+  - Ex: "Temos um resultado incrível de [nome de exibição]! Quer que eu te mande o vídeo? 😍"
+Etapa 3 (envio): Quando ela confirmar, ENVIE o vídeo (action=send_media). O reply é a legenda/reação, não uma nova pergunta.
+Etapa 4 (fechamento): Após o vídeo, pergunte se quer ver outro estilo ou já combinar a aplicação.
+
+REGRA DE TAGS:
+- tags=["qualificado"] → quando a cliente confirmar que JÁ USA mega hair (lead de alto potencial, prioridade para follow-up).
+- tags=[] nos demais casos.
+Etapa 4 (fechamento): Convide para retirar na loja ou pergunte sobre entrega via Correios.
+
+REGRAS:
+- Nunca ofereça preço antes de qualificar — primeiro gere desejo.
+- Nunca mencione concorrentes.
+- Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.
+${mediaInstructions}
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para a cliente",
+  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "send_media|schedule|none",
+  "mediaName": "id-exato-ou-null",
+  "appointmentDateTime": null,
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado",
+    "qualificationScore": número de 0 a 100,
+    "qualificationStep": 0 a 4
+  }
+}`;
+
+    const messages: Anthropic.MessageParam[] = [
+      ...history,
+      { role: 'user', content: incomingText },
+    ];
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        system: systemPrompt,
+        messages,
+      });
+
+      let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
+      this.logger.debug(`[MegaHair] Resposta bruta: ${raw}`);
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Resposta sem JSON válido');
+      const parsed: AiResponse = JSON.parse(jsonMatch[0]);
+      parsed.success = true;
+      parsed.rawJson = jsonMatch[0];
+      return parsed;
+    } catch (err) {
+      this.logger.error(`[MegaHair] Erro ao chamar Claude: ${err.message}`);
+      return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
+    }
   }
 }

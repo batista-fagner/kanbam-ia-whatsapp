@@ -4,11 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
+import { WhatsappConfigService } from './whatsapp-config.service';
+import { UazapiProvider } from './providers/uazapi.provider';
 import { LeadsService } from '../leads/leads.service';
 import { AiService } from '../ai/ai.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
+import { MediaService } from '../media/media.service';
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -20,11 +23,14 @@ export class EvolutionController {
   constructor(
     private readonly evolutionService: EvolutionService,
     private readonly messageQueue: MessageQueueService,
+    private readonly whatsappConfigService: WhatsappConfigService,
+    private readonly uazapiProvider: UazapiProvider,
     private readonly leadsService: LeadsService,
     private readonly aiService: AiService,
     private readonly leadsGateway: LeadsGateway,
     private readonly calendarService: CalendarService,
     private readonly audioService: AudioService,
+    private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -120,9 +126,19 @@ export class EvolutionController {
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000);
 
-    // Processa com IA
-    const aiResponse = await this.aiService.processMessage(lead, combinedText);
-    this.logger.log(`IA respondeu [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
+    // Processa com IA — roteia pelo agentType da instância ativa
+    const instanceConfig = await this.whatsappConfigService.get();
+    const agentType = instanceConfig?.agentType ?? 'fisio';
+
+    let aiResponse;
+    if (agentType === 'megahair') {
+      const allMedia = await this.mediaService.listAll();
+      const mediaNames = allMedia.map(m => m.name);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames);
+    } else {
+      aiResponse = await this.aiService.processMessage(lead, combinedText);
+    }
+    this.logger.log(`IA respondeu [agent=${agentType}] [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
 
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
@@ -173,6 +189,18 @@ export class EvolutionController {
     }
 
     await this.leadsService.update(lead.id, updateData);
+
+    // Aplica tags para respostas normais (sem shouldIgnore)
+    const normalTags = (aiResponse.tags ?? []).filter(t => t);
+    if (normalTags.length > 0) {
+      const existingLabels: string[] = lead.labels ?? [];
+      const newTags = normalTags.filter(t => !existingLabels.includes(t));
+      if (newTags.length > 0) {
+        await this.applyTagsToLead(phone, newTags);
+        const mergedLabels = Array.from(new Set([...existingLabels, ...newTags]));
+        await this.leadsService.update(lead.id, { labels: mergedLabels } as any);
+      }
+    }
 
     // Salva histórico se o stage mudou — com proteção contra regressão
     if (aiResponse.stage && aiResponse.stage !== lead.stage) {
@@ -252,6 +280,21 @@ export class EvolutionController {
         if (event) {
           await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: newDateTime });
         }
+      }
+    }
+
+    // Envio de mídia (imagem/vídeo cadastrada no sistema)
+    if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
+      const mediaFile = await this.mediaService.findByName(aiResponse.mediaName);
+      if (mediaFile) {
+        const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
+        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, aiResponse.reply);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${aiResponse.reply}`);
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+        return;
+      } else {
+        this.logger.warn(`Mídia "${aiResponse.mediaName}" não encontrada no banco`);
       }
     }
 
@@ -386,10 +429,10 @@ export class EvolutionController {
    */
   private async applyTagsToLead(phone: string, tags: string[]): Promise<void> {
     const uazapiUrl = this.configService.get('UAZAPI_BASE_URL') || 'https://labsai.uazapi.com';
-    const uazapiToken = this.configService.get('UAZAPI_TOKEN');
+    const uazapiToken = await this.whatsappConfigService.getActiveToken();
 
     if (!uazapiToken) {
-      this.logger.warn('UAZAPI_TOKEN não configurado — etiquetas não aplicadas');
+      this.logger.warn('Token uazapi não encontrado — etiquetas não aplicadas');
       return;
     }
 
@@ -413,6 +456,7 @@ export class EvolutionController {
         desrespeitoso: 4, // vermelho
         emergencia: 4,    // vermelho
         'fora-de-escopo': 3, // azul
+        qualificado: 5,   // verde
       };
 
       for (const tag of tags) {

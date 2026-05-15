@@ -418,9 +418,192 @@ ELEVENLABS_VOICE_ID=...
 
 ---
 
+## Funcionalidades implementadas (14/05/2026 — Fase 11)
+
+### SaaS Multi-Instância — Criação e Gestão via Plataforma
+
+**Objetivo:** Cliente cria e conecta a própria instância uazapi pelo CRM, sem tocar em .env.
+
+**Arquitetura:**
+- `UazapiProvider` injeta `@InjectRepository(WhatsappConfig)` → `resolveToken(token?)` busca token no banco (fallback para `UAZAPI_TOKEN` env)
+- `WhatsappConfigService` — novos métodos: `createNewInstance(name)`, `getActiveToken()`, `updateConfig(fields)`, `deleteRecord()`, `listAll()`
+- `AdminController` (`/admin/*`) — uso interno:
+  - `POST /admin/instance` → cria instância via uazapi + configura webhook automaticamente + salva token no banco
+  - `GET /admin/instances` → lista todas as instâncias
+  - `POST /admin/global-webhook` → configura webhook global
+- `InstanceController` melhorias:
+  - `DELETE /instance` — wrappado em try/catch: deleta no uazapi E no banco mesmo se uazapi retornar 401
+  - `PATCH /instance/config` → atualiza campos (ex: agentType) no banco
+
+**Campo `agentType` em `WhatsappConfig`:**
+- `@Column({ name: 'agent_type', default: 'fisio' }) agentType: string`
+- Roteamento no webhook: `agentType='fisio'` → `aiService.processMessage()`, `agentType='megahair'` → `aiService.processMessageMegaHair()`
+
+**Fluxo de criação:**
+1. Frontend chama `POST /admin/instance { name }`
+2. Backend chama `uazapi.createInstance(name)` com `admintoken` header → retorna token da instância
+3. Backend configura webhook: `uazapi.configureWebhook(webhookUrl, instanceToken)` com o novo token explícito
+4. Salva `instanceToken` no banco (`WhatsappConfig`)
+
+---
+
+### Sistema de Mídias (Imagens e Vídeos) para a IA
+
+**Backend (`backend/src/media/`):**
+- `MediaFile` entity — tabela `media_files`: id, name (unique), url, storagePath, mimeType, size, createdAt, updatedAt
+- `MediaService`:
+  - `upload(file, name)` → verifica unicidade, sobe para Supabase Storage, salva no banco
+  - `findByName(name)` → usado pela IA para resolver nome → URL pública
+  - `rename(id, newName)` → atualiza só o nome no banco (arquivo no Storage não muda)
+  - `delete(id)` → remove do Storage e do banco (continua mesmo se Storage falhar)
+- `MediaController`:
+  - `POST /media/upload` — multipart, limite 50MB, campo `file` + campo `name`
+  - `GET /media` — lista todas ordenadas por data
+  - `PATCH /media/:id/rename` — renomeia (body: `{ name }`)
+  - `DELETE /media/:id`
+
+**Correção crítica — endpoint uazapi de envio de mídia:**
+- Payload correto: `{ number, file: url, type, text: caption, delay }`
+- ⚠️ Estava errado: `{ number, url, type, caption }` → 500 na uazapi
+
+**Frontend (`MediaPage.jsx`):**
+- Drag & drop + file picker + nome obrigatório
+- Grid com preview: imagem → `<img>`, vídeo → ícone Play
+- Clique → modal com `<video autoPlay controls>` ou `<img>` em tela cheia
+- Renomear inline: lápis aparece no hover → input + Enter/Check/Esc para confirmar/cancelar
+- Delete com modal de confirmação
+
+---
+
+### Agente MegaHair — "Lindona"
+
+**Novo método `processMessageMegaHair(lead, incomingText, availableMediaNames[])` em `ai.service.ts`**
+
+**Identidade:**
+- Nome: Lindona, trabalha na Cabelô
+- Tom: afetivo, usa "vc", "minha lindona", "amorzinho", como uma amiga
+- Loja: Rua Clóvis Spínola, nº 40 - Shopping Orixás Center, Politeama, Salvador/BA
+- Entrega Correios para todo o Brasil
+- Cabelos 100% humanos vietnamitas
+
+**Fluxo:**
+1. Boas-vindas + nome + o que está procurando
+2. Pergunta se já usa mega hair
+   - JÁ USA → tag `qualificado` aplicada + stage `lead_quente` → vai para apresentação
+   - NUNCA USOU → pergunta o que quer mudar
+3. Oferece vídeo proativamente (action=none nesta msg)
+4. Quando cliente confirma → envia vídeo (action=send_media), reply é a LEGENDA, não uma nova pergunta
+5. Pós-vídeo → pergunta se quer ver outro ou combinar aplicação
+
+**Formatação de nomes de mídia:**
+- `formatDisplay("vietnamita-01")` → `"Vietnamita"` (remove partes puramente numéricas, capitaliza)
+- `formatDisplay("cacheado-60cm")` → `"Cacheado 60cm"`
+- Na conversa: exibe nome formatado. Em `mediaName` do JSON: usa id exato do banco
+- Prompt mostra mapeamento: `"Vietnamita → "vietnamita-01""`
+
+**Seleção de vídeo:**
+- 1 vídeo disponível → envia direto
+- Vários → lista opções e pergunta qual quer ver
+- Quando cliente escolhe → identifica id exato → `action="send_media"`, `mediaName="id-exato"`
+
+**Envio no `evolution.controller.ts`:**
+```typescript
+if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
+  const mediaFile = await this.mediaService.findByName(aiResponse.mediaName);
+  if (mediaFile) {
+    const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
+    await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, aiResponse.reply);
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${aiResponse.reply}`);
+    return;
+  }
+}
+```
+
+---
+
+### Tags em Respostas Normais (não apenas shouldIgnore)
+
+**Problema anterior:** tags só eram processadas quando `shouldIgnore=true` (leads sendo silenciados).
+
+**Correção (`evolution.controller.ts`):**
+```typescript
+const normalTags = (aiResponse.tags ?? []).filter(t => t);
+if (normalTags.length > 0) {
+  const existingLabels: string[] = lead.labels ?? [];
+  const newTags = normalTags.filter(t => !existingLabels.includes(t));
+  if (newTags.length > 0) {
+    await this.applyTagsToLead(phone, newTags);
+    const mergedLabels = Array.from(new Set([...existingLabels, ...newTags]));
+    await this.leadsService.update(lead.id, { labels: mergedLabels } as any);
+  }
+}
+```
+
+**Fix token em `applyTagsToLead`:**
+- Estava usando `configService.get('UAZAPI_TOKEN')` → 401 porque token veio do env, não do banco
+- Corrigido para `await this.whatsappConfigService.getActiveToken()`
+
+**Tag `qualificado` (verde, color=5):**
+- Aplicada automaticamente quando lead diz que já usa mega hair
+- Visível no kanban + filtrável no Envio em Massa para follow-up
+
+---
+
+### Filtro por Etiquetas no Envio em Massa
+
+**`BulkMessagePage.jsx` — nova seção ETIQUETAS nos filtros:**
+- Exibe todas as etiquetas únicas presentes nos leads (`leads.flatMap(l => l.labels ?? [])`)
+- Botões roxos com prefixo 🏷
+- Lógica: **etiqueta tem prioridade** sobre stage/temperatura
+  - Lead com etiqueta selecionada → sempre aparece (independente de stage/temp)
+  - Lead sem etiqueta → aplica filtros de stage e temperatura normalmente
+- Uso típico: clicar em "qualificado" → lista todos que já usam mega hair → selecionar todos → enviar follow-up
+
+---
+
+### SettingsPage — Fluxo de Criação de Instância
+
+**Novo fluxo de inicialização:**
+1. Tenta buscar `GET /instance/config`
+2. Se null (sem instância) → exibe formulário de criação com campo nome
+3. `POST /admin/instance { name }` → cria + configura webhook automaticamente
+4. Se instância existe → comportamento normal (connect/disconnect/status)
+
+**Seleção de agente por instância:**
+- Card "Tipo de Agente": botões Fisioterapia / Mega Hair
+- Salva via `PATCH /instance/config { agentType: 'fisio'|'megahair' }`
+- Roteamento no webhook usa este campo para decidir qual prompt usar
+
+---
+
 ## Pendências Futuras
 
-### 1. Otimização do Prompt de Venda com SPIN Selling
+### 0. Envio de Vídeo na Conversa com a IA
+**Status:** ✅ Implementado (14/05/2026)  
+Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
+
+---
+
+### 1. Lembrete de Consulta 1 Dia Antes
+**Status:** ⏳ Pendente  
+**Objetivo:** Enviar lembrete automático 1 dia antes da consulta e coletar confirmação do paciente  
+**Implementação Necessária:**
+- **Job/Scheduler:**
+  - Bull Queue ou cron diário (ex: 09:00)
+  - Busca leads com `appointmentAt` = amanhã
+  - Envia mensagem de lembrete
+  - Flag `reminderSent` para não enviar 2x
+- **Fluxo de resposta:**
+  - Se paciente responder "sim" → salva `reminderConfirmed=true` → consulta mantida
+  - Se responder "não" (ou algo diferente de "sim") → remove do Google Calendar → limpa `appointmentAt` → responde "Quer agendar para outro dia?" → volta stage de agendamento
+- **Opção de implementação:**
+  - ✅ Simples: resposta por texto ("sim" ou "não")
+  - 🔲 Com Quick Reply buttons: uazapi suporta botões no WhatsApp (avaliar depois se vale a pena)
+- **Mensagem modelo:** "Oi {nome}! 👋 Lembrando que sua consulta está marcada para amanhã às {hora}. Confirma que vai dar?"
+
+---
+
+### 2. Otimização do Prompt de Venda com SPIN Selling
 **Status:** ⏳ Pendente  
 **Objetivo:** Melhorar a qualificação de leads e conversão de vendas para nicho específico (Fisioterapia)  
 **Estratégia:** Implementar framework SPIN Selling (Situation, Problem, Implication, Need-Payoff) no system prompt

@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:3000'
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 const json = async (r) => {
   const data = await r.json()

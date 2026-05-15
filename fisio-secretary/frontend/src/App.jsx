@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import KanbanPage from './pages/KanbanPage'
 import BulkMessagePage from './pages/BulkMessagePage'
+import SettingsPage from './pages/SettingsPage'
+import MediaPage from './pages/MediaPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -20,6 +22,8 @@ export default function App() {
         >
           <Route path="/" element={<KanbanPage />} />
           <Route path="/mass-message" element={<BulkMessagePage />} />
+          <Route path="/media" element={<MediaPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

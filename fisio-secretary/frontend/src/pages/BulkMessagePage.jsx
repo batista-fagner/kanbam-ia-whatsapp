@@ -36,6 +36,7 @@ export default function BulkMessagePage() {
   const [selectedLeads, setSelectedLeads] = useState(new Set())
   const [stageFilter, setStageFilter] = useState(new Set())
   const [tempFilter, setTempFilter] = useState(new Set())
+  const [labelFilter, setLabelFilter] = useState(new Set())
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState(null)
@@ -119,10 +120,17 @@ export default function BulkMessagePage() {
 
   const validNumbers = parseNumbers(manualNumbers)
 
-  // Filtro de leads
+  // Etiquetas únicas presentes nos leads
+  const allLabels = [...new Set(leads.flatMap(l => l.labels ?? []))].sort()
+
+  // Filtro de leads — etiqueta tem prioridade: se o lead tem a etiqueta selecionada, sempre aparece
   const filteredLeads = leads.filter(lead => {
+    const hasSelectedLabel = labelFilter.size > 0 && (lead.labels ?? []).some(l => labelFilter.has(l))
+    if (hasSelectedLabel) return true
+
     if (stageFilter.size > 0 && !stageFilter.has(lead.stage)) return false
     if (tempFilter.size > 0 && !tempFilter.has(lead.temperature)) return false
+    if (labelFilter.size > 0) return false // tem filtro de label mas não bate
     return true
   })
 
@@ -303,6 +311,27 @@ export default function BulkMessagePage() {
                       ))}
                     </div>
                   </div>
+
+                  {allLabels.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">ETIQUETAS</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {allLabels.map(label => (
+                          <button
+                            key={label}
+                            onClick={() => toggleFilter(labelFilter, setLabelFilter, label)}
+                            className={`px-2.5 py-1 text-xs rounded-full transition ${
+                              labelFilter.has(label)
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            🏷 {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Lista de leads */}

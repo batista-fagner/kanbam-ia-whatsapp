@@ -7,10 +7,13 @@ import { Message } from './common/entities/message.entity';
 import { LeadStageHistory } from './common/entities/lead-stage-history.entity';
 import { Appointment } from './common/entities/appointment.entity';
 import { Campaign } from './common/entities/campaign.entity';
+import { WhatsappConfig } from './common/entities/whatsapp-config.entity';
+import { MediaFile } from './common/entities/media-file.entity';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { BulkMessageModule } from './bulk-message/bulk-message.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -21,7 +24,7 @@ import { BulkMessageModule } from './bulk-message/bulk-message.module';
         type: 'postgres',
         url: config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Appointment, Campaign],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Appointment, Campaign, WhatsappConfig, MediaFile],
         synchronize: true, // apenas dev — gera tabelas automaticamente
         logging: false,
       }),
@@ -30,6 +33,7 @@ import { BulkMessageModule } from './bulk-message/bulk-message.module';
     LeadsModule,
     CalendarModule,
     BulkMessageModule,
+    MediaModule,
   ],
 })
 export class AppModule {}

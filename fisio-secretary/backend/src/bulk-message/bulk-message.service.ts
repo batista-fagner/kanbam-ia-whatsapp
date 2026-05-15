@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
 import { LeadsService } from '../leads/leads.service';
 import { Campaign } from '../common/entities/campaign.entity';
+import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 
 interface BulkMessageDto {
   mode: 'manual' | 'system';
@@ -21,7 +22,7 @@ interface BulkMessageDto {
 export class BulkMessageService {
   private readonly logger = new Logger(BulkMessageService.name);
   private readonly uazapiBaseUrl: string;
-  private readonly uazapiToken: string;
+  private readonly envToken: string;
 
   constructor(
     private http: HttpService,
@@ -29,13 +30,17 @@ export class BulkMessageService {
     private leadsService: LeadsService,
     @InjectRepository(Campaign)
     private campaignRepo: Repository<Campaign>,
+    @InjectRepository(WhatsappConfig)
+    private configRepo: Repository<WhatsappConfig>,
   ) {
     this.uazapiBaseUrl = config.get('UAZAPI_BASE_URL') ?? '';
-    this.uazapiToken = config.get('UAZAPI_TOKEN') ?? '';
+    this.envToken = config.get('UAZAPI_TOKEN') ?? '';
   }
 
-  private get headers() {
-    return { token: this.uazapiToken };
+  private async getHeaders(): Promise<{ token: string }> {
+    const record = await this.configRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
+    const token = record?.instanceToken || this.envToken;
+    return { token };
   }
 
   private interpolate(template: string, vars: { nome: string; telefone: string }): string {
@@ -89,7 +94,7 @@ export class BulkMessageService {
       this.http.post(
         `${this.uazapiBaseUrl}/sender/advanced`,
         { delayMin, delayMax, scheduled_for: 1, info: campaignName, messages },
-        { headers: this.headers },
+        { headers: await this.getHeaders() },
       ),
     );
 
@@ -122,7 +127,7 @@ export class BulkMessageService {
     if (activeCampaigns.length > 0) {
       try {
         const res = await firstValueFrom(
-          this.http.get(`${this.uazapiBaseUrl}/sender/listfolders`, { headers: this.headers }),
+          this.http.get(`${this.uazapiBaseUrl}/sender/listfolders`, { headers: await this.getHeaders() }),
         );
         const folders: any[] = Array.isArray(res.data) ? res.data : (res.data?.folders ?? res.data?.data ?? []);
 
@@ -147,7 +152,7 @@ export class BulkMessageService {
         this.http.post(
           `${this.uazapiBaseUrl}/sender/listmessages`,
           { folder_id: folderId, limit, offset },
-          { headers: this.headers },
+          { headers: await this.getHeaders() },
         ),
       );
       const messages: any[] = Array.isArray(res.data) ? res.data : (res.data?.messages ?? []);
@@ -174,7 +179,7 @@ export class BulkMessageService {
       this.http.post(
         `${this.uazapiBaseUrl}/sender/edit`,
         { folder_id: folderId, action },
-        { headers: this.headers },
+        { headers: await this.getHeaders() },
       ),
     );
 

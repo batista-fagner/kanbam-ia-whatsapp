@@ -9,9 +9,15 @@ async function bootstrap() {
   app.use(require('express').urlencoded({ extended: true, limit: '10mb' }));
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
-  app.enableCors();
 
-  await app.listen(3000);
-  console.log('Backend rodando na porta 3000');
+  const frontendUrl = process.env.FRONTEND_URL;
+  app.enableCors({
+    origin: frontendUrl ? [frontendUrl, 'http://localhost:5173', 'http://localhost:5174'] : true,
+    credentials: true,
+  });
+
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  console.log(`Backend rodando na porta ${port}`);
 }
 bootstrap();

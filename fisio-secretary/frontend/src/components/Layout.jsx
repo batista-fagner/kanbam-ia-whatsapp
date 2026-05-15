@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image } from 'lucide-react'
 
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -9,6 +9,8 @@ export default function Layout({ onLogout }) {
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },
     { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
+    { icon: Image, label: 'Mídias', path: '/media' },
+    { icon: Settings, label: 'Configurações', path: '/settings' },
   ]
 
   const isActive = (path) => location.pathname === path
