@@ -160,7 +160,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "temperature": "quente|morno|frio",
   "action": "schedule|cancel|reschedule|none",
   "appointmentDateTime": "2026-05-07T14:00:00 ou null",
-  "tags": ["tag1", "tag2"] ou [],
+  "tags": [], (SEMPRE vazio — só use tags nas camadas de segurança: "inativo", "desrespeitoso", "emergencia", "fora-de-escopo")
   "shouldIgnore": false,
   "fields": {
     "name": "nome se coletado",
