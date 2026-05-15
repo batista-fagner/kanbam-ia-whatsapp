@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
 
 export interface AiResponse {
@@ -35,10 +35,10 @@ async function callWithRetry<T>(
     try {
       return await fn();
     } catch (err) {
-      const isOverload = err?.status === 529 || err?.status === 503 || /overloaded/i.test(err?.message ?? '');
+      const isOverload = err?.status === 429 || err?.status === 529 || err?.status === 503 || /overload|rate_limit/i.test(err?.message ?? '');
       if (isOverload && i < attempts - 1) {
         const wait = delaysMs[i] ?? 2000;
-        logger.warn(`Anthropic overloaded (tentativa ${i + 1}/${attempts}) — aguardando ${wait}ms`);
+        logger.warn(`API overloaded/rate limited (tentativa ${i + 1}/${attempts}) — aguardando ${wait}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
@@ -201,11 +201,11 @@ RESPONDA SEMPRE em JSON com este formato exato:
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly client: Anthropic;
+  private readonly client: OpenAI;
 
   constructor(private config: ConfigService) {
-    this.client = new Anthropic({
-      apiKey: config.get('ANTHROPIC_API_KEY'),
+    this.client = new OpenAI({
+      apiKey: config.get('OPENAI_API_KEY'),
     });
   }
 
@@ -214,7 +214,7 @@ export class AiService {
 
     // Injeta fato da consulta como mensagem confirmada no início do histórico
     // para a IA nunca inventar datas — ela parte do que já "confirmou"
-    const appointmentFacts: Anthropic.MessageParam[] = [];
+    const appointmentFacts: any[] = [];
     if (lead.appointmentAt) {
       const d = new Date(lead.appointmentAt);
       const fmt = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()} às ${d.getHours().toString().padStart(2,'0')}h${d.getMinutes().toString().padStart(2,'0') || '00'}`;
@@ -229,7 +229,7 @@ export class AiService {
       });
     }
 
-    const messages: Anthropic.MessageParam[] = [
+    const messages: any[] = [
       ...appointmentFacts,
       ...history,
       { role: 'user', content: incomingText },
@@ -237,17 +237,19 @@ export class AiService {
 
     try {
       const response = await callWithRetry(
-        () => this.client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+        () => this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
           max_tokens: 512,
-          system: buildSystemPrompt(lead),
-          messages,
-        }),
+          messages: [
+            { role: 'system', content: buildSystemPrompt(lead) },
+            ...messages as any,
+          ],
+        } as any),
         this.logger,
       );
 
-      let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
-      this.logger.debug(`Resposta bruta do Claude: ${raw}`);
+      let raw = response.choices[0].message.content?.trim() ?? '';
+      this.logger.debug(`Resposta bruta do GPT: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -259,7 +261,7 @@ export class AiService {
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`❌ [SOFIA] Erro ao chamar Claude: ${err.message}`);
+      this.logger.error(`❌ [SOFIA] Erro ao chamar OpenAI: ${err.message}`);
       this.logger.error(`❌ [SOFIA] Stack: ${err.stack}`);
       this.logger.error(`❌ [SOFIA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Olá! Tive um probleminha aqui, pode repetir?', success: false };
@@ -270,8 +272,8 @@ export class AiService {
     lead: Lead,
     incomingText: string,
     rawJson: string,
-  ): Anthropic.MessageParam[] {
-    const history = (lead.aiContext as Anthropic.MessageParam[]) ?? [];
+  ): any[] {
+    const history = (lead.aiContext as any[]) ?? [];
     return [
       ...history,
       { role: 'user', content: incomingText },
@@ -372,24 +374,26 @@ RESPONDA SEMPRE em JSON com este formato exato:
   }
 }`;
 
-    const messages: Anthropic.MessageParam[] = [
+    const messages: any[] = [
       ...history,
       { role: 'user', content: incomingText },
     ];
 
     try {
       const response = await callWithRetry(
-        () => this.client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+        () => this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
           max_tokens: 512,
-          system: systemPrompt,
-          messages,
-        }),
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages as any,
+          ],
+        } as any),
         this.logger,
       );
 
-      let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
-      this.logger.debug(`[MegaHair] Resposta bruta: ${raw}`);
+      let raw = response.choices[0].message.content?.trim() ?? '';
+      this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Resposta sem JSON válido');
@@ -398,7 +402,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`❌ [LINDONA] Erro ao chamar Claude: ${err.message}`);
+      this.logger.error(`❌ [LINDONA] Erro ao chamar OpenAI: ${err.message}`);
       this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);
       this.logger.error(`❌ [LINDONA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
