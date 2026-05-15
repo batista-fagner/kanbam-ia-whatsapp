@@ -20,30 +20,40 @@ export class LeadsService {
   ) {}
 
   async findOrCreate(phone: string): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
-    let lead = await this.leadsRepo.findOne({ where: { phone } });
+    // Upsert para evitar race condition em webhooks duplicados
+    const upsertResult = await this.leadsRepo.upsert(
+      { phone, stage: 'novo_lead' },
+      { conflictPaths: ['phone'] },
+    );
+
     let isNew = false;
+    let lead = await this.leadsRepo.findOne({ where: { phone } });
 
-    if (!lead) {
-      lead = this.leadsRepo.create({ phone, stage: 'novo_lead' });
-      lead = await this.leadsRepo.save(lead);
-
-      await this.historyRepo.save({
-        leadId: lead.id,
-        fromStage: null,
-        toStage: 'novo_lead',
-        changedBy: 'system',
+    // Se foi inserido (não existia antes), cria histórico
+    if (upsertResult.identifiers.length > 0 && !isNew) {
+      const recentHistory = await this.historyRepo.findOne({
+        where: { leadId: lead!.id },
+        order: { createdAt: 'DESC' },
       });
-
-      isNew = true;
+      if (!recentHistory) {
+        isNew = true;
+        await this.historyRepo.save({
+          leadId: lead!.id,
+          fromStage: null,
+          toStage: 'novo_lead',
+          changedBy: 'system',
+        });
+      }
     }
 
-    let conversation = await this.conversationsRepo.findOne({ where: { leadId: lead.id } });
-    if (!conversation) {
-      conversation = this.conversationsRepo.create({ leadId: lead.id });
-      conversation = await this.conversationsRepo.save(conversation);
-    }
+    // Upsert conversation também para evitar race condition
+    await this.conversationsRepo.upsert(
+      { leadId: lead!.id, aiEnabled: true },
+      { conflictPaths: ['leadId'] },
+    );
+    const conversation = await this.conversationsRepo.findOne({ where: { leadId: lead!.id } });
 
-    return { lead, conversation, isNew };
+    return { lead: lead!, conversation: conversation!, isNew };
   }
 
   async saveMessage(
