@@ -236,6 +236,8 @@ export class AiService {
     ];
 
     try {
+      // TESTE: Comentar para voltar a Haiku (Anthropic)
+      /*
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
           model: 'gpt-4o-mini',
@@ -250,6 +252,21 @@ export class AiService {
 
       let raw = response.choices[0].message.content?.trim() ?? '';
       this.logger.debug(`Resposta bruta do GPT: ${raw}`);
+      */
+
+      // HAIKU (teste)
+      const response = await callWithRetry(
+        () => (this.client as any).messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: buildSystemPrompt(lead),
+          messages,
+        }),
+        this.logger,
+      );
+
+      let raw = (response.content[0] as any).text.trim();
+      this.logger.debug(`Resposta bruta do Haiku: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -261,7 +278,7 @@ export class AiService {
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`❌ [SOFIA] Erro ao chamar OpenAI: ${err.message}`);
+      this.logger.error(`❌ [SOFIA] Erro ao chamar IA: ${err.message}`);
       this.logger.error(`❌ [SOFIA] Stack: ${err.stack}`);
       this.logger.error(`❌ [SOFIA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Olá! Tive um probleminha aqui, pode repetir?', success: false };
@@ -380,6 +397,8 @@ RESPONDA SEMPRE em JSON com este formato exato:
     ];
 
     try {
+      // TESTE: Comentar para voltar a Haiku (Anthropic)
+      /*
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
           model: 'gpt-4o-mini',
@@ -394,6 +413,21 @@ RESPONDA SEMPRE em JSON com este formato exato:
 
       let raw = response.choices[0].message.content?.trim() ?? '';
       this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
+      */
+
+      // HAIKU (teste)
+      const response = await callWithRetry(
+        () => (this.client as any).messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages,
+        }),
+        this.logger,
+      );
+
+      let raw = (response.content[0] as any).text.trim();
+      this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Resposta sem JSON válido');
@@ -402,7 +436,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
       parsed.rawJson = jsonMatch[0];
       return parsed;
     } catch (err) {
-      this.logger.error(`❌ [LINDONA] Erro ao chamar OpenAI: ${err.message}`);
+      this.logger.error(`❌ [LINDONA] Erro ao chamar IA: ${err.message}`);
       this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);
       this.logger.error(`❌ [LINDONA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
