@@ -25,6 +25,29 @@ export interface AiResponse {
   };
 }
 
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  logger: Logger,
+  attempts = 3,
+  delaysMs = [1000, 2000],
+): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isOverload = err?.status === 529 || err?.status === 503 || /overloaded/i.test(err?.message ?? '');
+      if (isOverload && i < attempts - 1) {
+        const wait = delaysMs[i] ?? 2000;
+        logger.warn(`Anthropic overloaded (tentativa ${i + 1}/${attempts}) — aguardando ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('callWithRetry: máximo de tentativas atingido');
+}
+
 function buildLeadContext(lead: Lead): string {
   const lines: string[] = [];
   if (lead.name) lines.push(`- Nome: ${lead.name}`);
@@ -213,17 +236,19 @@ export class AiService {
     ];
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        system: buildSystemPrompt(lead),
-        messages,
-      });
+      const response = await callWithRetry(
+        () => this.client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: buildSystemPrompt(lead),
+          messages,
+        }),
+        this.logger,
+      );
 
       let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
       this.logger.debug(`Resposta bruta do Claude: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
-      // Extrai só o bloco JSON caso venha com texto antes/depois
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         this.logger.error(`Resposta sem JSON. Conteúdo bruto: ${raw}`);
@@ -352,12 +377,15 @@ RESPONDA SEMPRE em JSON com este formato exato:
     ];
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        system: systemPrompt,
-        messages,
-      });
+      const response = await callWithRetry(
+        () => this.client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages,
+        }),
+        this.logger,
+      );
 
       let raw = (response.content[0] as Anthropic.TextBlock).text.trim();
       this.logger.debug(`[MegaHair] Resposta bruta: ${raw}`);
