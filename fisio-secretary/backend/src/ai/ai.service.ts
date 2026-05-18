@@ -316,7 +316,7 @@ REGRAS:
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
           model: 'gpt-5.4-mini',
-          max_tokens: 512,
+          max_completion_tokens: 512,
           messages: [
             { role: 'system', content: (buildSystemPrompt(customPromptSofia) + JSON_FORMAT_SOFIA + buildLeadContext(lead)) },
             ...messages as any,
