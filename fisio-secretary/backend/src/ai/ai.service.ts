@@ -313,11 +313,9 @@ REGRAS:
     ];
 
     try {
-      // TESTE: Comentar para voltar a Haiku (Anthropic)
-      /*
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5.4-mini',
           max_tokens: 512,
           messages: [
             { role: 'system', content: (buildSystemPrompt(customPromptSofia) + JSON_FORMAT_SOFIA + buildLeadContext(lead)) },
@@ -329,22 +327,6 @@ REGRAS:
 
       let raw = response.choices[0].message.content?.trim() ?? '';
       this.logger.debug(`Resposta bruta do GPT: ${raw}`);
-      */
-
-      // HAIKU (teste)
-      const response = await callWithRetry(
-        () => this.anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 512,
-          system: (buildSystemPrompt(customPromptSofia) + JSON_FORMAT_SOFIA + buildLeadContext(lead)),
-          messages,
-        }),
-        this.logger,
-      );
-
-      let raw = ((response as any)?.content?.[0]?.text ?? '').trim();
-      if (!raw) throw new Error('Resposta vazia do Haiku');
-      this.logger.debug(`Resposta bruta do Haiku: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
