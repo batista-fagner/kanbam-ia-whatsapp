@@ -52,6 +52,13 @@ export class LeadsController {
     return { ok: true };
   }
 
+  @Patch(':id/observations')
+  async updateObservations(@Param('id') id: string, @Body() body: { observations: string }) {
+    const lead = await this.leadsService.update(id, { observations: body.observations } as any);
+    this.leadsGateway.emitLeadUpdated(lead);
+    return lead;
+  }
+
   @Delete(':id')
   async deleteLead(@Param('id') id: string) {
     await this.leadsService.deleteLead(id);

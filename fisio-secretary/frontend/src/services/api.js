@@ -36,6 +36,13 @@ export const toggleAi = (id, enabled) =>
     body: JSON.stringify({ enabled }),
   }).then(json)
 
+export const updateObservations = (id, observations) =>
+  fetch(`${BASE}/leads/${id}/observations`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ observations }),
+  }).then(json)
+
 export const sendManualMessage = (phone, text) =>
   fetch(`${BASE}/webhooks/manual`, {
     method: 'POST',

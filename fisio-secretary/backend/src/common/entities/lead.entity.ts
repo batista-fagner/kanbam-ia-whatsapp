@@ -44,6 +44,9 @@ export class Lead {
   @Column({ nullable: true })
   budget: string;
 
+  @Column({ nullable: true, type: 'text' })
+  observations: string | null;
+
   @Column({ name: 'qualification_step', default: 0 })
   qualificationStep: number;
 

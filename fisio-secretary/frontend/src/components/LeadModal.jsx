@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, removeLabel } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, removeLabel, updateObservations } from '../services/api'
 
 const labelColor = {
   inativo:          'bg-red-100 text-red-600 border-red-200',
@@ -60,9 +60,15 @@ export default function LeadModal({ lead, onClose }) {
   const [manualText, setManualText] = useState('')
   const [sending, setSending] = useState(false)
   const [labels, setLabels] = useState(lead?.labels ?? [])
+  const [observations, setObservations] = useState(lead?.observations ?? '')
+  const [obsStatus, setObsStatus] = useState('idle') // 'idle' | 'saving' | 'saved'
+  const obsInitialRef = useRef(lead?.observations ?? '')
 
   useEffect(() => {
     if (!lead) return
+    setObservations(lead.observations ?? '')
+    obsInitialRef.current = lead.observations ?? ''
+    setObsStatus('idle')
     getConversation(lead.id).then(conv => {
       setMessages(mapMessages(conv?.messages))
       setAiEnabled(conv?.aiEnabled ?? true)
@@ -89,6 +95,19 @@ export default function LeadModal({ lead, onClose }) {
     const next = !aiEnabled
     setAiEnabled(next)
     await toggleAi(lead.id, next)
+  }
+
+  async function handleSaveObservations() {
+    if (observations === obsInitialRef.current) return
+    setObsStatus('saving')
+    try {
+      await updateObservations(lead.id, observations)
+      obsInitialRef.current = observations
+      setObsStatus('saved')
+      setTimeout(() => setObsStatus('idle'), 2000)
+    } catch {
+      setObsStatus('idle')
+    }
   }
 
   async function handleSend() {
@@ -251,6 +270,31 @@ export default function LeadModal({ lead, onClose }) {
                 >
                   <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${aiEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                 </button>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Observações
+                  </p>
+                  {obsStatus === 'saving' && (
+                    <span className="text-[10px] text-gray-400">salvando...</span>
+                  )}
+                  {obsStatus === 'saved' && (
+                    <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                      <Check className="w-3 h-3" /> salvo
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  value={observations}
+                  onChange={e => setObservations(e.target.value)}
+                  onBlur={handleSaveObservations}
+                  placeholder="Anotações da vendedora (ex: aguardando liberação do cartão, retornar segunda...)"
+                  rows={4}
+                  className="w-full text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none placeholder:text-amber-400/70 text-gray-700"
+                />
               </div>
 
               {/* Stage history */}
