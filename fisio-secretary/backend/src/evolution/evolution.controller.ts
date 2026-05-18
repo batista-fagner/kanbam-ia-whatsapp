@@ -226,7 +226,7 @@ export class EvolutionController {
     const action = aiResponse.action;
 
     if (action === 'schedule' && aiResponse.appointmentDateTime) {
-      const startDateTime = new Date(aiResponse.appointmentDateTime);
+      const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(startDateTime);
 
       if (!available) {
@@ -258,7 +258,7 @@ export class EvolutionController {
     }
 
     if (action === 'reschedule' && aiResponse.appointmentDateTime) {
-      const newDateTime = new Date(aiResponse.appointmentDateTime);
+      const newDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(newDateTime);
 
       if (!available) {
@@ -501,5 +501,10 @@ export class EvolutionController {
     } catch (err) {
       this.logger.error(`Erro ao aplicar etiquetas para ${phone}: ${err.message}`);
     }
+  }
+
+  private parseBrazilianDateTime(isoStr: string): Date {
+    const cleaned = isoStr.replace(/(\.\d+)?([Z]|[+-]\d{2}:?\d{2})?$/, '');
+    return new Date(`${cleaned}-03:00`);
   }
 }
