@@ -75,3 +75,23 @@ export const controlCampaign = (id, action) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action }),
   }).then(json)
+
+export const getAppointmentsByMonth = (year, month) =>
+  fetch(`${BASE}/appointments?year=${year}&month=${month}`).then(json)
+
+export const createAppointment = (data) =>
+  fetch(`${BASE}/appointments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
+export const updateAppointment = (id, data) =>
+  fetch(`${BASE}/appointments/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
+export const deleteAppointment = (id) =>
+  fetch(`${BASE}/appointments/${id}`, { method: 'DELETE' }).then(json)

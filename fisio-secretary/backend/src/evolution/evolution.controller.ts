@@ -12,6 +12,7 @@ import { LeadsGateway } from '../leads/leads.gateway';
 import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
+import { AppointmentsService } from '../appointments/appointments.service';
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -32,6 +33,7 @@ export class EvolutionController {
     private readonly audioService: AudioService,
     private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
+    private readonly appointmentsService: AppointmentsService,
   ) {}
 
   @Post('uazapi')
@@ -225,7 +227,27 @@ export class EvolutionController {
     // Ações de calendário
     const action = aiResponse.action;
 
-    if (action === 'schedule' && aiResponse.appointmentDateTime) {
+    // MegaHair: agendamento interno (tabela appointments) — não usa Google Calendar
+    if (agentType === 'megahair' && action === 'schedule' && aiResponse.appointmentDateTime) {
+      try {
+        const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
+        await this.appointmentsService.create({
+          leadId: lead.id,
+          clientName: lead.name || lead.phone,
+          clientPhone: lead.phone,
+          service: aiResponse.appointmentService ?? 'mega_hair',
+          value: aiResponse.appointmentValue ?? null,
+          status: 'agendado',
+          startDateTime,
+        });
+        await this.leadsService.update(lead.id, { appointmentAt: startDateTime });
+        this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
+      } catch (err: any) {
+        this.logger.error(`Erro ao criar agendamento MegaHair: ${err.message}`);
+      }
+    }
+
+    if (agentType !== 'megahair' && action === 'schedule' && aiResponse.appointmentDateTime) {
       const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(startDateTime);
 

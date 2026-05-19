@@ -13,6 +13,8 @@ export interface AiResponse {
   action?: 'schedule' | 'cancel' | 'reschedule' | 'send_media' | 'none';
   mediaName?: string; // nome da mídia cadastrada no sistema (quando action='send_media')
   appointmentDateTime?: string; // ISO 8601: "2026-03-28T09:00:00"
+  appointmentService?: 'mega_hair' | 'manutencao' | null; // MegaHair: tipo do serviço
+  appointmentValue?: number | null; // MegaHair: valor em reais
   tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
   fields?: {
@@ -82,7 +84,9 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "temperature": "quente|morno|frio",
   "action": "send_media|schedule|none",
   "mediaName": "id-exato-ou-null",
-  "appointmentDateTime": null,
+  "appointmentDateTime": "2026-05-20T14:00:00 (quando action=schedule) ou null",
+  "appointmentService": "mega_hair|manutencao (quando action=schedule) ou null",
+  "appointmentValue": "valor numérico em reais (ex: 1500) ou null",
   "tags": [],
   "shouldIgnore": false,
   "fields": {
@@ -426,6 +430,15 @@ REGRA DE TAGS:
 - tags=["qualificado"] → quando a cliente confirmar que JÁ USA mega hair (lead de alto potencial, prioridade para follow-up).
 - tags=[] nos demais casos.
 Etapa 4 (fechamento): Convide para retirar na loja ou pergunte sobre entrega via Correios.
+
+AGENDAMENTO DE APLICAÇÃO/MANUTENÇÃO:
+- Quando a cliente confirmar dia e horário pra ir até a loja aplicar o mega hair OU pra manutenção:
+  - Defina action="schedule"
+  - Defina appointmentDateTime no formato "YYYY-MM-DDTHH:MM:SS" (ex: "2026-05-25T14:00:00")
+  - Defina appointmentService="mega_hair" (primeira aplicação) ou "manutencao" (cliente já é nossa, voltando)
+  - Defina appointmentValue com o valor combinado em reais (ex: 1500). Se ainda não combinou valor, use null.
+  - Stage = "agendado"
+- Se ela só perguntou disponibilidade SEM confirmar dia/hora → action="none" (continue conversando)
 
 REGRAS:
 - Nunca ofereça preço antes de qualificar — primeiro gere desejo.
