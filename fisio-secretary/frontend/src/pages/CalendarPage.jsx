@@ -137,22 +137,33 @@ export default function CalendarPage() {
                     {day}
                   </div>
                   <div className="space-y-1">
-                    {(apptByDay[day] || []).slice(0, 3).map(a => (
-                      <button
-                        key={a.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setModalState({ open: true, appointment: a, defaultDate: null })
-                        }}
-                        className={`block w-full text-left text-[10px] px-1.5 py-0.5 rounded border truncate ${statusColor[a.status] ?? statusColor.agendado}`}
-                        title={`${a.clientName} — ${serviceLabel[a.service] ?? a.service}`}
-                      >
-                        <span className="font-mono">
-                          {new Date(a.startDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>{' '}
-                        {a.clientName}
-                      </button>
-                    ))}
+                    {(apptByDay[day] || []).slice(0, 3).map(a => {
+                      const dt = new Date(a.startDateTime)
+                      const hour = dt.getHours()
+                      const period = hour < 12 ? 'manhã' : 'tarde'
+                      const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setModalState({ open: true, appointment: a, defaultDate: null })
+                          }}
+                          className={`block w-full text-left text-[10px] px-1.5 py-1 rounded border ${statusColor[a.status] ?? statusColor.agendado}`}
+                          title={`${a.clientName} — ${serviceLabel[a.service] ?? a.service}`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-mono font-semibold">{timeStr}</span>
+                            <span className="text-[8px] uppercase opacity-70">{period}</span>
+                          </div>
+                          <div className="truncate font-medium">{a.clientName}</div>
+                          <div className="truncate text-[9px] opacity-75">
+                            {serviceLabel[a.service] ?? a.service}
+                            {a.clientPhone && <> · {a.clientPhone}</>}
+                          </div>
+                        </button>
+                      )
+                    })}
                     {(apptByDay[day]?.length ?? 0) > 3 && (
                       <p className="text-[9px] text-gray-400 pl-1">+{apptByDay[day].length - 3} mais</p>
                     )}

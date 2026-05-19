@@ -120,19 +120,34 @@ function buildLeadContext(lead: Lead): string {
 }
 
 function buildDateBlock(): string {
-  const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  // Usa timezone de São Paulo para evitar bug em servidor UTC (Railway).
+  const TZ = 'America/Sao_Paulo';
+  const formatInTZ = (d: Date) => {
+    const parts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+    }).formatToParts(d);
+    return {
+      day: parts.find(p => p.type === 'day')!.value,
+      month: parts.find(p => p.type === 'month')!.value,
+      year: parts.find(p => p.type === 'year')!.value,
+      weekday: parts.find(p => p.type === 'weekday')!.value,
+    };
+  };
+
   const now = new Date();
-  const dataHoje = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
-  const diaSemanaHoje = diasSemana[now.getDay()];
+  const today = formatInTZ(now);
+  const dataHoje = `${today.day}/${today.month}/${today.year}`;
   const proximosDias = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now);
-    d.setDate(now.getDate() + i + 1);
-    const dd = d.getDate().toString().padStart(2, '0');
-    const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `- ${diasSemana[d.getDay()]}: ${dd}/${mm}/${yyyy}`;
+    const d = new Date(now.getTime() + (i + 1) * 86400000);
+    const info = formatInTZ(d);
+    return `- ${info.weekday}: ${info.day}/${info.month}/${info.year}`;
   }).join('\n');
-  return `DATA DE HOJE: ${dataHoje} (${diaSemanaHoje})\nPRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):\n${proximosDias}`;
+
+  return `DATA DE HOJE: ${dataHoje} (${today.weekday})\nPRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):\n${proximosDias}`;
 }
 
 function buildSystemPrompt(customPrompt?: string): string {
