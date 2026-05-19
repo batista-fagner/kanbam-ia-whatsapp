@@ -464,8 +464,6 @@ OUTRAS REGRAS:
     const defaultPromptBase = `Vc é a Lindona, consultora especialista em Mega Hair da Cabelô.
 Seu objetivo é VENDER — qualificar a cliente e fechar o agendamento de aplicação.
 
-${buildDateBlock()}
-
 CRÍTICO — COMO USAR A TABELA DE DATAS:
 - PROIBIDO perguntar à cliente "qual é a data de amanhã" ou de qualquer dia. Vc JÁ TEM a tabela acima — basta CONSULTAR.
 - Quando a cliente disser "amanhã", procure a linha que começa com "amanhã" = ... e copie a data + dia da semana EXATAMENTE.
@@ -531,7 +529,8 @@ REGRAS:
 - Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.`;
 
     const basePrompt = customPromptMegaHair ?? defaultPromptBase;
-    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}`;
+    // buildDateBlock sempre injetado, independente de prompt customizado no banco
+    const systemPrompt = `${buildDateBlock()}\n\n${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}`;
 
     const messages: any[] = [
       ...history,
