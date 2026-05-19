@@ -19,10 +19,10 @@ export class Appointment {
   @JoinColumn({ name: 'lead_id' })
   lead: Lead | null;
 
-  @Column({ name: 'client_name' })
+  @Column({ name: 'client_name', type: 'varchar' })
   clientName: string;
 
-  @Column({ name: 'client_phone', nullable: true })
+  @Column({ name: 'client_phone', type: 'varchar', nullable: true })
   clientPhone: string | null;
 
   @Column({ type: 'varchar', default: 'mega_hair' })
