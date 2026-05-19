@@ -86,13 +86,11 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "mediaName": "id-exato-ou-null",
   "appointmentDateTime": "2026-05-20T14:00:00 (quando action=schedule) ou null",
   "appointmentService": "mega_hair|manutencao (quando action=schedule) ou null",
-  "appointmentValue": "valor numérico em reais (ex: 1500) ou null",
+  "appointmentValue": 1500,
   "tags": [],
   "shouldIgnore": false,
   "fields": {
-    "name": "nome se coletado",
-    "qualificationScore": número de 0 a 100,
-    "qualificationStep": 0 a 4
+    "name": "nome se coletado ou null"
   }
 }`;
 

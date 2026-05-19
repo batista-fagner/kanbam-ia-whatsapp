@@ -193,6 +193,16 @@ export class EvolutionController {
       if (f.qualificationStep !== undefined) updateData.qualificationStep = f.qualificationStep;
     }
 
+    // MegaHair: score definido pelo stage (IA não retorna score confiável)
+    if (agentType === 'megahair' && aiResponse.stage) {
+      const stageScore: Record<string, number> = {
+        novo_lead: 0, qualificando: 30, lead_quente: 75, agendado: 95, perdido: 5,
+      };
+      if (stageScore[aiResponse.stage] !== undefined) {
+        updateData.qualificationScore = stageScore[aiResponse.stage];
+      }
+    }
+
     await this.leadsService.update(lead.id, updateData);
 
     // Aplica tags para respostas normais (sem shouldIgnore)
