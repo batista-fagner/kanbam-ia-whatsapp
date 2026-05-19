@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Trash2, Edit2 } from 'lucide-react'
+import { Trash2, Edit2, Calendar } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { updateName } from '../services/api'
 
 const urgencyColor = {
@@ -170,10 +171,24 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
         </div>
       )}
 
+      {/* Link pro calendário quando agendado */}
+      {lead.stage === 'agendado' && (
+        <div className="mt-2 pt-2 border-t border-gray-50">
+          <Link
+            to="/calendar"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-[10px] text-pink-600 hover:text-pink-700 font-semibold hover:underline"
+          >
+            <Calendar className="w-3 h-3" /> Ver no calendário
+          </Link>
+        </div>
+      )}
+
       {/* Last message timestamp */}
       {lead.lastMessageAt && (
-        <div className="mt-2 pt-2 border-t border-gray-50">
-          <p className="text-[10px] text-gray-300">
+        <div className={`${lead.stage === 'agendado' ? '' : 'mt-2 pt-2 border-t border-gray-50'}`}>
+          <p className="text-[10px] text-gray-300 mt-1">
             🕐 {new Date(lead.lastMessageAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>

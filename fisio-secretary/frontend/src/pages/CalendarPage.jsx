@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, RefreshCw } from 'lucide-react'
 import { getAppointmentsByMonth } from '../services/api'
 import AppointmentModal from '../components/AppointmentModal'
 
@@ -84,12 +84,22 @@ export default function CalendarPage() {
             <p className="text-xs text-gray-500">Agendamentos de aplicação e manutenção</p>
           </div>
         </div>
-        <button
-          onClick={() => setModalState({ open: true, appointment: null, defaultDate: new Date() })}
-          className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition shadow-sm"
-        >
-          <Plus className="w-4 h-4" /> Novo agendamento
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500 disabled:opacity-40"
+            title="Atualizar"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => setModalState({ open: true, appointment: null, defaultDate: new Date() })}
+            className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Novo agendamento
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
