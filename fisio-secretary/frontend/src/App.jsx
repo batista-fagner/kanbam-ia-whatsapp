@@ -6,6 +6,7 @@ import BulkMessagePage from './pages/BulkMessagePage'
 import SettingsPage from './pages/SettingsPage'
 import MediaPage from './pages/MediaPage'
 import CalendarPage from './pages/CalendarPage'
+import DeletedLeadsPage from './pages/DeletedLeadsPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
         >
           <Route path="/" element={<KanbanPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/deleted-leads" element={<DeletedLeadsPage />} />
           <Route path="/mass-message" element={<BulkMessagePage />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/settings" element={<SettingsPage />} />

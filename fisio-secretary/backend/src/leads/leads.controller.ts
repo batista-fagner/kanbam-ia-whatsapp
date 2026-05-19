@@ -17,6 +17,16 @@ export class LeadsController {
     return this.leadsService.findAll();
   }
 
+  @Get('deleted')
+  findDeleted() {
+    return this.leadsService.findDeleted();
+  }
+
+  @Get('deleted/:id')
+  findOneDeleted(@Param('id') id: string) {
+    return this.leadsService.findOneDeleted(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.leadsService.findOne(id);
@@ -60,8 +70,8 @@ export class LeadsController {
   }
 
   @Delete(':id')
-  async deleteLead(@Param('id') id: string) {
-    await this.leadsService.deleteLead(id);
+  async deleteLead(@Param('id') id: string, @Body() body: { reason?: string } = {}) {
+    await this.leadsService.deleteLead(id, body.reason ?? '');
     this.leadsGateway.emitLeadDeleted(id);
     return { ok: true };
   }

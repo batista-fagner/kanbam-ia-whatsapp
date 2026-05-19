@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image, Calendar } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image, Calendar, Trash2 } from 'lucide-react'
 
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -11,6 +11,7 @@ export default function Layout({ onLogout }) {
     { icon: Calendar, label: 'Calendário', path: '/calendar' },
     { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
     { icon: Image, label: 'Mídias', path: '/media' },
+    { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
   ]
 

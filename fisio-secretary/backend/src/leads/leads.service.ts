@@ -5,6 +5,7 @@ import { Lead, LeadStage } from '../common/entities/lead.entity';
 import { Conversation } from '../common/entities/conversation.entity';
 import { Message } from '../common/entities/message.entity';
 import { LeadStageHistory } from '../common/entities/lead-stage-history.entity';
+import { DeletedLead } from '../common/entities/deleted-lead.entity';
 
 @Injectable()
 export class LeadsService {
@@ -17,6 +18,8 @@ export class LeadsService {
     private messagesRepo: Repository<Message>,
     @InjectRepository(LeadStageHistory)
     private historyRepo: Repository<LeadStageHistory>,
+    @InjectRepository(DeletedLead)
+    private deletedLeadsRepo: Repository<DeletedLead>,
   ) {}
 
   async findOrCreate(phone: string): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
@@ -158,13 +161,47 @@ export class LeadsService {
     return conversation?.aiEnabled ?? true;
   }
 
-  async deleteLead(leadId: string): Promise<void> {
+  async deleteLead(leadId: string, reason: string): Promise<void> {
+    const lead = await this.leadsRepo.findOne({ where: { id: leadId } });
+    if (!lead) return;
+
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
+    let messagesSnapshot: any[] = [];
+    if (conversation) {
+      messagesSnapshot = await this.messagesRepo.find({
+        where: { conversationId: conversation.id },
+        order: { createdAt: 'ASC' },
+      });
+    }
+    const historySnapshot = await this.historyRepo.find({ where: { leadId }, order: { createdAt: 'ASC' } });
+
+    await this.deletedLeadsRepo.save({
+      originalLeadId: lead.id,
+      phone: lead.phone,
+      name: lead.name,
+      stage: lead.stage,
+      deletionReason: reason || 'Sem motivo informado',
+      leadSnapshot: {
+        lead,
+        conversation,
+        messages: messagesSnapshot,
+        stageHistory: historySnapshot,
+      },
+    });
+
     if (conversation) {
       await this.messagesRepo.delete({ conversationId: conversation.id });
       await this.conversationsRepo.delete({ leadId });
     }
     await this.historyRepo.delete({ leadId });
     await this.leadsRepo.delete(leadId);
+  }
+
+  async findDeleted(): Promise<DeletedLead[]> {
+    return this.deletedLeadsRepo.find({ order: { deletedAt: 'DESC' } });
+  }
+
+  async findOneDeleted(id: string): Promise<DeletedLead | null> {
+    return this.deletedLeadsRepo.findOne({ where: { id } });
   }
 }

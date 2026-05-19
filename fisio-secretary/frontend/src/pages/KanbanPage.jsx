@@ -33,11 +33,12 @@ export default function KanbanPage() {
     setActiveId(active.id)
   }
 
-  async function handleDeleteConfirmed() {
+  async function handleDeleteConfirmed(reason) {
     if (!leadToDelete) return
-    setLeads(prev => prev.filter(l => l.id !== leadToDelete.id))
+    const id = leadToDelete.id
+    setLeads(prev => prev.filter(l => l.id !== id))
     setLeadToDelete(null)
-    await deleteLead(leadToDelete.id)
+    await deleteLead(id, reason)
   }
 
   function handleLeadUpdate(updatedLead) {

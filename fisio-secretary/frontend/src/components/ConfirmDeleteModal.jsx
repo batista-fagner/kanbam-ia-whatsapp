@@ -1,12 +1,28 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2, X, AlertTriangle } from 'lucide-react'
 
 export default function ConfirmDeleteModal({ lead, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onCancel() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
+
+  async function handleConfirm() {
+    const trimmed = reason.trim()
+    if (!trimmed) return
+    setSubmitting(true)
+    try {
+      await onConfirm(trimmed)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const canConfirm = reason.trim().length > 0 && !submitting
 
   return (
     <div
@@ -42,10 +58,24 @@ export default function ConfirmDeleteModal({ lead, onConfirm, onCancel }) {
             </div>
           </div>
 
-          <p className="text-sm text-gray-600 leading-relaxed">
+          <p className="text-sm text-gray-600 leading-relaxed mb-3">
             Esta ação irá remover o lead e todo o histórico de conversa permanentemente.
             <span className="font-medium text-gray-800"> Não é possível desfazer.</span>
           </p>
+
+          <label className="block">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              Motivo da exclusão <span className="text-red-500">*</span>
+            </span>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="Ex: lead duplicado, desinteresse, spam, número errado..."
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              autoFocus
+            />
+          </label>
         </div>
 
         {/* Footer */}
@@ -57,11 +87,12 @@ export default function ConfirmDeleteModal({ lead, onConfirm, onCancel }) {
             Cancelar
           </button>
           <button
-            onClick={onConfirm}
-            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
+            onClick={handleConfirm}
+            disabled={!canConfirm}
+            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            Excluir
+            {submitting ? 'Excluindo...' : 'Excluir'}
           </button>
         </div>
       </div>

@@ -50,8 +50,18 @@ export const sendManualMessage = (phone, text) =>
     body: JSON.stringify({ phone, text }),
   }).then(json)
 
-export const deleteLead = (id) =>
-  fetch(`${BASE}/leads/${id}`, { method: 'DELETE' }).then(json)
+export const deleteLead = (id, reason) =>
+  fetch(`${BASE}/leads/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  }).then(json)
+
+export const getDeletedLeads = () =>
+  fetch(`${BASE}/leads/deleted`).then(json)
+
+export const getDeletedLead = (id) =>
+  fetch(`${BASE}/leads/deleted/${id}`).then(json)
 
 export const removeLabel = (id, label) =>
   fetch(`${BASE}/leads/${id}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }).then(json)
