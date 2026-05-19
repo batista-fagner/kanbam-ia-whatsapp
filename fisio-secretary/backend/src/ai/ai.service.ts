@@ -122,6 +122,9 @@ function buildLeadContext(lead: Lead): string {
 function buildDateBlock(): string {
   // Usa timezone de São Paulo para evitar bug em servidor UTC (Railway).
   const TZ = 'America/Sao_Paulo';
+  const dayNames = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const dayShort = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
   const formatInTZ = (d: Date) => {
     const parts = new Intl.DateTimeFormat('pt-BR', {
       timeZone: TZ,
@@ -140,14 +143,39 @@ function buildDateBlock(): string {
 
   const now = new Date();
   const today = formatInTZ(now);
-  const dataHoje = `${today.day}/${today.month}/${today.year}`;
-  const proximosDias = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now.getTime() + (i + 1) * 86400000);
-    const info = formatInTZ(d);
-    return `- ${info.weekday}: ${info.day}/${info.month}/${info.year}`;
-  }).join('\n');
+  const todayIdx = dayNames.indexOf(today.weekday);
+  const dayInfo = (offset: number) => formatInTZ(new Date(now.getTime() + offset * 86400000));
 
-  return `DATA DE HOJE: ${dataHoje} (${today.weekday})\nPRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):\n${proximosDias}`;
+  const labels = ['amanhã', 'depois de amanhã', 'em 3 dias', 'em 4 dias', 'em 5 dias', 'em 6 dias', 'em 7 dias'];
+  const relativeLookup = [`- "hoje" = ${today.day}/${today.month}/${today.year} (${today.weekday})`];
+  for (let i = 0; i < 7; i++) {
+    const info = dayInfo(i + 1);
+    relativeLookup.push(`- "${labels[i]}" = ${info.day}/${info.month}/${info.year} (${info.weekday})`);
+  }
+
+  const weekdayLookup: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    let aheadDays = (i - todayIdx + 7) % 7;
+    if (aheadDays === 0) aheadDays = 7;
+    const info = dayInfo(aheadDays);
+    weekdayLookup.push(`- "${dayShort[i]}" / "${dayNames[i]}" (próxima) = ${info.day}/${info.month}/${info.year}`);
+  }
+
+  return `════════ TABELA DE DATAS — USE EXATAMENTE, NUNCA CALCULE ════════
+DATA DE HOJE: ${today.day}/${today.month}/${today.year} (${today.weekday})
+
+EXPRESSÕES RELATIVAS (busque a linha exata da expressão usada pela cliente):
+${relativeLookup.join('\n')}
+
+DIAS DA SEMANA (próxima ocorrência a partir de hoje):
+${weekdayLookup.join('\n')}
+
+REGRAS ABSOLUTAS:
+- Para resolver "amanhã", "depois de amanhã", "segunda", "em 3 dias", etc, SEMPRE busque a linha exata na tabela acima.
+- NUNCA invente, NUNCA conte na cabeça, NUNCA pule linha. É lookup direto: leia a string entre aspas, copie a data correspondente.
+- Ao mencionar uma data, sempre inclua o dia da semana entre parênteses EXATAMENTE como aparece na tabela.
+- Se a cliente discordar de uma data que vc mencionou, NÃO concorde mecanicamente — releia a tabela e confirme.
+═══════════════════════════════════════════════════════════════════`;
 }
 
 function buildSystemPrompt(customPrompt?: string): string {
@@ -155,23 +183,14 @@ function buildSystemPrompt(customPrompt?: string): string {
     return `${buildDateBlock()}\n\n${customPrompt}`;
   }
 
-  const proximosDias = buildDateBlock().split('\n').slice(2).join('\n');
-  const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-  const now = new Date();
-  const dataHoje = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
-  const diaSemanaHoje = diasSemana[now.getDay()];
-
   return `Você é Sofia, secretária virtual de uma clínica de fisioterapia.
 Seu objetivo é qualificar leads via WhatsApp de forma natural, empática e profissional.
 
-DATA DE HOJE: ${dataHoje} (${diaSemanaHoje})
-PRÓXIMOS 7 DIAS (use exatamente estas datas, não calcule):
-${proximosDias}
-CRÍTICO — VALIDAÇÃO DE DATA:
-- NUNCA agende em datas anteriores à data de hoje. Valide sempre!
-- Se o paciente disser "amanhã", é dia ${proximosDias.split('\n')[0].split(': ')[1]}.
-- Se disser "em 3 dias", conte exatamente 3 linhas do calendário acima.
-- Confirme SEMPRE a data completa (dia/mês) ANTES de agendar.
+${buildDateBlock()}
+
+REGRAS DE AGENDAMENTO (data):
+- NUNCA agende em datas anteriores à de hoje.
+- Confirme SEMPRE a data completa (dia/mês + dia da semana) ANTES de definir action="schedule".
 
 FLUXO DE QUALIFICAÇÃO (siga esta ordem):
 Etapa 0 (novo_lead): Dê boas-vindas, pergunte o nome e o que está sentindo.
@@ -446,11 +465,14 @@ OUTRAS REGRAS:
 Seu objetivo é VENDER — qualificar a cliente e fechar o agendamento de aplicação.
 
 ${buildDateBlock()}
-CRÍTICO — DATAS:
-- Use EXATAMENTE as datas acima. NÃO calcule datas por conta própria.
-- "amanhã" = o primeiro dia da lista PRÓXIMOS 7 DIAS acima. "depois de amanhã" = o segundo. Nunca invente.
-- PROIBIDO perguntar à cliente qual é a data de amanhã ou de qualquer dia. Vc JÁ TEM o calendário acima — basta consultar.
-- Quando a cliente disser "amanhã", "depois de amanhã", "segunda", etc, vc mesma resolve a data pelo calendário acima e confirma assim: "Perfeito, então fica pra amanhã, dia 19/05 (terça), pela manhã."
+
+CRÍTICO — COMO USAR A TABELA DE DATAS:
+- PROIBIDO perguntar à cliente "qual é a data de amanhã" ou de qualquer dia. Vc JÁ TEM a tabela acima — basta CONSULTAR.
+- Quando a cliente disser "amanhã", procure a linha que começa com "amanhã" = ... e copie a data + dia da semana EXATAMENTE.
+- Quando ela disser "depois de amanhã", procure a linha que começa com "depois de amanhã" = ... Não conte na cabeça, não pule linha.
+- Quando ela disser "segunda", "quarta", etc, procure a linha do DIA DA SEMANA correspondente.
+- Sempre confirme citando data + dia da semana no formato: "amanhã, dia 19/05 (segunda-feira)".
+- Se a cliente discordar de uma data, NÃO concorde mecanicamente — releia a tabela acima antes de responder.
 
 IDENTIDADE E TOM:
 - Vc se chama Lindona e trabalha na Cabelô.
