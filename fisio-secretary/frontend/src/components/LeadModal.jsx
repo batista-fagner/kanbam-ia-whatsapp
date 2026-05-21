@@ -22,12 +22,12 @@ const tempColor    = { quente: 'text-orange-600 bg-orange-50', morno: 'text-yell
 const byLabel      = { ai: 'IA', operator: 'Operador', system: 'Sistema' }
 const stageLabel   = {
   novo_lead:    'Novo Lead',
-  qualificando: 'Qualificando',
-  lead_quente:  'Lead Quente',
   lead_frio:    'Lead Frio',
-  agendado:     'Agendado',
-  convertido:   'Convertido',
-  perdido:      'Perdido',
+  lead_quente:  'Lead Quente',
+  agendado:     'Agendado / Prometeu Vir',
+  vendas:       'Vendas',
+  desliza_hair: 'Desliza Hair',
+  perdido:      'Lead Perdida',
 }
 
 function formatTime(dateStr) {

@@ -3,13 +3,13 @@ import { Trash2, Search, User, Phone, Calendar, FileText, X, MessageSquare } fro
 import { getDeletedLeads, getDeletedLead } from '../services/api'
 
 const STAGE_LABELS = {
-  novo_lead: 'Novo Lead',
-  qualificando: 'Qualificando',
-  lead_quente: 'Lead Quente',
-  lead_frio: 'Lead Frio',
-  agendado: 'Agendado',
-  convertido: 'Convertido',
-  perdido: 'Perdido',
+  novo_lead:    'Novo Lead',
+  lead_frio:    'Lead Frio',
+  lead_quente:  'Lead Quente',
+  agendado:     'Agendado / Prometeu Vir',
+  vendas:       'Vendas',
+  desliza_hair: 'Desliza Hair',
+  perdido:      'Lead Perdida',
 }
 
 function formatDate(iso) {

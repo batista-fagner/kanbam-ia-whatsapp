@@ -7,7 +7,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import { Wifi, Users, Flame, CalendarCheck } from 'lucide-react'
+import { Wifi, Users, Flame, CalendarCheck, ShoppingBag } from 'lucide-react'
 
 import { COLUMNS } from '../data/mockData'
 import { useLeads } from '../hooks/useLeads'
@@ -62,8 +62,9 @@ export default function KanbanPage() {
   }
 
   const total   = leads.length
-  const quentes = leads.filter(l => l.temperature === 'quente').length
+  const quentes = leads.filter(l => l.stage === 'lead_quente').length
   const agend   = leads.filter(l => l.stage === 'agendado').length
+  const vendas  = leads.filter(l => l.stage === 'vendas').length
 
   if (loading) {
     return (
@@ -81,9 +82,10 @@ export default function KanbanPage() {
         <div className="px-6 py-3">
           <div className="flex items-center gap-6">
             <Stat icon={<Wifi className="w-3.5 h-3.5 text-green-500" />} label="WhatsApp" value="Conectado" valueClass="text-green-600" />
-            <Stat icon={<Users className="w-3.5 h-3.5 text-blue-500" />} label="Total de leads" value={total} />
+            <Stat icon={<Users className="w-3.5 h-3.5 text-blue-500" />} label="Total" value={total} />
             <Stat icon={<Flame className="w-3.5 h-3.5 text-orange-500" />} label="Quentes" value={quentes} valueClass="text-orange-600" />
-            <Stat icon={<CalendarCheck className="w-3.5 h-3.5 text-teal-500" />} label="Agendados" value={agend} valueClass="text-teal-600" />
+            <Stat icon={<CalendarCheck className="w-3.5 h-3.5 text-teal-500" />} label="Agendadas" value={agend} valueClass="text-teal-600" />
+            <Stat icon={<ShoppingBag className="w-3.5 h-3.5 text-green-600" />} label="Vendas" value={vendas} valueClass="text-green-700" />
           </div>
         </div>
       </header>

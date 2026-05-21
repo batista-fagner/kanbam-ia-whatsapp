@@ -3,12 +3,13 @@ import { BarChart2, Users, Target, TrendingDown, CheckCircle2, Clock, RefreshCw,
 import { getDashboard } from '../services/api'
 
 const STAGE_CONFIG = [
-  { id: 'novo_lead',    label: 'Novo Lead',    color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { id: 'qualificando', label: 'Qualificando', color: 'bg-purple-50 text-purple-700 border-purple-200' },
-  { id: 'lead_quente',  label: 'Lead Quente',  color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  { id: 'lead_frio',    label: 'Lead Frio',    color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
-  { id: 'agendado',     label: 'Agendado',     color: 'bg-green-50 text-green-700 border-green-200' },
-  { id: 'perdido',      label: 'Perdido',      color: 'bg-red-50 text-red-700 border-red-200' },
+  { id: 'novo_lead',    label: 'Novo Lead',             color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { id: 'lead_frio',    label: 'Lead Frio',             color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { id: 'lead_quente',  label: 'Lead Quente',           color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { id: 'agendado',     label: 'Agendado / Prometeu',   color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  { id: 'vendas',       label: 'Vendas',                color: 'bg-green-50 text-green-700 border-green-200' },
+  { id: 'desliza_hair', label: 'Desliza Hair',          color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { id: 'perdido',      label: 'Perdida',               color: 'bg-red-50 text-red-700 border-red-200' },
 ]
 
 const PERIODS = [
@@ -19,15 +20,15 @@ const PERIODS = [
 ]
 
 const STAGE_LABEL = {
-  qualificando: 'Qualificando',
+  lead_frio:   'Lead Frio',
   lead_quente: 'Lead Quente',
-  lead_frio: 'Lead Frio',
+  agendado:    'Agendado',
 }
 
 const STAGE_COLOR = {
-  qualificando: 'bg-purple-50 text-purple-700 border-purple-200',
+  lead_frio:   'bg-cyan-50 text-cyan-700 border-cyan-200',
   lead_quente: 'bg-orange-50 text-orange-700 border-orange-200',
-  lead_frio: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  agendado:    'bg-teal-50 text-teal-700 border-teal-200',
 }
 
 export default function DashboardPage() {

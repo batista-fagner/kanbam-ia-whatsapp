@@ -248,7 +248,7 @@ export class LeadsService implements OnApplicationBootstrap {
       : await this.leadsRepo.find();
 
     // 2. Funil — contagem por stage
-    const stages: LeadStage[] = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio', 'agendado', 'convertido', 'perdido'];
+    const stages: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'desliza_hair', 'perdido'];
     const byStage: Record<string, number> = {};
     for (const s of stages) byStage[s] = 0;
     for (const lead of leads) {
@@ -256,7 +256,7 @@ export class LeadsService implements OnApplicationBootstrap {
     }
 
     const total = leads.length;
-    const agendadoCount = byStage['agendado'] + byStage['convertido'];
+    const agendadoCount = byStage['agendado'] + byStage['vendas'] + byStage['desliza_hair'];
     const perdidoCount = byStage['perdido'];
     const conversionRate = total > 0 ? +(agendadoCount / total * 100).toFixed(1) : 0;
     const lossRate = total > 0 ? +(perdidoCount / total * 100).toFixed(1) : 0;
@@ -320,14 +320,14 @@ export class LeadsService implements OnApplicationBootstrap {
     // 5. Leads esfriando — raias ativas sem mensagem há mais de N dias
     const coolingThresholds: Record<string, number> = {
       lead_quente: 1,
-      qualificando: 2,
-      lead_frio: 3,
+      lead_frio: 2,
+      agendado: 1,
     };
     const activeLeads = await this.leadsRepo.find({
       where: [
         { stage: 'lead_quente' as LeadStage },
-        { stage: 'qualificando' as LeadStage },
         { stage: 'lead_frio' as LeadStage },
+        { stage: 'agendado' as LeadStage },
       ],
     });
 
@@ -379,7 +379,7 @@ export class LeadsService implements OnApplicationBootstrap {
 
     // 7. Leads sem resposta — última mensagem foi enviada por nós há mais de 8h
     const noReplyThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000);
-    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio'];
+    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado'];
 
     const activeForNoReply = await this.leadsRepo.find({
       where: activeStagesForNoReply.map((s) => ({ stage: s })),

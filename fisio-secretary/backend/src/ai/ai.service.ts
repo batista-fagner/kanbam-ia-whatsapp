@@ -80,19 +80,23 @@ const JSON_FORMAT_MEGAHAIR = `
 RESPONDA SEMPRE em JSON com este formato exato:
 {
   "reply": "texto da resposta para a cliente",
-  "stage": "novo_lead|qualificando|lead_quente|agendado|perdido",
+  "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
   "temperature": "quente|morno|frio",
-  "action": "send_media|schedule|none",
+  "action": "send_media|none",
   "mediaName": "id-exato-ou-null",
-  "appointmentDateTime": "2026-05-20T14:00:00 (quando action=schedule) ou null",
-  "appointmentService": "mega_hair|manutencao (quando action=schedule) ou null",
-  "appointmentValue": 1500,
   "tags": [],
   "shouldIgnore": false,
   "fields": {
     "name": "nome se coletado ou null"
   }
-}`;
+}
+
+REGRAS DE STAGE — quando avançar cada raia:
+- novo_lead → lead_frio: cliente disse que NUNCA usou mega hair e não demonstrou interesse imediato.
+- novo_lead → lead_quente: cliente disse que JÁ USA ou JÁ USOU mega hair, ou demonstrou interesse claro.
+- qualquer → agendado: cliente disse o dia/horário que vai comprar ou ir à loja ver o cabelo.
+- qualquer → perdido: cliente desistiu, foi rude, ou pediu produto fora do catálogo após transferência tentada.
+IMPORTANTE: As raias "vendas" e "desliza_hair" são controladas pela vendedora humana — NUNCA defina esses stages.`;
 
 function buildLeadContext(lead: Lead): string {
   const lines: string[] = [];
@@ -273,10 +277,14 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly client: OpenAI;
   private readonly anthropic: Anthropic;
+  private readonly chatModel: string;
 
   constructor(private config: ConfigService) {
+    const groqKey = config.get('GROQ_API_KEY');
+    this.chatModel = groqKey ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
     this.client = new OpenAI({
-      apiKey: config.get('OPENAI_API_KEY'),
+      apiKey: groqKey || config.get('OPENAI_API_KEY'),
+      ...(groqKey ? { baseURL: 'https://api.groq.com/openai/v1' } : {}),
     });
     this.anthropic = new Anthropic({
       apiKey: config.get('ANTHROPIC_API_KEY'),
@@ -538,7 +546,7 @@ REGRAS:
     try {
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: this.chatModel,
           max_tokens: 512,
           messages: [
             { role: 'system', content: systemPrompt },
