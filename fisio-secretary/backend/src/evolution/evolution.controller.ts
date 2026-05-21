@@ -47,6 +47,7 @@ export class EvolutionController {
     const phone = rawPhone.replace(/\D/g, '');
     const text: string = message.text;
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
+    const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;
 
     if (!phone || (!text && !isAudio)) return { ok: true };
 
@@ -74,17 +75,17 @@ export class EvolutionController {
     this.lastMessageWasAudio.set(phone, isAudio);
 
     if (isAudio) {
-      this.transcribeAndEnqueue(phone, message, messageId).catch((err) =>
+      this.transcribeAndEnqueue(phone, message, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao transcrever áudio de ${phone}: ${err.message}`),
       );
       return { ok: true };
     }
 
-    this.logger.log(`Mensagem recebida de ${phone}: ${text}`);
+    this.logger.log(`Mensagem recebida de ${phone}${pushName ? ` (${pushName})` : ''}: ${text}`);
 
     this.messageQueue.enqueue(phone, text, (combinedText) => {
       this.logger.log(`[PROCESSANDO] messageId=${messageId}, phone=${phone}, texto="${combinedText.substring(0, 40)}..."`);
-      this.processMessage(phone, combinedText, messageId).catch((err) => {
+      this.processMessage(phone, combinedText, messageId, pushName).catch((err) => {
         this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`);
         this.logger.error(`❌ [ERRO AO PROCESSAR] Stack: ${err.stack}`);
       });
@@ -93,20 +94,20 @@ export class EvolutionController {
     return { ok: true };
   }
 
-  private async transcribeAndEnqueue(phone: string, message: any, messageId: string) {
+  private async transcribeAndEnqueue(phone: string, message: any, messageId: string, pushName?: string | null) {
     this.logger.log(`Transcrevendo áudio de ${phone}...`);
     const transcribedText = await this.evolutionService.transcribeAudio(message.messageid);
     this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
 
     this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
-      this.processMessage(phone, combinedText, messageId).catch((err) =>
+      this.processMessage(phone, combinedText, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
       );
     });
   }
 
-  private async processMessage(phone: string, combinedText: string, messageKeyId: string) {
-    const { lead, conversation } = await this.leadsService.findOrCreate(phone);
+  private async processMessage(phone: string, combinedText: string, messageKeyId: string, pushName?: string | null) {
+    const { lead, conversation } = await this.leadsService.findOrCreate(phone, pushName);
 
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });

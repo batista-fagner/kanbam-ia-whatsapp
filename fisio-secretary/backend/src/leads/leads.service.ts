@@ -40,7 +40,7 @@ export class LeadsService implements OnApplicationBootstrap {
     `);
   }
 
-  async findOrCreate(phone: string): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
+  async findOrCreate(phone: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
     // Upsert para evitar race condition em webhooks duplicados
     const upsertResult = await this.leadsRepo.upsert(
       { phone, stage: 'novo_lead' },
@@ -49,6 +49,12 @@ export class LeadsService implements OnApplicationBootstrap {
 
     let isNew = false;
     let lead = await this.leadsRepo.findOne({ where: { phone } });
+
+    // Salva pushName no lead se ainda não tem nome cadastrado
+    if (lead && !lead.name && pushName && pushName !== 'null' && pushName.trim().length > 0) {
+      lead.name = pushName.trim();
+      await this.leadsRepo.save(lead);
+    }
 
     // Se foi inserido (não existia antes), cria histórico
     if (upsertResult.identifiers.length > 0 && !isNew) {

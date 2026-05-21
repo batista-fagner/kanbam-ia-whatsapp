@@ -193,7 +193,9 @@ export class UazapiProvider implements IWhatsAppProvider {
         ),
       );
     } catch (err) {
-      this.logger.error(`Erro ao enviar mídia para ${phone}: ${err.message}`);
+      const status = err?.response?.status ?? 'N/A';
+      const data = err?.response?.data ? JSON.stringify(err.response.data) : 'sem body';
+      this.logger.error(`Erro ao enviar mídia para ${phone} [HTTP ${status}] type=${type} url=${url}: ${err.message} | uazapi response: ${data}`);
     }
   }
 
