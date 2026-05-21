@@ -74,6 +74,9 @@ export class Lead {
   @Column({ name: 'last_message_at', nullable: true, type: 'timestamp' })
   lastMessageAt: Date;
 
+  @Column({ name: 'last_message_direction', nullable: true, type: 'varchar' })
+  lastMessageDirection: 'inbound' | 'outbound' | null;
+
   @Column({ type: 'jsonb', default: [] })
   labels: string[];
 

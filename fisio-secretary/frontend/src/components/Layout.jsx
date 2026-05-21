@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image, Calendar, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image, Calendar, Trash2, BarChart2, Bell } from 'lucide-react'
 
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -8,6 +8,7 @@ export default function Layout({ onLogout }) {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },
+    { icon: BarChart2, label: 'Dashboard', path: '/dashboard' },
     { icon: Calendar, label: 'Calendário', path: '/calendar' },
     { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
     { icon: Image, label: 'Mídias', path: '/media' },
@@ -65,8 +66,20 @@ export default function Layout({ onLogout }) {
           })}
         </nav>
 
-        {/* Logout */}
-        <div className="p-3 border-t border-gray-100">
+        {/* Footer */}
+        <div className="p-3 border-t border-gray-100 space-y-1">
+          <Link
+            to="/alert-rules"
+            className={`flex items-center gap-3 px-3 py-2 rounded transition ${
+              location.pathname === '/alert-rules'
+                ? 'bg-teal-700 text-white'
+                : 'text-gray-500 hover:bg-gray-100'
+            }`}
+            title={collapsed ? 'Regras de Alertas' : ''}
+          >
+            <Bell className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="text-sm font-medium">Regras de Alertas</span>}
+          </Link>
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded transition text-sm font-medium"

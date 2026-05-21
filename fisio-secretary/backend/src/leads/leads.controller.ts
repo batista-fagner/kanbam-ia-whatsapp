@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Delete, Body, Inject } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Delete, Body, Query, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from './leads.service';
@@ -20,6 +20,13 @@ export class LeadsController {
   @Get('deleted')
   findDeleted() {
     return this.leadsService.findDeleted();
+  }
+
+  @Get('dashboard')
+  getDashboard(@Query('period') period?: string) {
+    const valid = ['7', '30', '90', 'all'];
+    const p = valid.includes(period ?? '') ? period : 'all';
+    return this.leadsService.getDashboard(p as any);
   }
 
   @Get('deleted/:id')

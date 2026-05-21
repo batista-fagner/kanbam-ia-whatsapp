@@ -1,14 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import { Lead, LeadStage } from '../common/entities/lead.entity';
 import { Conversation } from '../common/entities/conversation.entity';
 import { Message } from '../common/entities/message.entity';
 import { LeadStageHistory } from '../common/entities/lead-stage-history.entity';
 import { DeletedLead } from '../common/entities/deleted-lead.entity';
+import { Appointment } from '../common/entities/appointment.entity';
 
 @Injectable()
-export class LeadsService {
+export class LeadsService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(Lead)
     private leadsRepo: Repository<Lead>,
@@ -20,7 +21,24 @@ export class LeadsService {
     private historyRepo: Repository<LeadStageHistory>,
     @InjectRepository(DeletedLead)
     private deletedLeadsRepo: Repository<DeletedLead>,
+    @InjectRepository(Appointment)
+    private appointmentsRepo: Repository<Appointment>,
   ) {}
+
+  async onApplicationBootstrap() {
+    await this.leadsRepo.query(`
+      UPDATE leads l
+      SET last_message_direction = (
+        SELECT m.direction
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.lead_id = l.id
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      )
+      WHERE l.last_message_direction IS NULL
+    `);
+  }
 
   async findOrCreate(phone: string): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
     // Upsert para evitar race condition em webhooks duplicados
@@ -73,7 +91,15 @@ export class LeadsService {
       content,
       evolutionId,
     });
-    return this.messagesRepo.save(msg);
+    const saved = await this.messagesRepo.save(msg);
+
+    await this.leadsRepo.createQueryBuilder()
+      .update()
+      .set({ lastMessageAt: new Date(), lastMessageDirection: direction })
+      .where('id = (SELECT lead_id FROM conversations WHERE id = :cId)', { cId: conversationId })
+      .execute();
+
+    return saved;
   }
 
   async updateStage(leadId: string, toStage: LeadStage, changedBy: string): Promise<Lead> {
@@ -204,4 +230,219 @@ export class LeadsService {
   async findOneDeleted(id: string): Promise<DeletedLead | null> {
     return this.deletedLeadsRepo.findOne({ where: { id } });
   }
+
+  async getDashboard(period: '7' | '30' | '90' | 'all' = 'all') {
+    // Calcula data de corte
+    const now = new Date();
+    let since: Date | null = null;
+    if (period !== 'all') {
+      const days = parseInt(period, 10);
+      since = new Date(now.getTime() - days * 86400000);
+    }
+
+    // 1. Carrega leads do período (filtrados por createdAt se aplicável)
+    const leads = since
+      ? await this.leadsRepo.createQueryBuilder('lead')
+          .where('lead.createdAt >= :since', { since })
+          .getMany()
+      : await this.leadsRepo.find();
+
+    // 2. Funil — contagem por stage
+    const stages: LeadStage[] = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio', 'agendado', 'convertido', 'perdido'];
+    const byStage: Record<string, number> = {};
+    for (const s of stages) byStage[s] = 0;
+    for (const lead of leads) {
+      if (byStage[lead.stage] !== undefined) byStage[lead.stage]++;
+    }
+
+    const total = leads.length;
+    const agendadoCount = byStage['agendado'] + byStage['convertido'];
+    const perdidoCount = byStage['perdido'];
+    const conversionRate = total > 0 ? +(agendadoCount / total * 100).toFixed(1) : 0;
+    const lossRate = total > 0 ? +(perdidoCount / total * 100).toFixed(1) : 0;
+
+    // 3. Qualificados — leads com tag "qualificado"
+    let qualifiedCount = 0;
+    for (const lead of leads) {
+      if ((lead.labels ?? []).includes('qualificado')) qualifiedCount++;
+    }
+    const qualifiedRate = total > 0 ? +(qualifiedCount / total * 100).toFixed(1) : 0;
+
+    // 4. Tempo médio por stage usando lead_stage_history
+    const leadIds = leads.map(l => l.id);
+    const histories = leadIds.length > 0
+      ? await this.historyRepo.createQueryBuilder('h')
+          .where('h.leadId IN (:...ids)', { ids: leadIds })
+          .orderBy('h.leadId', 'ASC')
+          .addOrderBy('h.createdAt', 'ASC')
+          .getMany()
+      : [];
+
+    const historyByLead = new Map<string, LeadStageHistory[]>();
+    for (const h of histories) {
+      const list = historyByLead.get(h.leadId) ?? [];
+      list.push(h);
+      historyByLead.set(h.leadId, list);
+    }
+
+    const stageTimeSum: Record<string, number> = {};
+    const stageTimeCount: Record<string, number> = {};
+    for (const s of stages) { stageTimeSum[s] = 0; stageTimeCount[s] = 0; }
+
+    for (const lead of leads) {
+      const leadHistory = historyByLead.get(lead.id) ?? [];
+      if (leadHistory.length === 0) continue;
+
+      for (let i = 0; i < leadHistory.length; i++) {
+        const current = leadHistory[i];
+        const next = leadHistory[i + 1];
+        const enteredAt = current.createdAt.getTime();
+        const exitedAt = next ? next.createdAt.getTime() : now.getTime();
+        const hours = (exitedAt - enteredAt) / (1000 * 60 * 60);
+        const stage = current.toStage;
+        if (stageTimeSum[stage] !== undefined) {
+          stageTimeSum[stage] += hours;
+          stageTimeCount[stage]++;
+        }
+      }
+    }
+
+    const avgTimePerStage: Record<string, string> = {};
+    for (const s of stages) {
+      if (stageTimeCount[s] === 0) {
+        avgTimePerStage[s] = '—';
+      } else {
+        const avgHours = stageTimeSum[s] / stageTimeCount[s];
+        avgTimePerStage[s] = formatDuration(avgHours);
+      }
+    }
+
+    // 5. Leads esfriando — raias ativas sem mensagem há mais de N dias
+    const coolingThresholds: Record<string, number> = {
+      lead_quente: 1,
+      qualificando: 2,
+      lead_frio: 3,
+    };
+    const activeLeads = await this.leadsRepo.find({
+      where: [
+        { stage: 'lead_quente' as LeadStage },
+        { stage: 'qualificando' as LeadStage },
+        { stage: 'lead_frio' as LeadStage },
+      ],
+    });
+
+    const coolingLeads = activeLeads
+      .filter((lead) => {
+        const threshold = coolingThresholds[lead.stage];
+        if (!threshold) return false;
+        const lastContact = lead.lastMessageAt ?? lead.createdAt;
+        const hoursSince = (now.getTime() - new Date(lastContact).getTime()) / (1000 * 60 * 60);
+        return hoursSince >= threshold * 24;
+      })
+      .map((lead) => {
+        const lastContact = lead.lastMessageAt ?? lead.createdAt;
+        const hoursSince = (now.getTime() - new Date(lastContact).getTime()) / (1000 * 60 * 60);
+        return {
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          stage: lead.stage,
+          lastContactAt: lastContact,
+          daysSince: Math.floor(hoursSince / 24),
+        };
+      })
+      .sort((a, b) => b.daysSince - a.daysSince);
+
+    // 6. Agendamentos de hoje (timezone São Paulo)
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+    const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
+    const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
+
+    const todayAppointmentsRaw = await this.appointmentsRepo.find({
+      where: { startDateTime: Between(startOfDay, endOfDay) },
+      order: { startDateTime: 'ASC' },
+    });
+
+    const todayAppointments = todayAppointmentsRaw.map((a) => ({
+      id: a.id,
+      clientName: a.clientName,
+      clientPhone: a.clientPhone,
+      service: a.service,
+      status: a.status,
+      startDateTime: a.startDateTime,
+    }));
+
+    // 7. Leads sem resposta — última mensagem foi enviada por nós há mais de 8h
+    const noReplyThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000);
+    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio'];
+
+    const activeForNoReply = await this.leadsRepo.find({
+      where: activeStagesForNoReply.map((s) => ({ stage: s })),
+    });
+
+    const noReplyLeads: any[] = [];
+    if (activeForNoReply.length > 0) {
+      const conversations = await this.conversationsRepo
+        .createQueryBuilder('conv')
+        .where('conv.leadId IN (:...ids)', { ids: activeForNoReply.map((l) => l.id) })
+        .getMany();
+      const convByLead = new Map(conversations.map((c) => [c.leadId, c]));
+
+      for (const lead of activeForNoReply) {
+        const conv = convByLead.get(lead.id);
+        if (!conv) continue;
+        const lastMsg = await this.messagesRepo.findOne({
+          where: { conversationId: conv.id },
+          order: { createdAt: 'DESC' },
+        });
+        if (!lastMsg) continue;
+        if (lastMsg.direction !== 'outbound') continue;
+        if (lastMsg.createdAt >= noReplyThreshold) continue;
+
+        const hoursSince = (now.getTime() - new Date(lastMsg.createdAt).getTime()) / (1000 * 60 * 60);
+        noReplyLeads.push({
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          stage: lead.stage,
+          lastSentAt: lastMsg.createdAt,
+          hoursSince: Math.floor(hoursSince),
+        });
+      }
+      noReplyLeads.sort((a, b) => b.hoursSince - a.hoursSince);
+    }
+
+    return {
+      period,
+      total,
+      byStage,
+      conversionRate,
+      lossRate,
+      qualifiedCount,
+      qualifiedRate,
+      avgTimePerStage,
+      coolingLeads,
+      todayAppointments,
+      noReplyLeads,
+    };
+  }
+}
+
+function formatDuration(hours: number): string {
+  if (hours < 1) {
+    const mins = Math.round(hours * 60);
+    return `${mins}min`;
+  }
+  if (hours < 24) {
+    return `${hours.toFixed(1)}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const remainder = Math.round(hours - days * 24);
+  if (remainder === 0) return `${days} ${days === 1 ? 'dia' : 'dias'}`;
+  return `${days} ${days === 1 ? 'dia' : 'dias'} ${remainder}h`;
 }

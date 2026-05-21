@@ -7,6 +7,8 @@ import SettingsPage from './pages/SettingsPage'
 import MediaPage from './pages/MediaPage'
 import CalendarPage from './pages/CalendarPage'
 import DeletedLeadsPage from './pages/DeletedLeadsPage'
+import DashboardPage from './pages/DashboardPage'
+import AlertRulesPage from './pages/AlertRulesPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -23,11 +25,13 @@ export default function App() {
           element={loggedIn ? <Layout onLogout={() => setLoggedIn(false)} /> : <LoginPage onLogin={() => setLoggedIn(true)} />}
         >
           <Route path="/" element={<KanbanPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/deleted-leads" element={<DeletedLeadsPage />} />
           <Route path="/mass-message" element={<BulkMessagePage />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/alert-rules" element={<AlertRulesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

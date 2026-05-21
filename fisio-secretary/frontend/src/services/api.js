@@ -63,6 +63,9 @@ export const getDeletedLeads = () =>
 export const getDeletedLead = (id) =>
   fetch(`${BASE}/leads/deleted/${id}`).then(json)
 
+export const getDashboard = (period = 'all') =>
+  fetch(`${BASE}/leads/dashboard?period=${period}`).then(json)
+
 export const removeLabel = (id, label) =>
   fetch(`${BASE}/leads/${id}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }).then(json)
 

@@ -1,9 +1,21 @@
 import { useState, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Trash2, Edit2, Calendar } from 'lucide-react'
+import { Trash2, Edit2, Calendar, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { updateName } from '../services/api'
+
+const NO_REPLY_ACTIVE_STAGES = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio']
+
+function getNoReplyLevel(lead) {
+  if (!NO_REPLY_ACTIVE_STAGES.includes(lead.stage)) return null
+  if (lead.lastMessageDirection !== 'outbound') return null
+  if (!lead.lastMessageAt) return null
+  const hours = (Date.now() - new Date(lead.lastMessageAt).getTime()) / (1000 * 60 * 60)
+  if (hours >= 3) return 'critical'
+  if (hours >= 1) return 'warning'
+  return null
+}
 
 const urgencyColor = {
   alta:  'bg-red-100 text-red-700',
@@ -42,12 +54,19 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
   const [editName, setEditName] = useState(lead.name || '')
   const inputRef = useRef(null)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id })
+  const noReplyLevel = getNoReplyLevel(lead)
 
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
   }
+
+  const cardBg = noReplyLevel === 'critical'
+    ? 'bg-red-50 border-red-300 hover:border-red-400'
+    : noReplyLevel === 'warning'
+    ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'
+    : 'bg-white border-gray-100 hover:border-blue-200'
 
   async function handleSaveName() {
     if (!editName.trim()) {
@@ -79,7 +98,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
       style={style}
       {...listeners}
       {...attributes}
-      className="bg-white rounded-xl p-3 mb-2 shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all select-none"
+      className={`rounded-xl p-3 mb-2 shadow-sm border hover:shadow-md transition-all select-none ${cardBg}`}
       onClick={onClick}
     >
       {/* Header */}
@@ -185,8 +204,18 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
         </div>
       )}
 
+      {/* Alerta sem resposta */}
+      {noReplyLevel && (
+        <div className={`mt-2 pt-2 border-t ${noReplyLevel === 'critical' ? 'border-red-200' : 'border-yellow-200'}`}>
+          <p className={`text-[10px] font-semibold flex items-center gap-1 ${noReplyLevel === 'critical' ? 'text-red-600' : 'text-yellow-700'}`}>
+            <Clock className="w-3 h-3" />
+            {noReplyLevel === 'critical' ? 'Sem resposta há 3h+' : 'Sem resposta há 1h+'}
+          </p>
+        </div>
+      )}
+
       {/* Last message timestamp */}
-      {lead.lastMessageAt && (
+      {lead.lastMessageAt && !noReplyLevel && (
         <div className={`${lead.stage === 'agendado' ? '' : 'mt-2 pt-2 border-t border-gray-50'}`}>
           <p className="text-[10px] text-gray-300 mt-1">
             🕐 {new Date(lead.lastMessageAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
