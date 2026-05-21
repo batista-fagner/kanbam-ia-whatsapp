@@ -120,7 +120,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
                 className="w-full text-sm font-semibold bg-blue-50 border border-blue-300 text-gray-800 rounded px-1 py-0.5"
               />
             ) : (
-              <p className="text-sm font-semibold text-gray-800 leading-tight truncate">{lead.name || 'Sem nome'}</p>
+              <p className="text-sm font-semibold text-gray-800 leading-tight truncate">{(lead.name && lead.name !== 'null') ? lead.name : 'Sem nome'}</p>
             )}
             <p className="text-xs text-gray-400 truncate">{lead.phone}</p>
           </div>

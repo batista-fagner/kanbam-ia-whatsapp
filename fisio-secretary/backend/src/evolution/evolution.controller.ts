@@ -184,7 +184,7 @@ export class EvolutionController {
     if (aiResponse.temperature) updateData.temperature = aiResponse.temperature;
     if (aiResponse.fields) {
       const f = aiResponse.fields;
-      if (f.name) updateData.name = f.name;
+      if (f.name && f.name !== 'null') updateData.name = f.name;
       if (f.symptoms) updateData.symptoms = f.symptoms;
       if (f.urgency) updateData.urgency = f.urgency;
       if (f.availability) updateData.availability = f.availability;
@@ -196,7 +196,7 @@ export class EvolutionController {
     // MegaHair: score definido pelo stage (IA não retorna score confiável)
     if (agentType === 'megahair' && aiResponse.stage) {
       const stageScore: Record<string, number> = {
-        novo_lead: 0, qualificando: 30, lead_quente: 75, agendado: 95, perdido: 5,
+        novo_lead: 0, lead_frio: 20, lead_quente: 75, agendado: 90, vendas: 100, desliza_hair: 100, perdido: 5,
       };
       if (stageScore[aiResponse.stage] !== undefined) {
         updateData.qualificationScore = stageScore[aiResponse.stage];
@@ -220,8 +220,8 @@ export class EvolutionController {
     // Salva histórico se o stage mudou — com proteção contra regressão
     if (aiResponse.stage && aiResponse.stage !== lead.stage) {
       const stageOrder: Record<string, number> = {
-        novo_lead: 0, qualificando: 1, lead_quente: 2, lead_frio: 2,
-        agendado: 3, convertido: 4, perdido: 4,
+        novo_lead: 0, lead_frio: 1, lead_quente: 2,
+        agendado: 3, vendas: 4, desliza_hair: 5, perdido: 4,
       };
       const currentOrder = stageOrder[lead.stage] ?? 0;
       const newOrder = stageOrder[aiResponse.stage] ?? 0;

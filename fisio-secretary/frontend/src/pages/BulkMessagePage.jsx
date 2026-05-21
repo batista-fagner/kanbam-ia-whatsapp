@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, CheckCircle, AlertCircle, Loader2, History, StopCircle, PlayCircle, Trash2, RefreshCw, X, Eye } from 'lucide-react'
 import { getLeads, sendBulkMessage, getCampaigns, getCampaignMessages, controlCampaign } from '../services/api'
 
-const STAGES = ['novo_lead', 'qualificando', 'lead_quente', 'lead_frio', 'agendado', 'convertido', 'perdido']
+const STAGES = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'desliza_hair', 'perdido']
 const TEMPERATURES = ['quente', 'morno', 'frio']
 
 // Variáveis disponíveis por modo
