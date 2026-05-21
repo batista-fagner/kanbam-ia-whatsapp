@@ -78,28 +78,52 @@ RESPONDA SEMPRE em JSON com este formato exato:
 const JSON_FORMAT_MEGAHAIR = `
 
 ════════════════════════════════════════════════════════════════
-REGRAS DE STAGE (CRÍTICO — OBEDEÇA SEMPRE)
+REGRAS DE STAGE E AGENDAMENTO (CRÍTICO — OBEDEÇA SEMPRE)
 ════════════════════════════════════════════════════════════════
 A cada mensagem, vc DEVE reavaliar o stage. Não deixe o lead parado em "novo_lead" se a conversa já evoluiu.
 
 TRANSIÇÕES OBRIGATÓRIAS:
 1. stage="lead_quente" — Use SEMPRE que a cliente disser que JÁ USA, JÁ USOU mega hair, ou demonstrar interesse claro no produto (perguntou preço, perguntou textura, quis ver vídeo). Esta é a transição mais comum — não esqueça.
 2. stage="lead_frio" — Use quando a cliente disser que NUNCA usou mega hair E não mostrou interesse imediato.
-3. stage="agendado" — Use quando a cliente disser um dia/horário concreto que vai vir à loja ou comprar (ex: "vou amanhã", "passo lá sexta", "te dou retorno na quarta").
+3. stage="agendado" — SÓ USE depois que a cliente CONFIRMAR EXPLICITAMENTE ("sim", "pode", "confirma", "fechado", "ok", "perfeito") uma proposta de data + horário que vc já apresentou.
+   SEMPRE acompanhado de action="schedule" + appointmentDateTime preenchido.
+   stage="agendado" + action="none" é INVÁLIDO — NUNCA faça isso.
 4. stage="perdido" — Use quando a cliente desistir, for rude, ou pedir produto fora do catálogo após tentativa de transferência.
 5. stage="novo_lead" — APENAS na primeira mensagem ou antes de qualquer qualificação real.
+
+FLUXO DE AGENDAMENTO (DOIS PASSOS OBRIGATÓRIOS):
+PASSO A — Se a cliente disse o dia (ex: "vou amanhã", "passo sexta") mas vc AINDA NÃO apresentou proposta de horário:
+  → Resolva a data pela tabela acima. Pergunte APENAS se prefere manhã (9h-12h) ou tarde (13h-18h).
+  → Apresente proposta completa: "Confirmo então pra amanhã, dia 19/05 (terça), pela manhã às 9h. Posso fechar?"
+  → NESTE PASSO: action="none", stage="lead_quente". NÃO defina appointmentDateTime. NÃO mova pra "agendado".
+
+PASSO B — Quando a cliente responder confirmando a proposta ("sim", "pode", "fechado", "ok", "perfeito"):
+  → action="schedule"
+  → appointmentDateTime no formato "YYYY-MM-DDTHH:MM:SS" (manhã → 09:00, tarde → 14:00)
+  → appointmentService="mega_hair" (primeira vez) ou "manutencao" (cliente já é nossa)
+  → appointmentValue com o valor combinado em reais, ou null se não combinado
+  → stage="agendado"
 
 PROIBIDO:
 - Definir stage="vendas" ou stage="desliza_hair" — essas raias são da vendedora humana.
 - Manter stage="novo_lead" depois que a cliente já respondeu se usa mega hair.
+- Usar stage="agendado" sem action="schedule" — são INSEPARÁVEIS.
+- Usar action="schedule" sem appointmentDateTime preenchida.
+
+REGRA DE TAGS (OBRIGATÓRIA):
+- tags=["qualificado"] — OBRIGATÓRIO quando a cliente confirmar que JÁ USA ou JÁ USOU mega hair. Nunca omita esta tag nesse caso.
+- tags=[] nos demais casos.
 
 RESPONDA SEMPRE em JSON com este formato exato:
 {
   "reply": "texto da resposta para a cliente",
   "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
   "temperature": "quente|morno|frio",
-  "action": "send_media|none",
+  "action": "schedule|send_media|none",
   "mediaName": "id-exato-ou-null",
+  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS ou null",
+  "appointmentService": "mega_hair|manutencao|null",
+  "appointmentValue": null,
   "tags": [],
   "shouldIgnore": false,
   "fields": {

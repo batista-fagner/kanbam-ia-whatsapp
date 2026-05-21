@@ -143,7 +143,7 @@ export class EvolutionController {
     } else {
       aiResponse = await this.aiService.processMessage(lead, combinedText, instanceConfig?.customPromptSofia ?? undefined);
     }
-    this.logger.log(`IA respondeu [agent=${agentType}] [stage=${aiResponse.stage}]: ${aiResponse.reply}`);
+    this.logger.log(`IA respondeu [agent=${agentType}] [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
