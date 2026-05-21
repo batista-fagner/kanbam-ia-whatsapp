@@ -75,7 +75,10 @@ export default function SettingsPage() {
       const data = await res.json()
       setInstanceConfig(data)
       setWebhookConfigured(data?.webhookConfigured ?? false)
-      if (data?.agentType) setAgentType(data.agentType)
+      if (data?.agentType) {
+        setAgentType(data.agentType)
+        setActivePromptTab(data.agentType === 'megahair' ? 'megahair' : 'sofia')
+      }
       if (data?.customPromptSofia != null) setCustomPromptSofia(data.customPromptSofia)
       if (data?.customPromptMegaHair != null) setCustomPromptMegaHair(data.customPromptMegaHair)
       return data
@@ -574,6 +577,7 @@ export default function SettingsPage() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ agentType }),
                 })
+                await fetchConfig()
               } finally {
                 setSavingAgent(false)
               }
