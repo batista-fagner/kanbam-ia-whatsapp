@@ -36,6 +36,30 @@ export class UazapiProvider implements IWhatsAppProvider {
     return record?.instanceToken || this.envToken;
   }
 
+  private maskToken(t: string): string {
+    if (!t) return '(vazio)';
+    if (t.length <= 8) return `${t.slice(0, 2)}***`;
+    return `${t.slice(0, 4)}...${t.slice(-4)}`;
+  }
+
+  private logHttpError(context: string, err: any, extra: Record<string, any> = {}): void {
+    const status = err?.response?.status ?? err?.status ?? 'N/A';
+    const data = err?.response?.data ? JSON.stringify(err.response.data) : 'sem body';
+    const url = err?.config?.url ?? extra.url ?? 'N/A';
+    const extraStr = Object.entries(extra)
+      .filter(([k]) => k !== 'url')
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ');
+    this.logger.error(
+      `${context} [HTTP ${status}] url=${url} ${extraStr} | erro: ${err.message} | uazapi response: ${data}`,
+    );
+    if (status === 401 || status === 403) {
+      this.logger.error(
+        `⚠️ [AUTH ERROR] Token uazapi inválido ou expirado. Verifique UAZAPI_TOKEN e o token salvo em whatsapp_config.instanceToken. Reconecte a instância se necessário.`,
+      );
+    }
+  }
+
   async sendTextMessage(phone: string, text: string, token?: string): Promise<void> {
     const useToken = await this.resolveToken(token);
     try {
@@ -47,7 +71,11 @@ export class UazapiProvider implements IWhatsAppProvider {
         ),
       );
     } catch (err) {
-      this.logger.error(`Erro ao enviar mensagem para ${phone}: ${err.message}`);
+      this.logHttpError(`Erro ao enviar mensagem para ${phone}`, err, {
+        url: `${this.baseUrl}/send/text`,
+        token: this.maskToken(useToken),
+        textLen: text.length,
+      });
     }
   }
 
@@ -62,7 +90,11 @@ export class UazapiProvider implements IWhatsAppProvider {
         ),
       );
     } catch (err) {
-      this.logger.error(`Erro ao enviar áudio para ${phone}: ${err.message}`);
+      this.logHttpError(`Erro ao enviar áudio para ${phone}`, err, {
+        url: `${this.baseUrl}/send/media`,
+        token: this.maskToken(useToken),
+        bufferBytes: audioBuffer.length,
+      });
     }
   }
 
@@ -77,7 +109,8 @@ export class UazapiProvider implements IWhatsAppProvider {
         ),
       );
     } catch (err) {
-      this.logger.warn(`Erro ao enviar typing indicator para ${phone}: ${err.message}`);
+      const status = err?.response?.status ?? 'N/A';
+      this.logger.warn(`Erro ao enviar typing indicator para ${phone} [HTTP ${status}]: ${err.message}`);
     }
   }
 
@@ -193,9 +226,12 @@ export class UazapiProvider implements IWhatsAppProvider {
         ),
       );
     } catch (err) {
-      const status = err?.response?.status ?? 'N/A';
-      const data = err?.response?.data ? JSON.stringify(err.response.data) : 'sem body';
-      this.logger.error(`Erro ao enviar mídia para ${phone} [HTTP ${status}] type=${type} url=${url}: ${err.message} | uazapi response: ${data}`);
+      this.logHttpError(`Erro ao enviar mídia para ${phone}`, err, {
+        url: `${this.baseUrl}/send/media`,
+        token: this.maskToken(useToken),
+        type,
+        mediaUrl: url,
+      });
     }
   }
 

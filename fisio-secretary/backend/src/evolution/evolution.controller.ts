@@ -335,27 +335,22 @@ export class EvolutionController {
       }
     }
 
-    const respondWithAudio = this.lastMessageWasAudio.get(phone) === true;
     this.lastMessageWasAudio.delete(phone);
 
-    if (respondWithAudio) {
-      try {
-        this.logger.log(`Gerando TTS para ${phone}...`);
-        const audioBuffer = await this.audioService.textToSpeech(aiResponse.reply);
-        this.logger.log(`TTS gerado (${audioBuffer.length} bytes), enviando áudio para ${phone}...`);
-        await this.evolutionService.sendAudioMessage(phone, audioBuffer);
-        this.logger.log(`✅ [AUDIO] Resposta enviada como áudio para ${phone}`);
-      } catch (err) {
-        const status = err?.response?.status ?? err?.status ?? 'N/A';
-        this.logger.warn(`Falha ao gerar/enviar áudio [HTTP ${status}], enviando como texto: ${err.message}`);
-        this.logger.log(`📤 [AUDIO FALLBACK] Enviando fallback: ${aiResponse.reply.substring(0, 50)}...`);
-        await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
-      }
-    } else {
-      this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-      await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
-      this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
-    }
+    // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
+    // Lógica de TTS comentada — pode ser reativada substituindo este bloco pelo if/else original.
+    // const respondWithAudio = this.lastMessageWasAudio.get(phone) === true;
+    // if (respondWithAudio) {
+    //   try {
+    //     const audioBuffer = await this.audioService.textToSpeech(aiResponse.reply);
+    //     await this.evolutionService.sendAudioMessage(phone, audioBuffer);
+    //   } catch (err) {
+    //     await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+    //   }
+    // }
+    this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
+    await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+    this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
 

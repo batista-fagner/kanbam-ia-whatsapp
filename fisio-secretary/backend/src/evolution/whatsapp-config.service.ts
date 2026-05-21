@@ -53,7 +53,12 @@ export class WhatsappConfigService {
       this.logger.error(`Erro ao configurar webhook da nova instância "${name}": ${err.message}`);
     }
 
-    const record = this.repo.create();
+    // Reusa o registro existente (mesmo se for órfão de uma instância antiga) para preservar
+    // prompts customizados e agentType. Só cria novo se realmente não existe nenhum.
+    let record = await this.get();
+    if (!record) {
+      record = this.repo.create();
+    }
     record.instanceToken = instanceToken;
     record.profileName = instance.name ?? name;
     record.profilePicUrl = instance.profilePicUrl ?? null;
@@ -128,9 +133,18 @@ export class WhatsappConfigService {
   }
 
   async deleteRecord(): Promise<void> {
+    // Limpa apenas os campos da instância WhatsApp, MANTÉM customPromptSofia,
+    // customPromptMegaHair e agentType para que sobrevivam a "Remover conexão".
     const record = await this.get();
     if (record) {
-      await this.repo.remove(record);
+      record.instanceToken = null as any;
+      record.profileName = null as any;
+      record.phone = null as any;
+      record.profilePicUrl = null as any;
+      record.connected = false;
+      record.webhookConfigured = false;
+      record.webhookUrl = null as any;
+      await this.repo.save(record);
     }
   }
 }

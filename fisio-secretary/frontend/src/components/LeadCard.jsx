@@ -5,7 +5,8 @@ import { Trash2, Edit2, Calendar, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { updateName } from '../services/api'
 
-const NO_REPLY_ACTIVE_STAGES = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado']
+// Raias avançadas/finais (agendado, vendas, desliza_hair) ficam fora da regra de "sem resposta"
+const NO_REPLY_ACTIVE_STAGES = ['novo_lead', 'lead_frio', 'lead_quente']
 
 function getNoReplyLevel(lead) {
   if (!NO_REPLY_ACTIVE_STAGES.includes(lead.stage)) return null

@@ -260,7 +260,9 @@ export default function SettingsPage() {
     try {
       await fetch(`${API_URL}/instance`, { method: 'DELETE' })
       setInstanceStatus(null)
-      setInstanceConfig(null)
+      // Recarrega config pois o backend MANTÉM o registro (prompts preservados),
+      // apenas zera os campos da instância WhatsApp.
+      await fetchConfig()
       setQrCode(null)
       setPairCode(null)
       setConnecting(false)
@@ -294,7 +296,7 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
-          {instanceConfig && <StatusBadge status={currentStatus} />}
+          {instanceConfig?.instanceToken && <StatusBadge status={currentStatus} />}
         </div>
 
         {/* Carregando estado inicial */}
@@ -306,7 +308,7 @@ export default function SettingsPage() {
         )}
 
         {/* Sem instância criada — formulário de criação */}
-        {!bootstrapping && !instanceConfig && (
+        {!bootstrapping && !instanceConfig?.instanceToken && (
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-800 font-medium mb-1">Nenhuma conexão configurada</p>
@@ -337,7 +339,7 @@ export default function SettingsPage() {
         )}
 
         {/* Tem instância e está conectado */}
-        {!bootstrapping && instanceConfig && currentStatus === 'connected' && (
+        {!bootstrapping && instanceConfig?.instanceToken && currentStatus === 'connected' && (
           <div className="space-y-4">
             <div className="bg-green-50 rounded-lg p-4 flex items-center gap-4">
               {profilePicUrl ? (
@@ -419,7 +421,7 @@ export default function SettingsPage() {
         )}
 
         {/* Tem instância mas está desconectado — formulário para conectar */}
-        {!bootstrapping && instanceConfig && currentStatus === 'disconnected' && !connecting && (
+        {!bootstrapping && instanceConfig?.instanceToken && currentStatus === 'disconnected' && !connecting && (
           <div className="space-y-4">
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
               <p className="text-xs text-gray-600">Conexão <span className="font-medium">{instanceConfig.profileName}</span> pronta. Escolha como quer conectar:</p>
@@ -479,7 +481,7 @@ export default function SettingsPage() {
         )}
 
         {/* Conectando — exibe QR ou paircode */}
-        {!bootstrapping && instanceConfig && (connecting || currentStatus === 'connecting') && (
+        {!bootstrapping && instanceConfig?.instanceToken && (connecting || currentStatus === 'connecting') && (
           <div className="space-y-4">
             {qrCode && (
               <div className="flex flex-col items-center gap-3">
@@ -633,6 +635,9 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3 mt-3">
             <button
               onClick={async () => {
+                // Trava: não envia null se textarea estiver vazio (evita apagar prompt salvo)
+                const currentText = activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair
+                if (!currentText?.trim()) return
                 setSavingPrompt(true)
                 try {
                   await fetch(`${API_URL}/instance/config`, {
@@ -640,15 +645,15 @@ export default function SettingsPage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(
                       activePromptTab === 'sofia'
-                        ? { customPromptSofia: customPromptSofia || null }
-                        : { customPromptMegaHair: customPromptMegaHair || null }
+                        ? { customPromptSofia }
+                        : { customPromptMegaHair }
                     ),
                   })
                 } finally {
                   setSavingPrompt(false)
                 }
               }}
-              disabled={savingPrompt}
+              disabled={savingPrompt || !(activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair)?.trim()}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
             >
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

@@ -323,17 +323,16 @@ export class LeadsService implements OnApplicationBootstrap {
       }
     }
 
-    // 5. Leads esfriando — raias ativas sem mensagem há mais de N dias
+    // 5. Leads esfriando — só novo_lead/lead_frio/lead_quente.
+    // agendado, vendas e desliza_hair estão fora desta regra (raias avançadas/finais).
     const coolingThresholds: Record<string, number> = {
       lead_quente: 1,
       lead_frio: 2,
-      agendado: 1,
     };
     const activeLeads = await this.leadsRepo.find({
       where: [
         { stage: 'lead_quente' as LeadStage },
         { stage: 'lead_frio' as LeadStage },
-        { stage: 'agendado' as LeadStage },
       ],
     });
 
@@ -383,9 +382,10 @@ export class LeadsService implements OnApplicationBootstrap {
       startDateTime: a.startDateTime,
     }));
 
-    // 7. Leads sem resposta — última mensagem foi enviada por nós há mais de 8h
+    // 7. Leads sem resposta — só raias iniciais. agendado, vendas e desliza_hair
+    // são raias avançadas/finais e não entram na regra de "sem resposta".
     const noReplyThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000);
-    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado'];
+    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente'];
 
     const activeForNoReply = await this.leadsRepo.find({
       where: activeStagesForNoReply.map((s) => ({ stage: s })),
