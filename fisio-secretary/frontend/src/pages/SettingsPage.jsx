@@ -634,10 +634,11 @@ export default function SettingsPage() {
                   await fetch(`${API_URL}/instance/config`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      customPromptSofia: customPromptSofia || null,
-                      customPromptMegaHair: customPromptMegaHair || null,
-                    }),
+                    body: JSON.stringify(
+                      activePromptTab === 'sofia'
+                        ? { customPromptSofia: customPromptSofia || null }
+                        : { customPromptMegaHair: customPromptMegaHair || null }
+                    ),
                   })
                 } finally {
                   setSavingPrompt(false)
