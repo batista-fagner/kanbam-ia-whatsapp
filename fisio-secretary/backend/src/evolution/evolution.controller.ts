@@ -325,8 +325,10 @@ export class EvolutionController {
       const mediaFile = await this.mediaService.findByName(aiResponse.mediaName);
       if (mediaFile) {
         const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
-        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, aiResponse.reply);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${aiResponse.reply}`);
+        // Legenda fixa para mídia — não usa o reply da IA. Padroniza a apresentação do vídeo.
+        const mediaCaption = 'repare na ponta como ele é todo inteiro, o que acha?';
+        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, mediaCaption);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${mediaCaption}`);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
