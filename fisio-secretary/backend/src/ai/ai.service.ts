@@ -209,8 +209,10 @@ function buildDateBlock(): string {
   }
 
   // Pré-calcula entradas explícitas para expressões vagas usadas no CAMINHO B
-  const nextTuesdayOffset = ((2 - todayIdx + 7) % 7) || 7;
-  const nextTuesdayInfo = dayInfo(nextTuesdayOffset);
+  // "semana que vem" = terça da semana que começa na próxima segunda
+  // Usa próxima segunda + 1 em vez de próxima terça, para evitar dar "amanhã" quando hoje for segunda
+  const nextMondayOffset = ((1 - todayIdx + 7) % 7) || 7;
+  const nextTuesdayInfo = dayInfo(nextMondayOffset + 1);
   const nowForMonth = new Date(parseInt(today.year), parseInt(today.month), 1); // dia 1 do próximo mês
   const nextMonthFirstInfo = formatInTZ(nowForMonth);
 
