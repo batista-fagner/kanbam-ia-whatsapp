@@ -264,6 +264,11 @@ export class EvolutionController {
     if (agentType === 'megahair' && action === 'schedule' && aiResponse.appointmentDateTime) {
       try {
         const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
+        // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
+        const canceled = await this.appointmentsService.cancelActiveByLeadId(lead.id);
+        if (canceled > 0) {
+          this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
+        }
         await this.appointmentsService.create({
           leadId: lead.id,
           clientName: lead.name || lead.phone,

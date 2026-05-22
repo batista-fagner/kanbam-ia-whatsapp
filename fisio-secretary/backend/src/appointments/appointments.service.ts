@@ -72,4 +72,9 @@ export class AppointmentsService {
     const result = await this.repo.delete(id);
     if (result.affected === 0) throw new NotFoundException('Agendamento não encontrado');
   }
+
+  async cancelActiveByLeadId(leadId: string): Promise<number> {
+    const result = await this.repo.update({ leadId, status: 'agendado' }, { status: 'cancelado' });
+    return result.affected ?? 0;
+  }
 }
