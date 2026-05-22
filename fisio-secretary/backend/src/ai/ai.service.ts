@@ -104,8 +104,8 @@ CAMINHO A — DATA ESPECÍFICA ("amanhã", "depois de amanhã", "sexta", "dia 25
   → reply: confirme citando a data, ex: "Show! Agendado pra amanhã, dia 22/05 (quinta). Te espero! 😊"
 
 CAMINHO B — DATA VAGA ("semana que vem", "mês que vem", "qualquer dia da próxima semana"):
-  → "semana que vem" / "próxima semana" → leia a linha "terça" na TABELA DE DATAS acima e copie exatamente essa data. NÃO some 7 dias. NÃO calcule na cabeça. Apenas leia a linha "terça" da tabela.
-  → "mês que vem" / "próximo mês" → escolha o DIA 1 do mês seguinte ao mês de hoje.
+  → "semana que vem" / "próxima semana" → leia a linha "semana que vem" em EXPRESSÕES VAGAS da tabela e copie exatamente essa data. NÃO calcule, NÃO some dias.
+  → "mês que vem" / "próximo mês" → leia a linha "mês que vem" em EXPRESSÕES VAGAS da tabela e copie exatamente essa data. NÃO calcule.
   → action = "schedule"
   → appointmentDateTime = "YYYY-MM-DDT09:00:00"
   → appointmentService = "mega_hair" ou "manutencao"
@@ -205,8 +205,14 @@ function buildDateBlock(): string {
     let aheadDays = (i - todayIdx + 7) % 7;
     if (aheadDays === 0) aheadDays = 7;
     const info = dayInfo(aheadDays);
-    weekdayLookup.push(`- "${dayShort[i]}" / "${dayNames[i]}" (próxima) = ${info.day}/${info.month}/${info.year}`);
+    weekdayLookup.push(`- "${dayShort[i]}" / "${dayNames[i]}" (próxima) = ${info.day}/${info.month}/${info.year} (${info.weekday})`);
   }
+
+  // Pré-calcula entradas explícitas para expressões vagas usadas no CAMINHO B
+  const nextTuesdayOffset = ((2 - todayIdx + 7) % 7) || 7;
+  const nextTuesdayInfo = dayInfo(nextTuesdayOffset);
+  const nowForMonth = new Date(parseInt(today.year), parseInt(today.month), 1); // dia 1 do próximo mês
+  const nextMonthFirstInfo = formatInTZ(nowForMonth);
 
   return `════════ TABELA DE DATAS — USE EXATAMENTE, NUNCA CALCULE ════════
 DATA DE HOJE: ${today.day}/${today.month}/${today.year} (${today.weekday})
@@ -217,8 +223,12 @@ ${relativeLookup.join('\n')}
 DIAS DA SEMANA (próxima ocorrência a partir de hoje):
 ${weekdayLookup.join('\n')}
 
+EXPRESSÕES VAGAS — RESPOSTA PRONTA (copie exatamente, não calcule):
+- "semana que vem" / "próxima semana" = ${nextTuesdayInfo.day}/${nextTuesdayInfo.month}/${nextTuesdayInfo.year} (${nextTuesdayInfo.weekday})
+- "mês que vem" / "próximo mês" = 01/${nextMonthFirstInfo.month}/${nextMonthFirstInfo.year} (${nextMonthFirstInfo.weekday})
+
 REGRAS ABSOLUTAS:
-- Para resolver "amanhã", "depois de amanhã", "segunda", "em 3 dias", etc, SEMPRE busque a linha exata na tabela acima.
+- Para resolver qualquer expressão de data, SEMPRE busque a linha exata na tabela acima.
 - NUNCA invente, NUNCA conte na cabeça, NUNCA pule linha. É lookup direto: leia a string entre aspas, copie a data correspondente.
 - Ao mencionar uma data, sempre inclua o dia da semana entre parênteses EXATAMENTE como aparece na tabela.
 - Se a cliente discordar de uma data que vc mencionou, NÃO concorde mecanicamente — releia a tabela e confirme.
