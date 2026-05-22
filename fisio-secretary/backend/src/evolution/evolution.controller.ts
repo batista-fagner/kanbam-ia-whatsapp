@@ -41,10 +41,32 @@ export class EvolutionController {
     if (body.EventType !== 'messages') return { ok: true };
 
     const message = body.message;
-    if (!message || message.fromMe || message.isGroup || message.wasSentByApi) return { ok: true };
+    if (!message || message.isGroup) return { ok: true };
 
     const rawPhone: string = body.chat?.phone ?? '';
     const phone = rawPhone.replace(/\D/g, '');
+
+    // Mensagem enviada pelo próprio operador via WhatsApp (celular/Web), não pela API:
+    // verifica se é o comando "opa" para desativar a IA daquele lead.
+    if (message.fromMe && !message.wasSentByApi) {
+      const opCommand = (message.text ?? '').trim().toLowerCase();
+      if (opCommand === 'opa' && phone) {
+        try {
+          const { lead } = await this.leadsService.findOrCreate(phone);
+          await this.leadsService.toggleAi(lead.id, false);
+          this.logger.log(`🛑 [OPA] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada`);
+          const updatedLead = await this.leadsService.findOne(lead.id);
+          this.leadsGateway.emitLeadUpdated(updatedLead);
+        } catch (err) {
+          this.logger.error(`Erro ao processar comando "opa" de ${phone}: ${err.message}`);
+        }
+      }
+      return { ok: true };
+    }
+
+    // Mensagens enviadas pela própria IA via API — ignora (echo do que enviamos)
+    if (message.wasSentByApi) return { ok: true };
+
     const text: string = message.text;
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
     const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;

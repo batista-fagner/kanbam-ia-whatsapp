@@ -113,19 +113,6 @@ export default function LeadModal({ lead, onClose }) {
   async function handleSend() {
     if (!manualText.trim() || sending) return
     const text = manualText.trim()
-
-    // Comando "opa" → desativa a IA sem enviar mensagem ao lead
-    if (text.toLowerCase() === 'opa' && aiEnabled) {
-      setManualText('')
-      setAiEnabled(false)
-      try {
-        await toggleAi(lead.id, false)
-      } catch {
-        setAiEnabled(true) // rollback se a API falhar
-      }
-      return
-    }
-
     const tempId = Date.now()
     // Optimistic update — aparece imediatamente
     setMessages(prev => [...prev, {
@@ -394,21 +381,22 @@ export default function LeadModal({ lead, onClose }) {
                   value={manualText}
                   onChange={e => setManualText(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={aiEnabled ? 'Digite "opa" para assumir a conversa…' : 'Digite uma mensagem manual...'}
-                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  placeholder={aiEnabled ? 'IA está respondendo automaticamente...' : 'Digite uma mensagem manual...'}
+                  disabled={aiEnabled}
+                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:text-gray-400 disabled:cursor-not-allowed transition"
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!manualText.trim() || sending || (aiEnabled && manualText.toLowerCase().trim() !== 'opa')}
+                  disabled={aiEnabled || !manualText.trim() || sending}
                   className="bg-blue-600 disabled:bg-gray-300 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  {aiEnabled && manualText.toLowerCase().trim() === 'opa' ? 'Assumir' : 'Enviar'}
+                  Enviar
                 </button>
               </div>
               {aiEnabled && (
                 <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
-                  <Bot className="w-3 h-3" /> IA ativa — digite <span className="font-semibold text-gray-600">"opa"</span> para assumir, ou use o switch ao lado
+                  <Bot className="w-3 h-3" /> IA ativa — digite <span className="font-semibold text-gray-600">"opa"</span> no WhatsApp para assumir, ou use o switch ao lado
                 </p>
               )}
             </div>
