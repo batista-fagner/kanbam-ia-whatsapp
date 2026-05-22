@@ -10,7 +10,8 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
-- **IA:** Anthropic Claude (claude-haiku-4-5-20251001)
+- **IA (chat/funil):** Groq Llama 3.1 8B (`llama-3.1-8b-instant`) — open source da Meta, hospedado no Groq (LPU). Fallback automático para `gpt-4o-mini` se `GROQ_API_KEY` ausente.
+- **IA (Claude):** Anthropic Claude (claude-haiku-4-5-20251001)
 - **STT:** OpenAI Whisper (transcrição automática via uazapi OU manual via Meta API)
 - **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
 - **WhatsApp:** Modular via `IWhatsAppProvider` interface — uazapi (R$ 29/mês) OU Meta Official API (badge verde + compliance)
@@ -397,6 +398,7 @@ ANTHROPIC_API_KEY=...
 JWT_SECRET=...
 WEBHOOK_SECRET=...
 OPENAI_API_KEY=...              # Transcrição (uazapi internamente ou Meta manual)
+GROQ_API_KEY=...                # Se presente: usa Llama 3.1 8B para chat (3x mais barato). Se ausente: usa gpt-4o-mini.
 GOOGLE_SERVICE_ACCOUNT_EMAIL=... # Google Cloud TTS
 GOOGLE_PRIVATE_KEY="..."         # Google Cloud TTS
 GOOGLE_CALENDAR_ID=...
@@ -647,3 +649,40 @@ Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
 - Multi-tenant exige controle absoluto do schema (alterações precisam ser auditáveis e reversíveis)
 - Sem migrations, não dá pra fazer rollback de mudanças de schema
 - Quando tiver vários clientes, alterar schema sem controle pode quebrar produção
+
+---
+
+## 🎯 Feature Planejada: MQL → Meta CAPI (Andromeda)
+
+**Contexto:** Anúncios Click to WhatsApp (CTWA) — lead clica no anúncio, abre WhatsApp, conversa com Sofia. Não há formulário, então nenhum evento é enviado ao Meta no clique. O evento só faz sentido quando o lead qualifica.
+
+**Como funciona:**
+- Meta gera um `ctwaClid` (Click to WhatsApp Click ID) na primeira mensagem do lead
+- Esse ID fica no payload do webhook: `message.referral.ctwaClid`
+- Quando Sofia classifica o lead como `lead_quente`, dispara evento `Lead` no CAPI com o `ctwaClid`
+- A IA do Meta (Andromeda) atribui a conversão ao anúncio correto e aprende o perfil de quem qualifica
+- Resultado: Meta passa a entregar o anúncio para perfis similares aos leads que qualificam (MQL), não a qualquer pessoa que clica
+
+**Fluxo técnico:**
+```
+Clique no anúncio (Meta gera ctwaClid)
+  → Primeira mensagem chega no webhook Evolution/uazapi
+  → Extrair referral.ctwaClid + referral.sourceId do payload
+  → Salvar ctwaClid no lead (campo novo na entidade)
+  → Sofia qualifica → stage = lead_quente
+  → CAPI envia evento "Lead" com ctwaClid + phone hash + email hash
+  → Andromeda atribui e otimiza ✅
+```
+
+**O que implementar:**
+- [ ] Extrair `ctwaClid` da primeira mensagem em `evolution.controller.ts`
+- [ ] Adicionar campo `ctwaClid` na entidade Lead
+- [ ] Criar migration para o novo campo
+- [ ] Quando stage mudar para `lead_quente` → chamar `FacebookService.sendLeadEvent()` com ctwaClid
+- [ ] `FacebookService` aceitar ctwaClid como parâmetro de atribuição (substitui fbclid)
+
+**Valor como feature SaaS:**
+- Diferencial competitivo forte: integração CAPI + MQL automático via IA
+- Reduz CPL (custo por lead) treinando o Meta com sinais de qualidade
+- Pode ser vendido como "Integração Andromeda" — aumenta inteligência do anúncio do cliente
+- Aplicável a qualquer nicho que use Click to WhatsApp + qualificação por IA

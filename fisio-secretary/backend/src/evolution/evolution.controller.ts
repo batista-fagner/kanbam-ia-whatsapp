@@ -512,11 +512,12 @@ export class EvolutionController {
 
       // 2. Cria etiquetas que ainda não existem (cores: 1=verde, 2=amarelo, 3=azul, 4=vermelho, 5=roxo)
       const colorMap: Record<string, number> = {
-        inativo: 4,       // vermelho
-        desrespeitoso: 4, // vermelho
-        emergencia: 4,    // vermelho
-        'fora-de-escopo': 3, // azul
-        qualificado: 5,   // verde
+        inativo: 4,            // vermelho
+        desrespeitoso: 4,      // vermelho
+        emergencia: 4,         // vermelho
+        'fora-de-escopo': 3,   // azul
+        qualificado: 5,        // verde
+        'data-aproximada': 2,  // amarelo — agendamento sem data exata, operadora precisa confirmar depois
       };
 
       for (const tag of tags) {
