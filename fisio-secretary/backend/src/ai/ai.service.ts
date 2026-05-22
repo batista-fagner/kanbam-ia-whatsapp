@@ -104,8 +104,8 @@ CAMINHO A — DATA ESPECÍFICA ("amanhã", "depois de amanhã", "sexta", "dia 25
   → reply: confirme citando a data, ex: "Show! Agendado pra amanhã, dia 22/05 (quinta). Te espero! 😊"
 
 CAMINHO B — DATA VAGA ("semana que vem", "mês que vem", "qualquer dia da próxima semana"):
-  → "semana que vem" / "próxima semana" → escolha a TERÇA da semana seguinte (use a tabela de datas).
-  → "mês que vem" / "próximo mês" → escolha o DIA 1 do mês seguinte.
+  → "semana que vem" / "próxima semana" → leia a linha "terça" na TABELA DE DATAS acima e copie exatamente essa data. NÃO some 7 dias. NÃO calcule na cabeça. Apenas leia a linha "terça" da tabela.
+  → "mês que vem" / "próximo mês" → escolha o DIA 1 do mês seguinte ao mês de hoje.
   → action = "schedule"
   → appointmentDateTime = "YYYY-MM-DDT09:00:00"
   → appointmentService = "mega_hair" ou "manutencao"
