@@ -41,13 +41,16 @@ export class LeadsService implements OnApplicationBootstrap {
   }
 
   async findOrCreate(phone: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
-    // Upsert para evitar race condition em webhooks duplicados
-    const upsertResult = await this.leadsRepo.upsert(
-      { phone, stage: 'novo_lead' },
-      { conflictPaths: ['phone'] },
-    );
+    // INSERT ... ON CONFLICT DO NOTHING — preserva o stage atual do lead existente
+    const insertResult = await this.leadsRepo
+      .createQueryBuilder()
+      .insert()
+      .into(Lead)
+      .values({ phone, stage: 'novo_lead' })
+      .orIgnore()
+      .execute();
 
-    let isNew = false;
+    let isNew = (insertResult.identifiers?.length ?? 0) > 0 && insertResult.identifiers[0] != null;
     let lead = await this.leadsRepo.findOne({ where: { phone } });
 
     // Salva pushName no lead se ainda não tem nome cadastrado
@@ -56,21 +59,14 @@ export class LeadsService implements OnApplicationBootstrap {
       await this.leadsRepo.save(lead);
     }
 
-    // Se foi inserido (não existia antes), cria histórico
-    if (upsertResult.identifiers.length > 0 && !isNew) {
-      const recentHistory = await this.historyRepo.findOne({
-        where: { leadId: lead!.id },
-        order: { createdAt: 'DESC' },
+    // Se foi recém-criado, registra histórico inicial
+    if (isNew) {
+      await this.historyRepo.save({
+        leadId: lead!.id,
+        fromStage: null,
+        toStage: 'novo_lead',
+        changedBy: 'system',
       });
-      if (!recentHistory) {
-        isNew = true;
-        await this.historyRepo.save({
-          leadId: lead!.id,
-          fromStage: null,
-          toStage: 'novo_lead',
-          changedBy: 'system',
-        });
-      }
     }
 
     // Upsert conversation também para evitar race condition
@@ -111,6 +107,9 @@ export class LeadsService implements OnApplicationBootstrap {
   async updateStage(leadId: string, toStage: LeadStage, changedBy: string): Promise<Lead> {
     const lead = await this.leadsRepo.findOneOrFail({ where: { id: leadId } });
     const fromStage = lead.stage;
+
+    // Não registra "transição" se origem === destino (evita poluir o histórico)
+    if (fromStage === toStage) return lead;
 
     lead.stage = toStage;
     await this.leadsRepo.save(lead);
