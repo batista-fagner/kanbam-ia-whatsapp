@@ -19,7 +19,7 @@ export default function KanbanColumn({ column, leads, onCardClick, onCardDelete,
       {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[520px] p-2 rounded-b-xl transition-colors duration-150 ${
+        className={`flex-1 min-h-[520px] max-h-[640px] overflow-y-auto p-2 rounded-b-xl transition-colors duration-150 ${
           isOver
             ? `${column.light} border-2 border-dashed ${column.border}`
             : 'bg-gray-100/80'
