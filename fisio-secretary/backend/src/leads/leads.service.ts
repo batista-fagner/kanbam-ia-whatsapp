@@ -69,11 +69,14 @@ export class LeadsService implements OnApplicationBootstrap {
       });
     }
 
-    // Upsert conversation também para evitar race condition
-    await this.conversationsRepo.upsert(
-      { leadId: lead!.id, aiEnabled: true },
-      { conflictPaths: ['leadId'] },
-    );
+    // INSERT ... ON CONFLICT DO NOTHING — preserva aiEnabled (não sobrescreve toggle/opa)
+    await this.conversationsRepo
+      .createQueryBuilder()
+      .insert()
+      .into(Conversation)
+      .values({ leadId: lead!.id, aiEnabled: true })
+      .orIgnore()
+      .execute();
     const conversation = await this.conversationsRepo.findOne({ where: { leadId: lead!.id } });
 
     return { lead: lead!, conversation: conversation!, isNew };
