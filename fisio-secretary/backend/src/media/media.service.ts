@@ -27,6 +27,10 @@ export class MediaService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  async findById(id: string): Promise<MediaFile | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
   async findByName(name: string): Promise<MediaFile | null> {
     return this.repo.findOne({ where: { name } });
   }

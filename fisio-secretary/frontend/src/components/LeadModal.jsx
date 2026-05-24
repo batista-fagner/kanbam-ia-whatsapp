@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, removeLabel, updateObservations } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations } from '../services/api'
 
 const labelColor = {
   inativo:          'bg-red-100 text-red-600 border-red-200',
@@ -59,6 +59,8 @@ export default function LeadModal({ lead, onClose }) {
   const [history, setHistory] = useState([])
   const [manualText, setManualText] = useState('')
   const [sending, setSending] = useState(false)
+  const [showMediaPicker, setShowMediaPicker] = useState(false)
+  const [mediaList, setMediaList] = useState([])
   const [labels, setLabels] = useState(lead?.labels ?? [])
   const [observations, setObservations] = useState(lead?.observations ?? '')
   const [obsStatus, setObsStatus] = useState('idle') // 'idle' | 'saving' | 'saved'
@@ -141,6 +143,36 @@ export default function LeadModal({ lead, onClose }) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  async function handleOpenMediaPicker() {
+    if (mediaList.length === 0) {
+      const list = await getMediaList()
+      setMediaList(list)
+    }
+    setShowMediaPicker(true)
+  }
+
+  async function handleSendMedia(media) {
+    setShowMediaPicker(false)
+    setSending(true)
+    const isVideo = media.mimeType?.startsWith('video/')
+    const tempId = Date.now()
+    setMessages(prev => [...prev, {
+      id: tempId,
+      sender: 'operator',
+      content: `[mídia: ${media.name}]`,
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      pending: true,
+    }])
+    try {
+      await sendManualMedia(lead.phone, media.id)
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: false } : m))
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+    } finally {
+      setSending(false)
     }
   }
 
@@ -375,7 +407,49 @@ export default function LeadModal({ lead, onClose }) {
 
             {/* Input */}
             <div className="p-4 border-t border-gray-100 bg-white">
+              {/* Seletor de mídia */}
+              {showMediaPicker && (
+                <div className="mb-3 border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+                    <span className="text-xs font-semibold text-gray-500">Escolha uma mídia</span>
+                    <button onClick={() => setShowMediaPicker(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {mediaList.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-4">Nenhuma mídia cadastrada</p>
+                    ) : (
+                      mediaList.map(media => (
+                        <button
+                          key={media.id}
+                          onClick={() => handleSendMedia(media)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 transition text-left border-b border-gray-100 last:border-0"
+                        >
+                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+                            {media.mimeType?.startsWith('video/') ? (
+                              <Play className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
+                            )}
+                          </div>
+                          <span className="text-sm text-gray-700 truncate">{media.name}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenMediaPicker}
+                  disabled={aiEnabled}
+                  title="Enviar mídia do catálogo"
+                  className="p-2.5 rounded-xl border border-gray-200 text-gray-400 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
                 <input
                   type="text"
                   value={manualText}

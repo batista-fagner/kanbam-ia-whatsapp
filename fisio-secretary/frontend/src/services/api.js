@@ -50,6 +50,16 @@ export const sendManualMessage = (phone, text) =>
     body: JSON.stringify({ phone, text }),
   }).then(json)
 
+export const sendManualMedia = (phone, mediaId, caption) =>
+  fetch(`${BASE}/webhooks/manual-media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, mediaId, caption }),
+  }).then(json)
+
+export const getMediaList = () =>
+  fetch(`${BASE}/media`).then(json)
+
 export const deleteLead = (id, reason) =>
   fetch(`${BASE}/leads/${id}`, {
     method: 'DELETE',

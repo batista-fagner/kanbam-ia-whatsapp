@@ -563,6 +563,22 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     return { ok: true };
   }
 
+  @Post('manual-media')
+  async sendManualMedia(@Body() body: { phone: string; mediaId: string; caption?: string }) {
+    const media = await this.mediaService.findById(body.mediaId);
+    if (!media) throw new Error('Mídia não encontrada');
+    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone);
+    const type = media.mimeType?.startsWith('video/') ? 'video' : 'image';
+    this.logger.log(`📤 [MANUAL-MEDIA] Enviando ${type} "${media.name}" para ${body.phone}`);
+    await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '');
+    const logMsg = `[mídia: ${media.name}]${body.caption ? ' ' + body.caption : ''}`;
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', logMsg);
+    await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
+    const updatedLead = await this.leadsService.findOne(lead.id);
+    this.leadsGateway.emitLeadUpdated(updatedLead);
+    return { ok: true };
+  }
+
   /**
    * Aplica etiquetas em um contato via uazapi:
    * 1. Busca etiquetas existentes (GET /labels)
