@@ -47,19 +47,36 @@ export class EvolutionController {
     const phone = rawPhone.replace(/\D/g, '');
 
     // Mensagem enviada pelo próprio operador via WhatsApp (celular/Web), não pela API:
-    // verifica se é o comando "opa" para desativar a IA daquele lead.
+    // - "opa" desativa a IA daquele lead
+    // - qualquer outra mensagem é salva como conversa do operador (sincroniza com o card)
     if (message.fromMe && !message.wasSentByApi) {
-      const opCommand = (message.text ?? '').trim().toLowerCase();
-      if (opCommand === 'opa' && phone) {
-        try {
-          const { lead } = await this.leadsService.findOrCreate(phone);
+      const operatorText = (message.text ?? '').trim();
+      if (!phone) return { ok: true };
+
+      const messageId: string = message.messageid;
+      if (messageId && this.processedIds.has(messageId)) return { ok: true };
+      if (messageId) {
+        this.processedIds.add(messageId);
+        setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+      }
+
+      try {
+        const { lead, conversation } = await this.leadsService.findOrCreate(phone);
+
+        if (operatorText.toLowerCase() === 'opa') {
           await this.leadsService.toggleAi(lead.id, false);
           this.logger.log(`🛑 [OPA] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada`);
-          const updatedLead = await this.leadsService.findOne(lead.id);
-          this.leadsGateway.emitLeadUpdated(updatedLead);
-        } catch (err) {
-          this.logger.error(`Erro ao processar comando "opa" de ${phone}: ${err.message}`);
+        } else if (operatorText) {
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', operatorText, messageId);
+          this.logger.log(`📥 [OP-WHATSAPP] ${phone}: ${operatorText.substring(0, 40)}`);
+        } else {
+          return { ok: true };
         }
+
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+      } catch (err) {
+        this.logger.error(`Erro ao processar msg do operador de ${phone}: ${err.message}`);
       }
       return { ok: true };
     }
@@ -69,11 +86,42 @@ export class EvolutionController {
 
     const text: string = message.text;
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
+    const isImage = message.type === 'media' && message.mediaType === 'image';
     const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;
 
-    if (!phone || (!text && !isAudio)) return { ok: true };
+    if (!phone) return { ok: true };
 
-    if (!phone || (!text && !isAudio)) return { ok: true };
+    // Imagem sem caption: a IA ainda não lê imagens. No agente MegaHair, pede pra cliente descrever o cabelo.
+    if (isImage && !text) {
+      const messageId: string = message.messageid;
+      if (messageId && this.processedIds.has(messageId)) return { ok: true };
+      if (messageId) {
+        this.processedIds.add(messageId);
+        setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+      }
+
+      try {
+        const { lead, conversation } = await this.leadsService.findOrCreate(phone, pushName);
+        await this.leadsService.saveMessage(conversation.id, 'inbound', phone, '[imagem]', messageId);
+
+        const instanceConfig = await this.whatsappConfigService.get();
+        const agentType = instanceConfig?.agentType ?? 'fisio';
+
+        if (agentType === 'megahair') {
+          const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
+          await this.evolutionService.sendTextMessage(phone, reply);
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
+        }
+
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+      } catch (err) {
+        this.logger.error(`Erro ao tratar imagem de ${phone}: ${err.message}`);
+      }
+      return { ok: true };
+    }
+
+    if (!text && !isAudio) return { ok: true };
 
     // Ignora mensagens antigas — timestamp já em milissegundos na uazapi
     const messageTimestamp: number = message.messageTimestamp;
@@ -161,7 +209,36 @@ export class EvolutionController {
     if (agentType === 'megahair') {
       const allMedia = await this.mediaService.listAll();
       const mediaNames = allMedia.map(m => m.name);
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined);
+
+      // Detecta links de Instagram (reel/post) e mapeia para mídia cadastrada
+      const reelCodes = MediaService.extractReelCodes(combinedText);
+      let extraSystemContext: string | undefined;
+      if (reelCodes.length > 0) {
+        const matchedMedia = allMedia.find(m =>
+          Array.isArray(m.reelCodes) && m.reelCodes.some(c => reelCodes.includes(c)),
+        );
+        if (matchedMedia) {
+          extraSystemContext = `════════ LINK DO INSTAGRAM RECONHECIDO ════════
+A cliente enviou um link do Instagram que corresponde à mídia cadastrada:
+- Mídia: ${matchedMedia.name}
+- ID exato (use em mediaName se for enviar): "${matchedMedia.name}"
+
+Use essa informação: a cliente JÁ definiu qual produto quer (textura e tamanho estão no nome da mídia). NÃO pergunte de novo textura/tamanho. Avance pra qualificação (REGRA #0 — perguntar se ela usa mega hair ou é primeira vez) ou, se ela já passou disso, ofereça enviar essa mídia.
+═══════════════════════════════════════════════════`;
+          this.logger.log(`📷 [REEL MATCH] ${lead.phone} → mídia "${matchedMedia.name}"`);
+        } else {
+          extraSystemContext = `════════ LINK DO INSTAGRAM NÃO RECONHECIDO ════════
+A cliente enviou um link do Instagram, mas o reel/post NÃO está cadastrado no catálogo da loja. Vc NÃO consegue ver o conteúdo do link.
+
+NUNCA finja que viu o vídeo/foto. Responda pedindo descrição em palavras: "Recebi seu link, linda! Mas aqui no nosso sistema não abre. Me conta: o cabelo que você gostou é ondulado ou cacheado? E mais ou menos qual tamanho em cm? 😊"
+
+Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pedir textura/tamanho.
+═══════════════════════════════════════════════════`;
+          this.logger.log(`📷 [REEL UNKNOWN] ${lead.phone} → codes=${reelCodes.join(',')}`);
+        }
+      }
+
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
     } else {
       aiResponse = await this.aiService.processMessage(lead, combinedText, instanceConfig?.customPromptSofia ?? undefined);
     }

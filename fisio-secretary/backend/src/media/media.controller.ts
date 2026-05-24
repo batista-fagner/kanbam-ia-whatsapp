@@ -31,6 +31,14 @@ export class MediaController {
     return this.mediaService.rename(id, name.trim());
   }
 
+  @Patch(':id/reel-codes')
+  async updateReelCodes(@Param('id') id: string, @Body('reelCodes') reelCodes: string[]) {
+    if (!Array.isArray(reelCodes)) {
+      throw new BadRequestException('reelCodes deve ser um array');
+    }
+    return this.mediaService.updateReelCodes(id, reelCodes);
+  }
+
   @Delete(':id')
   async delete(@Param('id') id: string) {
     await this.mediaService.delete(id);

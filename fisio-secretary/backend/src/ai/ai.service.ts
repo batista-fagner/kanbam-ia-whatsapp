@@ -483,7 +483,7 @@ REGRAS:
     ];
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
     // Formata nome para exibição: "vietnamita-01" → "Vietnamita", "cacheado-60cm" → "Cacheado 60cm"
@@ -592,7 +592,8 @@ REGRAS:
 
     const basePrompt = customPromptMegaHair ?? defaultPromptBase;
     // buildDateBlock sempre injetado, independente de prompt customizado no banco
-    const systemPrompt = `${buildDateBlock()}\n\n${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}`;
+    const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
+    const systemPrompt = `${buildDateBlock()}\n\n${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${extraBlock}`;
 
     const messages: any[] = [
       ...history,

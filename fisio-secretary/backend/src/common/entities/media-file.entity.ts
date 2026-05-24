@@ -20,6 +20,9 @@ export class MediaFile {
   @Column({ nullable: true })
   size: number;
 
+  @Column({ name: 'reel_codes', type: 'text', array: true, nullable: true, default: () => "'{}'" })
+  reelCodes: string[];
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

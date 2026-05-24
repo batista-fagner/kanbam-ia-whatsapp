@@ -31,6 +31,49 @@ export class MediaService {
     return this.repo.findOne({ where: { name } });
   }
 
+  // Extrai códigos de reel/post de uma mensagem (instagram.com/reel/CODE ou /p/CODE)
+  static extractReelCodes(text: string): string[] {
+    if (!text) return [];
+    const regex = /instagram\.com\/(?:reel|reels|p)\/([A-Za-z0-9_-]+)/gi;
+    const codes: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      if (!codes.includes(m[1])) codes.push(m[1]);
+    }
+    return codes;
+  }
+
+  // Normaliza entrada do painel: aceita URL completa ou só o code, retorna sempre o code
+  static normalizeReelCode(input: string): string | null {
+    const trimmed = (input ?? '').trim();
+    if (!trimmed) return null;
+    const fromUrl = MediaService.extractReelCodes(trimmed);
+    if (fromUrl.length > 0) return fromUrl[0];
+    // Aceita só o code direto (alfanumérico + _-)
+    if (/^[A-Za-z0-9_-]{5,}$/.test(trimmed)) return trimmed;
+    return null;
+  }
+
+  async findByReelCode(code: string): Promise<MediaFile | null> {
+    if (!code) return null;
+    // Postgres: usa operador ANY pra buscar dentro do array
+    return this.repo
+      .createQueryBuilder('m')
+      .where(':code = ANY(m.reel_codes)', { code })
+      .getOne();
+  }
+
+  async updateReelCodes(id: string, codes: string[]): Promise<MediaFile> {
+    const record = await this.repo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Mídia não encontrada');
+    const normalized = (codes ?? [])
+      .map(c => MediaService.normalizeReelCode(c))
+      .filter((c): c is string => !!c);
+    // remove duplicados
+    record.reelCodes = Array.from(new Set(normalized));
+    return this.repo.save(record);
+  }
+
   async upload(file: Express.Multer.File, name: string): Promise<MediaFile> {
     const existing = await this.findByName(name);
     if (existing) {

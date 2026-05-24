@@ -686,3 +686,55 @@ Clique no anúncio (Meta gera ctwaClid)
 - Reduz CPL (custo por lead) treinando o Meta com sinais de qualidade
 - Pode ser vendido como "Integração Andromeda" — aumenta inteligência do anúncio do cliente
 - Aplicável a qualquer nicho que use Click to WhatsApp + qualificação por IA
+
+---
+
+## 🎯 Feature Planejada: Automação de Comentários do Instagram (copiar do funnel-platform)
+
+**Contexto:** Funcionalidade já implementada e funcionando no funnel-platform. Precisa ser copiada para o fisio-secretary (e futuramente para o converthair). Resolve o problema de não conseguir responder todos os comentários em reels.
+
+**Fluxo:**
+```
+Alguém comenta no reel do cliente
+  ↓
+Bot responde publicamente no comentário (ex: "Verifica na sua DM! 😉")
+  ↓
+Bot envia DM automático (ex: "Manda seu WhatsApp que a Sofia entra em contato")
+  ↓
+Paciente manda o número
+  ↓
+Sistema cria lead → Sofia assume no WhatsApp
+```
+
+**O que copiar do funnel-platform:**
+- `backend/src/instagram-automation/` — módulo completo (service, controller, entity, ig-conversation.entity)
+- `frontend/src/pages/InstagramAutomation.jsx` — UI de criação de automações com seleção de posts/reels
+- Tabelas necessárias: `ig_automations`, `ig_conversations`
+
+**Credenciais necessárias por cliente (salvar no banco, não no .env):**
+- `IG_TOKEN` — Long-Lived Token do Instagram (60 dias, renovar via cron)
+- `IG_USER_ID` — ID da conta Instagram (obtido automaticamente na primeira chamada)
+- `IG_WEBHOOK_VERIFY_TOKEN` — token secreto para validar webhook
+
+**Processo de setup por cliente (fase manual — sem App Review):**
+1. Entrar em developers.facebook.com → app → App Roles → Add Testers → adicionar conta Facebook do cliente
+2. Cliente aceita o convite
+3. Abrir Graph API Explorer → cliente loga com Facebook dele → autoriza permissões (`instagram_basic`, `instagram_manage_messages`, `pages_show_list`)
+4. Copiar token → converter para Long-Lived Token (60 dias) via endpoint Meta
+5. Colar token no painel admin do sistema
+
+**Limitações fase atual (sem App Review):**
+- Máximo ~25 testadores por app
+- Cada novo cliente: setup manual de ~15-20 min (pode ser feito remotamente com o cliente logado)
+- Suficiente para até ~20 clientes
+
+**Quando pedir App Review (Meta):**
+- A partir de ~10 clientes pagantes
+- Submeter vídeo demonstrando o fluxo + política de privacidade
+- Aprovação: 1-4 semanas
+- Após aprovação: qualquer cliente conecta via OAuth sem intervenção manual
+
+**Arquitetura multi-tenant (preparar desde o início):**
+- Tokens por cliente salvos no banco (tabela `clinic_ig_config` ou campo em `whatsapp_configs`)
+- Webhook único recebe eventos de todos os clientes — roteia pelo `ig_user_id`
+- Não usar env vars para tokens de Instagram de clientes

@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil } from 'lucide-react'
+import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2 } from 'lucide-react'
+
+// Extrai code de um link de Instagram (reel/post) ou valida code direto
+function normalizeReelInput(input) {
+  const trimmed = (input ?? '').trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/instagram\.com\/(?:reel|reels|p)\/([A-Za-z0-9_-]+)/i)
+  if (match) return match[1]
+  if (/^[A-Za-z0-9_-]{5,}$/.test(trimmed)) return trimmed
+  return null
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -25,6 +35,9 @@ export default function MediaPage() {
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [renamingLoading, setRenamingLoading] = useState(false)
+  const [reelEditingId, setReelEditingId] = useState(null)
+  const [reelInput, setReelInput] = useState('')
+  const [reelSaving, setReelSaving] = useState(false)
   const fileInputRef = useRef(null)
   const renameInputRef = useRef(null)
 
@@ -118,6 +131,48 @@ export default function MediaPage() {
     } finally {
       setRenamingLoading(false)
     }
+  }
+
+  const saveReelCodes = async (id, codes) => {
+    setReelSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/media/${id}/reel-codes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reelCodes: codes }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.message ?? 'Erro ao salvar reels.')
+        return
+      }
+      setFiles(prev => prev.map(f => f.id === id ? { ...f, reelCodes: data.reelCodes } : f))
+    } catch {
+      setError('Não foi possível salvar os reels.')
+    } finally {
+      setReelSaving(false)
+    }
+  }
+
+  const addReelCode = async (file) => {
+    const code = normalizeReelInput(reelInput)
+    if (!code) {
+      setError('Link inválido. Cole o link completo do reel ou o código.')
+      return
+    }
+    const current = file.reelCodes ?? []
+    if (current.includes(code)) {
+      setReelInput('')
+      return
+    }
+    const next = [...current, code]
+    setReelInput('')
+    await saveReelCodes(file.id, next)
+  }
+
+  const removeReelCode = async (file, code) => {
+    const next = (file.reelCodes ?? []).filter(c => c !== code)
+    await saveReelCodes(file.id, next)
   }
 
   const handleDelete = async (id) => {
@@ -241,7 +296,7 @@ export default function MediaPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {files.map(file => (
-              <div key={file.id} className="flex items-center gap-4 px-6 py-4">
+              <div key={file.id} className="flex items-start gap-4 px-6 py-4">
                 {/* Preview clicável */}
                 <div
                   onClick={() => setPreviewFile(file)}
@@ -300,6 +355,71 @@ export default function MediaPage() {
                   <p className="text-xs text-gray-400 mt-0.5">
                     {file.mimeType} {file.size ? `· ${formatSize(file.size)}` : ''}
                   </p>
+
+                  {/* Reel codes do Instagram (opcional) */}
+                  <div className="mt-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(file.reelCodes ?? []).map(code => (
+                        <span
+                          key={code}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-md text-xs font-mono"
+                          title={`https://instagram.com/reel/${code}`}
+                        >
+                          <Link2 className="w-3 h-3" />
+                          {code}
+                          <button
+                            onClick={() => removeReelCode(file, code)}
+                            disabled={reelSaving}
+                            className="ml-0.5 text-pink-400 hover:text-pink-700"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {reelEditingId === file.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={reelInput}
+                            onChange={e => setReelInput(e.target.value)}
+                            placeholder="Cole o link do reel"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') addReelCode(file)
+                              if (e.key === 'Escape') { setReelEditingId(null); setReelInput('') }
+                            }}
+                            className="px-2 py-0.5 text-xs border border-teal-400 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 w-48"
+                          />
+                          <button
+                            onClick={() => addReelCode(file)}
+                            disabled={reelSaving}
+                            className="p-1 text-teal-600 hover:bg-teal-50 rounded-md"
+                          >
+                            {reelSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          </button>
+                          <button
+                            onClick={() => { setReelEditingId(null); setReelInput('') }}
+                            className="p-1 text-gray-400 hover:bg-gray-50 rounded-md"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setReelEditingId(file.id); setReelInput('') }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-teal-700 hover:bg-teal-50 border border-dashed border-gray-300 hover:border-teal-300 rounded-md transition"
+                        >
+                          <Link2 className="w-3 h-3" />
+                          + reel
+                        </button>
+                      )}
+                    </div>
+                    {(file.reelCodes ?? []).length === 0 && reelEditingId !== file.id && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Opcional: vincule reels do Instagram para a IA reconhecer quando a cliente enviar o link.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Delete */}
