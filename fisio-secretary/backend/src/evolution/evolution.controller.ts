@@ -84,9 +84,10 @@ export class EvolutionController {
     // Mensagens enviadas pela própria IA via API — ignora (echo do que enviamos)
     if (message.wasSentByApi) return { ok: true };
 
-    const text: string = message.text;
+    const rawText: string = message.text;
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
     const isImage = message.type === 'media' && message.mediaType === 'image';
+    const text: string = (isImage && rawText) ? `[imagem] ${rawText}` : rawText;
     const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;
 
     if (!phone) return { ok: true };
