@@ -299,41 +299,28 @@ REGRAS:
   async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
-    // Formata nome para exibição: "vietnamita-01" → "Vietnamita", "cacheado-60cm" → "Cacheado 60cm"
-    const formatDisplay = (name: string) =>
-      name.split(/[-_]/)
-        .filter(part => !/^\d+$/.test(part))
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-
-    const mediaEntries = availableMediaNames.map(n => ({
-      original: n,
-      display: formatDisplay(n),
-    }));
-
-    const mediaInstructions = mediaEntries.length > 0
+    const mediaInstructions = availableMediaNames.length > 0
       ? `
-CATÁLOGO DE MÍDIAS DISPONÍVEIS (nome de exibição → id exato):
-${mediaEntries.map(m => `- ${m.display} → "${m.original}"`).join('\n')}
+CATÁLOGO DE MÍDIAS DISPONÍVEIS:
+${availableMediaNames.map(n => `- "${n}"`).join('\n')}
 
-REGRAS DE ENVIO DE MÍDIA — LEIA COM ATENÇÃO:
+⚠️ REGRA CRÍTICA: em "mediaName" use EXATAMENTE um dos nomes acima — copie letra por letra. NUNCA invente um nome. Se a cliente pedir tamanho fora do catálogo, ofereça o mais próximo disponível da lista.
+
+REGRAS DE ENVIO DE MÍDIA:
 
 PASSO 1 — OFERECER (action=none): Antes de enviar, pergunte se ela quer ver.
-  Ex: "Tenho um vídeo lindo do [nome de exibição] pra te mostrar! Quer ver? 😍"
+  Ex: "Tenho um vídeo do cabelo de 70cm! Quer ver? 😍"
 
-PASSO 2 — ENVIAR (action=send_media): Quando ela disser "sim", "quero", "manda", etc:
-  - Defina action="send_media" e mediaName com o id exato.
-  - O reply deve ser LEGENDA/REAÇÃO ao vídeo sendo enviado agora — NÃO repita a pergunta "posso mandar?".
-  - Ex de reply correto: "Olha que resultado lindo! 😍✨" ou "Esse é o [nome], viu como fica perfeito? 💖"
-  - NUNCA escreva no reply "posso te mandar" ou "quer ver" quando action=send_media — o vídeo JÁ está sendo enviado.
+PASSO 2 — ENVIAR (action=send_media): Quando ela confirmar:
+  - Defina action="send_media" e mediaName com o nome exato do catálogo.
+  - O reply deve ser LEGENDA/REAÇÃO ao vídeo — NÃO repita "posso mandar?" ou "quer ver?".
 
-PASSO 3 — PÓS-ENVIO (próxima resposta, action=none): Pergunte se quer ver outro tipo ou combinar a aplicação.
+PASSO 3 — PÓS-ENVIO (action=none): Pergunte se quer ver outro ou combinar a aplicação.
 
 OUTRAS REGRAS:
-- Se há apenas 1 mídia disponível e a cliente demonstrou interesse: vá direto ao PASSO 2.
-- Se há várias: liste pelos nomes de exibição e pergunte qual ela quer (PASSO 1), depois envie (PASSO 2).
-- Quando ela escolher: use o id exato correspondente em mediaName. Nunca invente um nome fora da lista.
-- Nunca mostre o id exato na conversa — use sempre o nome de exibição.`
+- 1 mídia disponível e cliente demonstrou interesse → vá direto ao PASSO 2.
+- Várias mídias → liste os nomes e pergunte qual quer ver (PASSO 1), depois envie (PASSO 2).
+- Nunca use um nome fora da lista acima.`
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
 
     const defaultPromptBase = `Vc é a Lindona, consultora especialista em Mega Hair da Cabelô.

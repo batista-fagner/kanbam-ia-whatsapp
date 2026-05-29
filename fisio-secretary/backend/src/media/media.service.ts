@@ -32,7 +32,14 @@ export class MediaService {
   }
 
   async findByName(name: string): Promise<MediaFile | null> {
-    return this.repo.findOne({ where: { name } });
+    // 1. Exact match
+    const exact = await this.repo.findOne({ where: { name } });
+    if (exact) return exact;
+
+    // 2. Case-insensitive fallback (Gemini pode retornar caixa diferente)
+    const all = await this.repo.find();
+    const lower = name.toLowerCase();
+    return all.find(m => m.name.toLowerCase() === lower) ?? null;
   }
 
   // Extrai códigos de reel/post de uma mensagem (instagram.com/reel/CODE ou /p/CODE)
