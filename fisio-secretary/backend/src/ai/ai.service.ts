@@ -145,6 +145,13 @@ function buildDateBlock(): string {
   const todayIdx = dayNames.indexOf(today.weekday);
   const dayInfo = (offset: number) => formatInTZ(new Date(now.getTime() + offset * 86400000));
 
+  // Hora atual em São Paulo → define a saudação correta (bom dia / boa tarde / boa noite)
+  const currentHour = parseInt(
+    new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', hour12: false }).format(now),
+    10,
+  );
+  const greeting = currentHour < 12 ? 'Bom dia' : currentHour < 18 ? 'Boa tarde' : 'Boa noite';
+
   const labels = ['amanhã', 'depois de amanhã', 'em 3 dias', 'em 4 dias', 'em 5 dias', 'em 6 dias', 'em 7 dias'];
   const relativeLookup = [`- "hoje" = ${today.day}/${today.month}/${today.year} (${today.weekday})`];
   for (let i = 0; i < 7; i++) {
@@ -170,6 +177,7 @@ function buildDateBlock(): string {
 
   return `════════ TABELA DE DATAS — USE EXATAMENTE, NUNCA CALCULE ════════
 DATA DE HOJE: ${today.day}/${today.month}/${today.year} (${today.weekday})
+SAUDAÇÃO CORRETA AGORA: "${greeting}" — ao cumprimentar, use EXATAMENTE "${greeting}". NUNCA escreva "Bom dia/Boa tarde/Boa noite" com barras; escolha só "${greeting}".
 
 EXPRESSÕES RELATIVAS (busque a linha exata da expressão usada pela cliente):
 ${relativeLookup.join('\n')}
