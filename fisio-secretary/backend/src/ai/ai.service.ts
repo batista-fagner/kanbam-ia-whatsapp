@@ -423,6 +423,7 @@ REGRAS:
         () => this.client.chat.completions.create({
           model: this.chatModel,
           max_tokens: 1024,
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages as any,
