@@ -196,12 +196,25 @@ export class AiService {
   private readonly chatModel: string;
 
   constructor(private config: ConfigService) {
-    const groqKey = config.get('GROQ_API_KEY');
-    this.chatModel = groqKey ? 'llama-3.1-8b-instant' : 'gpt-4o-mini';
-    this.client = new OpenAI({
-      apiKey: groqKey || config.get('OPENAI_API_KEY'),
-      ...(groqKey ? { baseURL: 'https://api.groq.com/openai/v1' } : {}),
-    });
+    const geminiKey = config.get('GEMINI_API_KEY');
+    const groqKey   = config.get('GROQ_API_KEY');
+
+    if (geminiKey) {
+      this.chatModel = 'gemini-2.5-flash';
+      this.client = new OpenAI({
+        apiKey: geminiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      });
+    } else if (groqKey) {
+      this.chatModel = 'llama-3.1-8b-instant';
+      this.client = new OpenAI({
+        apiKey: groqKey,
+        baseURL: 'https://api.groq.com/openai/v1',
+      });
+    } else {
+      this.chatModel = 'gpt-4o-mini';
+      this.client = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
+    }
   }
 
   getDefaultPromptMegaHair(): string {
