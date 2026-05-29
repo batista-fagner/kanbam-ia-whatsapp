@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -7,7 +7,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import { Wifi, Users, Flame, CalendarCheck, ShoppingBag } from 'lucide-react'
+import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X } from 'lucide-react'
 
 import { COLUMNS } from '../data/mockData'
 import { useLeads } from '../hooks/useLeads'
@@ -22,6 +22,8 @@ export default function KanbanPage() {
   const [activeId, setActiveId] = useState(null)
   const [selectedLead, setSelectedLead] = useState(null)
   const [leadToDelete, setLeadToDelete] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchRef = useRef(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -66,6 +68,19 @@ export default function KanbanPage() {
   const agend   = leads.filter(l => l.stage === 'agendado').length
   const vendas  = leads.filter(l => l.stage === 'vendas').length
 
+  const searchTrim = searchQuery.trim()
+  const searchNorm = searchTrim.replace(/\D/g, '')
+  const matchedLead = searchTrim
+    ? leads.find(l => {
+        const phone = (l.phone ?? '').replace(/\D/g, '')
+        const name  = (l.name ?? '').toLowerCase()
+        const byPhone = searchNorm.length > 0 && phone.includes(searchNorm)
+        const byName  = searchTrim.length > 0 && name.includes(searchTrim.toLowerCase())
+        return byPhone || byName
+      })
+    : null
+  const matchedColumn = matchedLead ? COLUMNS.find(c => c.id === matchedLead.stage) : null
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -79,13 +94,45 @@ export default function KanbanPage() {
 
       {/* Stats Header */}
       <header className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-30">
-        <div className="px-6 py-3">
+        <div className="px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <Stat icon={<Wifi className="w-3.5 h-3.5 text-green-500" />} label="WhatsApp" value="Conectado" valueClass="text-green-600" />
             <Stat icon={<Users className="w-3.5 h-3.5 text-blue-500" />} label="Total" value={total} />
             <Stat icon={<Flame className="w-3.5 h-3.5 text-orange-500" />} label="Quentes" value={quentes} valueClass="text-orange-600" />
             <Stat icon={<CalendarCheck className="w-3.5 h-3.5 text-teal-500" />} label="Agendadas" value={agend} valueClass="text-teal-600" />
             <Stat icon={<ShoppingBag className="w-3.5 h-3.5 text-green-600" />} label="Vendas" value={vendas} valueClass="text-green-700" />
+          </div>
+
+          {/* Search */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                ref={searchRef}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buscar número ou nome..."
+                className="pl-8 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${matchedLead ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-600'}`}>
+                {matchedLead ? `${matchedColumn?.label ?? matchedLead.stage}` : 'Não encontrado'}
+              </span>
+            )}
+            {matchedLead && (
+              <button
+                onClick={() => setSelectedLead(matchedLead)}
+                className="text-xs px-3 py-1.5 bg-teal-700 text-white rounded-lg hover:bg-teal-800 transition"
+              >
+                Ver lead
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -107,6 +154,7 @@ export default function KanbanPage() {
                 onCardClick={setSelectedLead}
                 onCardDelete={setLeadToDelete}
                 onLeadUpdate={handleLeadUpdate}
+                highlightLeadId={matchedLead?.id ?? null}
               />
             ))}
           </div>

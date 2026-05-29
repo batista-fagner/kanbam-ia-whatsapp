@@ -50,7 +50,7 @@ const scoreColor = (score) => {
   return 'text-slate-400'
 }
 
-export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
+export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highlighted, dimmed }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(lead.name || '')
   const inputRef = useRef(null)
@@ -59,11 +59,13 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate }) {
 
   const style = {
     transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.4 : dimmed ? 0.3 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
   }
 
-  const cardBg = noReplyLevel === 'critical'
+  const cardBg = highlighted
+    ? 'bg-teal-50 border-teal-400 ring-2 ring-teal-400 hover:border-teal-500'
+    : noReplyLevel === 'critical'
     ? 'bg-red-50 border-red-300 hover:border-red-400'
     : noReplyLevel === 'warning'
     ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'
