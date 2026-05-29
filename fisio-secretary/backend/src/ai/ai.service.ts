@@ -422,7 +422,7 @@ REGRAS:
       const response = await callWithRetry(
         () => this.client.chat.completions.create({
           model: this.chatModel,
-          max_tokens: 512,
+          max_tokens: 1024,
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages as any,
