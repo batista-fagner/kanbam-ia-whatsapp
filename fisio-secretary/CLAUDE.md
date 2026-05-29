@@ -10,8 +10,8 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
-- **IA (chat/funil):** Groq Llama 3.1 8B (`llama-3.1-8b-instant`) — open source da Meta, hospedado no Groq (LPU). Fallback automático para `gpt-4o-mini` se `GROQ_API_KEY` ausente.
-- **IA (Claude):** Anthropic Claude (claude-haiku-4-5-20251001)
+- **IA (chat/funil — Lindona):** Google Gemini 2.5 Flash (`gemini-2.5-flash`) via endpoint OpenAI-compatível — migrado em 29/05/2026 (quinta-feira). Free tier (~1.500 req/dia). Hierarquia de fallback: `GEMINI_API_KEY` → `GROQ_API_KEY` (Llama 3.1 8B) → `OPENAI_API_KEY` (gpt-4o-mini).
+- **IA (Claude):** removida em 29/05/2026 — agente Sofia/fisioterapia removido, apenas Lindona (MegaHair) permanece.
 - **STT:** OpenAI Whisper (transcrição automática via uazapi OU manual via Meta API)
 - **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
 - **WhatsApp:** Modular via `IWhatsAppProvider` interface — uazapi (R$ 29/mês) OU Meta Official API (badge verde + compliance)
