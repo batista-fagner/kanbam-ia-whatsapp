@@ -194,6 +194,7 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly client: OpenAI;
   private readonly chatModel: string;
+  private readonly isGemini: boolean;
 
   constructor(private config: ConfigService) {
     const geminiKey = config.get('GEMINI_API_KEY');
@@ -201,18 +202,21 @@ export class AiService {
 
     if (geminiKey) {
       this.chatModel = 'gemini-2.5-flash';
+      this.isGemini = true;
       this.client = new OpenAI({
         apiKey: geminiKey,
         baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
       });
     } else if (groqKey) {
       this.chatModel = 'llama-3.1-8b-instant';
+      this.isGemini = false;
       this.client = new OpenAI({
         apiKey: groqKey,
         baseURL: 'https://api.groq.com/openai/v1',
       });
     } else {
       this.chatModel = 'gpt-4o-mini';
+      this.isGemini = false;
       this.client = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     }
   }
@@ -411,6 +415,9 @@ REGRAS:
           model: this.chatModel,
           max_tokens: 1024,
           response_format: { type: 'json_object' },
+          // Gemini 2.5 Flash gasta tokens "pensando" antes da saída, truncando o JSON.
+          // reasoning_effort: 'none' desativa o thinking (tarefa de extração não precisa).
+          ...(this.isGemini ? { reasoning_effort: 'none' } : {}),
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages as any,
