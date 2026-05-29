@@ -123,11 +123,9 @@ export class WhatsappConfigService {
     }
   }
 
-  async updateConfig(fields: { agentType?: string; customPromptSofia?: string | null; customPromptMegaHair?: string | null }): Promise<WhatsappConfig> {
+  async updateConfig(fields: { customPromptMegaHair?: string | null }): Promise<WhatsappConfig> {
     let record = await this.get();
     if (!record) record = this.repo.create();
-    if (fields.agentType) record.agentType = fields.agentType;
-    if ('customPromptSofia' in fields) record.customPromptSofia = fields.customPromptSofia ?? null;
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     return this.repo.save(record);
   }

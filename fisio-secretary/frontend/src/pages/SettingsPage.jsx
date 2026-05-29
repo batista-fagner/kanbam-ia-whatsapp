@@ -30,8 +30,6 @@ function StatusBadge({ status }) {
 
 export default function SettingsPage() {
   const [bootstrapping, setBootstrapping] = useState(true)
-  const [agentType, setAgentType] = useState('fisio')
-  const [savingAgent, setSavingAgent] = useState(false)
   const [instanceConfig, setInstanceConfig] = useState(null) // null = não tem; objeto = tem
   const [instanceStatus, setInstanceStatus] = useState(null)
   const [connectMode, setConnectMode] = useState('qrcode')
@@ -49,10 +47,8 @@ export default function SettingsPage() {
   const [error, setError] = useState(null)
   const [instanceName, setInstanceName] = useState('')
   const [creatingInstance, setCreatingInstance] = useState(false)
-  const [customPromptSofia, setCustomPromptSofia] = useState('')
   const [customPromptMegaHair, setCustomPromptMegaHair] = useState('')
-  const [defaultPrompts, setDefaultPrompts] = useState({ sofia: '', megahair: '' })
-  const [activePromptTab, setActivePromptTab] = useState('sofia')
+  const [defaultPromptMegaHair, setDefaultPromptMegaHair] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
   const pollingRef = useRef(null)
 
@@ -75,11 +71,6 @@ export default function SettingsPage() {
       const data = await res.json()
       setInstanceConfig(data)
       setWebhookConfigured(data?.webhookConfigured ?? false)
-      if (data?.agentType) {
-        setAgentType(data.agentType)
-        setActivePromptTab(data.agentType === 'megahair' ? 'megahair' : 'sofia')
-      }
-      if (data?.customPromptSofia != null) setCustomPromptSofia(data.customPromptSofia)
       if (data?.customPromptMegaHair != null) setCustomPromptMegaHair(data.customPromptMegaHair)
       return data
     } catch {
@@ -92,9 +83,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch(`${API_URL}/instance/default-prompts`)
       const data = await res.json()
-      setDefaultPrompts(data)
-      // Só preenche com padrão se ainda não tem customizado
-      setCustomPromptSofia(prev => prev || data.sofia)
+      setDefaultPromptMegaHair(data.megahair ?? '')
       setCustomPromptMegaHair(prev => prev || data.megahair)
     } catch { /* silencioso */ }
   }
@@ -546,124 +535,43 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Card de seleção do agente */}
-      {!bootstrapping && instanceConfig && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
-          <h2 className="text-sm font-semibold text-gray-800 mb-1">Agente de IA</h2>
-          <p className="text-xs text-gray-500 mb-4">Escolha o agente que vai responder as mensagens nesta conexão.</p>
-          <div className="flex gap-3">
-            {[
-              { value: 'fisio', label: 'Fisioterapia', desc: 'Qualificação + agendamento de consulta' },
-              { value: 'megahair', label: 'Mega Hair', desc: 'Qualificação + envio de vídeo + venda' },
-            ].map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setAgentType(opt.value)}
-                className={`flex-1 text-left p-4 rounded-xl border-2 transition ${
-                  agentType === opt.value
-                    ? 'border-teal-600 bg-teal-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <p className={`text-sm font-semibold ${agentType === opt.value ? 'text-teal-700' : 'text-gray-700'}`}>{opt.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={async () => {
-              setSavingAgent(true)
-              try {
-                await fetch(`${API_URL}/instance/config`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ agentType }),
-                })
-                await fetchConfig()
-              } finally {
-                setSavingAgent(false)
-              }
-            }}
-            disabled={savingAgent || agentType === instanceConfig?.agentType}
-            className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
-          >
-            {savingAgent ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {savingAgent ? 'Salvando...' : 'Salvar agente'}
-          </button>
-        </div>
-      )}
-
       {/* Card de prompt customizado */}
       {!bootstrapping && instanceConfig && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
-          <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da IA</h2>
-          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento de cada agente (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
+          <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da Lindona (Mega Hair)</h2>
+          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento da Lindona (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
 
-          {/* Tabs */}
-          <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
-            {[
-              { key: 'sofia', label: 'Sofia (Fisioterapia)' },
-              { key: 'megahair', label: 'Lindona (Mega Hair)' },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActivePromptTab(tab.key)}
-                className={`px-4 py-1.5 text-xs font-medium rounded-md transition ${
-                  activePromptTab === tab.key
-                    ? 'bg-white text-gray-800 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Textarea */}
           <textarea
-            value={activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair}
-            onChange={e => activePromptTab === 'sofia'
-              ? setCustomPromptSofia(e.target.value)
-              : setCustomPromptMegaHair(e.target.value)
-            }
+            value={customPromptMegaHair}
+            onChange={e => setCustomPromptMegaHair(e.target.value)}
             className="w-full h-80 text-xs font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
             placeholder="Digite o prompt da IA aqui..."
             spellCheck={false}
           />
 
-          {/* Botões */}
           <div className="flex items-center gap-3 mt-3">
             <button
               onClick={async () => {
-                // Trava: não envia null se textarea estiver vazio (evita apagar prompt salvo)
-                const currentText = activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair
-                if (!currentText?.trim()) return
+                if (!customPromptMegaHair?.trim()) return
                 setSavingPrompt(true)
                 try {
                   await fetch(`${API_URL}/instance/config`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(
-                      activePromptTab === 'sofia'
-                        ? { customPromptSofia }
-                        : { customPromptMegaHair }
-                    ),
+                    body: JSON.stringify({ customPromptMegaHair }),
                   })
                 } finally {
                   setSavingPrompt(false)
                 }
               }}
-              disabled={savingPrompt || !(activePromptTab === 'sofia' ? customPromptSofia : customPromptMegaHair)?.trim()}
+              disabled={savingPrompt || !customPromptMegaHair?.trim()}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
             >
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {savingPrompt ? 'Salvando...' : 'Salvar prompt'}
             </button>
             <button
-              onClick={() => {
-                if (activePromptTab === 'sofia') setCustomPromptSofia(defaultPrompts.sofia)
-                else setCustomPromptMegaHair(defaultPrompts.megahair)
-              }}
+              onClick={() => setCustomPromptMegaHair(defaultPromptMegaHair)}
               className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
             >
               Restaurar padrão

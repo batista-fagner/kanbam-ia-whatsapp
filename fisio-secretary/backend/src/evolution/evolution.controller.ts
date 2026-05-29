@@ -105,14 +105,9 @@ export class EvolutionController {
         const { lead, conversation } = await this.leadsService.findOrCreate(phone, pushName);
         await this.leadsService.saveMessage(conversation.id, 'inbound', phone, '[imagem]', messageId);
 
-        const instanceConfig = await this.whatsappConfigService.get();
-        const agentType = instanceConfig?.agentType ?? 'fisio';
-
-        if (agentType === 'megahair') {
-          const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
-          await this.evolutionService.sendTextMessage(phone, reply);
-          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
-        }
+        const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
+        await this.evolutionService.sendTextMessage(phone, reply);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
 
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -202,48 +197,40 @@ export class EvolutionController {
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000);
 
-    // Processa com IA — roteia pelo agentType da instância ativa
     const instanceConfig = await this.whatsappConfigService.get();
-    const agentType = instanceConfig?.agentType ?? 'fisio';
+    const allMedia = await this.mediaService.listAll();
+    const mediaNames = allMedia.map(m => m.name);
 
-    let aiResponse;
-    if (agentType === 'megahair') {
-      const allMedia = await this.mediaService.listAll();
-      const mediaNames = allMedia.map(m => m.name);
-
-      // Detecta links de Instagram (reel/post) e mapeia para mídia cadastrada
-      const reelCodes = MediaService.extractReelCodes(combinedText);
-      let extraSystemContext: string | undefined;
-      if (reelCodes.length > 0) {
-        const matchedMedia = allMedia.find(m =>
-          Array.isArray(m.reelCodes) && m.reelCodes.some(c => reelCodes.includes(c)),
-        );
-        if (matchedMedia) {
-          extraSystemContext = `════════ LINK DO INSTAGRAM RECONHECIDO ════════
+    // Detecta links de Instagram (reel/post) e mapeia para mídia cadastrada
+    const reelCodes = MediaService.extractReelCodes(combinedText);
+    let extraSystemContext: string | undefined;
+    if (reelCodes.length > 0) {
+      const matchedMedia = allMedia.find(m =>
+        Array.isArray(m.reelCodes) && m.reelCodes.some(c => reelCodes.includes(c)),
+      );
+      if (matchedMedia) {
+        extraSystemContext = `════════ LINK DO INSTAGRAM RECONHECIDO ════════
 A cliente enviou um link do Instagram que corresponde à mídia cadastrada:
 - Mídia: ${matchedMedia.name}
 - ID exato (use em mediaName se for enviar): "${matchedMedia.name}"
 
 Use essa informação: a cliente JÁ definiu qual produto quer (textura e tamanho estão no nome da mídia). NÃO pergunte de novo textura/tamanho. Avance pra qualificação (REGRA #0 — perguntar se ela usa mega hair ou é primeira vez) ou, se ela já passou disso, ofereça enviar essa mídia.
 ═══════════════════════════════════════════════════`;
-          this.logger.log(`📷 [REEL MATCH] ${lead.phone} → mídia "${matchedMedia.name}"`);
-        } else {
-          extraSystemContext = `════════ LINK DO INSTAGRAM NÃO RECONHECIDO ════════
+        this.logger.log(`📷 [REEL MATCH] ${lead.phone} → mídia "${matchedMedia.name}"`);
+      } else {
+        extraSystemContext = `════════ LINK DO INSTAGRAM NÃO RECONHECIDO ════════
 A cliente enviou um link do Instagram, mas o reel/post NÃO está cadastrado no catálogo da loja. Vc NÃO consegue ver o conteúdo do link.
 
 NUNCA finja que viu o vídeo/foto. Responda pedindo descrição em palavras: "Recebi seu link, linda! Mas aqui no nosso sistema não abre. Me conta: o cabelo que você gostou é ondulado ou cacheado? E mais ou menos qual tamanho em cm? 😊"
 
 Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pedir textura/tamanho.
 ═══════════════════════════════════════════════════`;
-          this.logger.log(`📷 [REEL UNKNOWN] ${lead.phone} → codes=${reelCodes.join(',')}`);
-        }
+        this.logger.log(`📷 [REEL UNKNOWN] ${lead.phone} → codes=${reelCodes.join(',')}`);
       }
-
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
-    } else {
-      aiResponse = await this.aiService.processMessage(lead, combinedText, instanceConfig?.customPromptSofia ?? undefined);
     }
-    this.logger.log(`IA respondeu [agent=${agentType}] [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
+
+    const aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
+    this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
@@ -294,8 +281,8 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (f.qualificationStep !== undefined) updateData.qualificationStep = f.qualificationStep;
     }
 
-    // MegaHair: score definido pelo stage (IA não retorna score confiável)
-    if (agentType === 'megahair' && aiResponse.stage) {
+    // Score definido pelo stage (IA não retorna score confiável)
+    if (aiResponse.stage) {
       const stageScore: Record<string, number> = {
         novo_lead: 0, lead_frio: 20, lead_quente: 75, agendado: 90, vendas: 100, desliza_hair: 100, perdido: 5,
       };
@@ -338,8 +325,8 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // Ações de calendário
     const action = aiResponse.action;
 
-    // MegaHair: agendamento interno (tabela appointments) — não usa Google Calendar
-    if (agentType === 'megahair' && action === 'schedule' && aiResponse.appointmentDateTime) {
+    // Agendamento interno (tabela appointments) — não usa Google Calendar
+    if (action === 'schedule' && aiResponse.appointmentDateTime) {
       try {
         const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
         // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
@@ -360,33 +347,6 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
       } catch (err: any) {
         this.logger.error(`Erro ao criar agendamento MegaHair: ${err.message}`);
-      }
-    }
-
-    if (agentType !== 'megahair' && action === 'schedule' && aiResponse.appointmentDateTime) {
-      const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
-      const { available, conflictingEvent } = await this.calendarService.checkAvailability(startDateTime);
-
-      if (!available) {
-        this.logger.warn(`Horário ocupado: ${startDateTime.toISOString()} (${conflictingEvent})`);
-        const busyReply = `Ops! Esse horário já está ocupado (${conflictingEvent}). Por favor, escolha outro horário ou dia 😊`;
-        this.logger.log(`📤 [BUSY SLOT] Enviando: ${busyReply.substring(0, 40)}...`);
-        await this.evolutionService.sendTextMessage(phone, busyReply);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
-        const updatedLead = await this.leadsService.findOne(lead.id);
-        this.leadsGateway.emitLeadUpdated(updatedLead);
-        return;
-      }
-
-      const event = await this.calendarService.createAppointment({
-        leadName: lead.name || lead.phone,
-        phone: lead.phone,
-        symptoms: lead.symptoms || '',
-        startDateTime,
-      });
-
-      if (event) {
-        await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: startDateTime });
       }
     }
 

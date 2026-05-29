@@ -29,10 +29,10 @@ export default function Layout({ onLogout }) {
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
+              <div className="w-6 h-6 bg-pink-600 rounded flex items-center justify-center">
                 <Stethoscope className="w-3 h-3 text-white" />
               </div>
-              <span className="text-xs font-bold text-gray-800">Sofia</span>
+              <span className="text-xs font-bold text-gray-800">Lindona</span>
             </div>
           )}
           <button
