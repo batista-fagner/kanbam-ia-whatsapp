@@ -10,7 +10,7 @@ Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensage
 
 - **Backend:** NestJS 11, TypeORM, PostgreSQL (Supabase), Redis
 - **Frontend:** React + Vite + shadcn/ui + Socket.io
-- **IA (chat/funil — Lindona):** Google Gemini 2.5 Flash (`gemini-2.5-flash`) via endpoint OpenAI-compatível — migrado em 29/05/2026 (quinta-feira). Free tier (~1.500 req/dia). Hierarquia de fallback: `GEMINI_API_KEY` → `GROQ_API_KEY` (Llama 3.1 8B) → `OPENAI_API_KEY` (gpt-4o-mini).
+- **IA (chat/funil — Lindona):** Google Gemini 2.5 Flash (`gemini-2.5-flash`) via endpoint OpenAI-compatível — billing ativo (30/05/2026). Pool de failover em runtime: `GEMINI_API_KEY` → `OPENAI_API_KEY` (gpt-4o-mini). Cache implícito ativo: ~99% dos tokens de input são cacheados (75% desconto) → custo ~R$41/mês pra 2.000 leads. Branches alternativas preservadas: `feat/gemini` (Gemini isolado), `feat/openrouter` (Qwen 2.5 72B + Llama 3.3 70B).
 - **IA (Claude):** removida em 29/05/2026 — agente Sofia/fisioterapia removido, apenas Lindona (MegaHair) permanece.
 - **STT:** OpenAI Whisper (transcrição automática via uazapi OU manual via Meta API)
 - **TTS:** Google Cloud Text-to-Speech (voz pt-BR-Neural2-C, feminina)
@@ -114,6 +114,108 @@ Score de temperatura: urgência alta (+40), orçamento ok (+30), disponibilidade
 - **Fase 7:** ✅ Concluída — Migração Evolution API → uazapi (11/04/2026)
 - **Fase 8:** ✅ Concluída — Envio em Massa com Sidebar (11/04/2026)
 - **Fase 9:** ✅ Concluída — Meta Official API modular + provider switching (29/04/2026)
+- **Fase 10:** ✅ Concluída — Migração LLM para Gemini 2.5 Flash + pool de failover + cache implícito (29-30/05/2026)
+
+---
+
+## Funcionalidades implementadas (29-30/05/2026 — Fase 10)
+
+### Pool de LLMs com Failover em Runtime
+
+**Arquitetura (`ai.service.ts`):**
+- `LlmProvider` interface: `{ name, client, model, isGemini }`
+- Lista `providers[]` montada no constructor pelos env vars presentes
+- `callLLM(systemPrompt, messages)` — tenta providers em ordem; se um falha (429/5xx/timeout), passa pro próximo na mesma requisição. Cliente nunca vê erro.
+- `reasoning_effort: 'none'` aplicado só quando `isGemini=true` (gpt-4o-mini rejeita esse param)
+- `response_format: { type: 'json_object' }` em todos os providers
+
+**Pool atual (main):** `GEMINI_API_KEY` → `OPENAI_API_KEY` (gpt-4o-mini)
+**Branches alternativas:**
+- `feat/gemini` — Gemini isolado (estado antes do OpenRouter)
+- `feat/openrouter` — Qwen 2.5 72B + Llama 3.3 70B (testado, custo ~R$187/mês, encoding PT-BR do Llama problemático em prompts grandes)
+
+**Trocar providers:** basta comentar/descomentar as env vars no `.env` e Railway. Sem recompilação.
+
+---
+
+### Cache Implícito do Gemini 2.5 Flash
+
+**Como funciona:**
+- Gemini cacheia automaticamente prefixos de prompt que se repetem entre chamadas
+- 75% de desconto nos tokens cacheados
+- Não requer código extra — acontece automaticamente quando o mesmo prefixo é enviado
+
+**Resultado em produção:** 99% dos tokens de input cacheados → custo ~R$41/mês pra 2.000 leads/mês
+
+**Condição crítica para o cache funcionar:** o bloco variável (`buildDateBlock` — muda toda hora) deve ficar no **final** do systemPrompt, não no início. Se ficar na frente, quebra o prefixo e o cache não funciona.
+
+```typescript
+// CORRETO — estático na frente, variável no final:
+const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT}\n\n${buildDateBlock()}`;
+
+// ERRADO — variável na frente quebra o cache:
+const systemPrompt = `${buildDateBlock()}\n\n${basePrompt}...`;
+```
+
+**Log de cache hit no Railway:**
+```
+[LINDONA] 💰 Cache hit: 4992 tokens cacheados de 5059 input (99% do input)
+```
+
+---
+
+### Correções críticas do Gemini 2.5 Flash
+
+**3 ajustes obrigatórios que o Gemini exige (gpt-4o-mini não precisava):**
+1. `response_format: { type: 'json_object' }` — Gemini retorna texto livre sem isso
+2. `reasoning_effort: 'none'` — Gemini gasta tokens "pensando" antes da saída, estourava `max_tokens` e truncava o JSON. Desativar resolve (tarefa de extração não precisa de raciocínio)
+3. Catálogo de mídia sem `formatDisplay` — Gemini é mais "criativo" e inventava nomes de mídia. Prompt mostra nomes do banco diretamente. `findByName` tem fallback case-insensitive
+
+---
+
+### Saudação por Período do Dia
+
+**Problema:** prompt customizado do banco tinha `"Bom dia/Boa tarde/Boa noite"` como exemplo. Gemini copiava literalmente com as barras.
+
+**Solução em `buildDateBlock()`:**
+```typescript
+const currentHour = parseInt(new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', hour12: false }).format(now), 10);
+const greeting = currentHour < 12 ? 'Bom dia' : currentHour < 18 ? 'Boa tarde' : 'Boa noite';
+// Injetado no buildDateBlock:
+// SAUDAÇÃO CORRETA AGORA: "Boa noite" — use EXATAMENTE "Boa noite". NUNCA escreva as três com barras.
+```
+
+**Instrução pro prompt customizado:** usar `[SAUDAÇÃO CORRETA AGORA]` como placeholder em vez de hardcodar as três opções.
+
+---
+
+### Retry no Envio uazapi
+
+**Problema:** uazapi retornava `"host not mapped"` (HTTP 404) intermitentemente por instabilidade de roteamento. Mensagem era perdida.
+
+**Solução (`uazapi.provider.ts`):** método `postWithRetry()` — tenta até 3x com 1.5s entre tentativas em erros transitórios (`host not mapped`, 5xx, 429, timeout/rede). Aplicado em `sendTextMessage`, `sendAudioMessage` e `sendMediaByUrl`. Erros não-transitórios (401/403) falham na hora.
+
+---
+
+### Sanitização de Null Bytes
+
+**Problema:** alguns modelos (Llama, Qwen) geravam bytes nulos (`\x00`) na resposta. PostgreSQL rejeita com `invalid byte sequence for encoding "UTF8": 0x00`.
+
+**Solução:**
+- `ai.service.ts`: `raw = raw.replace(/\x00/g, '')` antes de parsear + `parsed.reply = parsed.reply.replace(/\x00/g, '')`
+- `leads.service.ts` → `saveMessage()`: `content?.replace(/\x00/g, '') ?? ''`
+
+---
+
+### Busca de Lead no Kanban
+
+**Implementado em `KanbanPage.jsx`:**
+- Input de busca no header (por número ou nome)
+- Lead encontrado destacado com borda teal + ring
+- Leads não encontrados ficam opacos (opacity 0.3)
+- Badge mostra em qual raia o lead está
+- Botão "Ver lead" abre modal para mover de raia
+- Busca por telefone: normaliza dígitos, só busca por número se a query tiver dígitos (evita false positives com string vazia)
 
 ---
 
@@ -738,3 +840,25 @@ Sistema cria lead → Sofia assume no WhatsApp
 - Tokens por cliente salvos no banco (tabela `clinic_ig_config` ou campo em `whatsapp_configs`)
 - Webhook único recebe eventos de todos os clientes — roteia pelo `ig_user_id`
 - Não usar env vars para tokens de Instagram de clientes
+
+---
+
+## 🎯 Feature Planejada: Gemini Context Caching — System Prompt (29/05/2026)
+
+**Status:** ⏳ Pendente
+
+**Objetivo:** Cachear o system prompt da Lindona no Gemini para reduzir ~70% dos tokens de input em todas as conversas.
+
+**Como funciona:**
+- O system prompt (~3.500 tokens) é idêntico para todos os leads
+- Um único cache criado na inicialização do servidor serve para todas as conversas simultaneamente
+- Tokens cacheados custam $0.0375/1M em vez de $0.15/1M (75% de desconto)
+- Histórico individual de cada conversa continua sendo enviado fresco (não cacheável)
+
+**Implementação necessária (`ai.service.ts`):**
+1. No constructor do `AiService` → criar cache via API Gemini com o system prompt base
+2. Em `processMessageMegaHair()` → passar `cachedContent` ID em vez do system prompt completo
+3. TTL: ~60 minutos com renovação automática
+4. Só ativar quando `GEMINI_API_KEY` presente (não afeta fallback OpenAI/Groq)
+
+**Quando implementar:** quando o volume ultrapassar o free tier e o custo de tokens começar a aparecer na fatura. Por enquanto no free tier não há ganho financeiro.
