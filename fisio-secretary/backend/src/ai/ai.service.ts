@@ -482,9 +482,10 @@ REGRAS:
 - Se a cliente perguntar sobre endereço ou entrega, responda com as informações da loja.`;
 
     const basePrompt = customPromptMegaHair ?? defaultPromptBase;
-    // buildDateBlock sempre injetado, independente de prompt customizado no banco
+    // buildDateBlock no final: prefixo estático (basePrompt+media+JSON) fica idêntico
+    // entre todas as conversas → habilita cache automático (OpenAI 50%, Gemini 75%).
     const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
-    const systemPrompt = `${buildDateBlock()}\n\n${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${extraBlock}`;
+    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${extraBlock}\n\n${buildDateBlock()}`;
 
     const messages: any[] = [
       ...history,
