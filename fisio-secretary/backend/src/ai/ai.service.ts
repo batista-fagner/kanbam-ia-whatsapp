@@ -197,36 +197,105 @@ REGRAS ABSOLUTAS:
 ═══════════════════════════════════════════════════════════════════`;
 }
 
+interface LlmProvider {
+  name: string;
+  client: OpenAI;
+  model: string;
+  isGemini: boolean;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly client: OpenAI;
-  private readonly chatModel: string;
-  private readonly isGemini: boolean;
+  // Provedores em ordem de prioridade. Failover em runtime: se o primário falha
+  // (cota/rate limit), o próximo assume na mesma requisição — cliente não vê erro.
+  private readonly providers: LlmProvider[];
 
   constructor(private config: ConfigService) {
     const geminiKey = config.get('GEMINI_API_KEY');
     const groqKey   = config.get('GROQ_API_KEY');
+    const openaiKey = config.get('OPENAI_API_KEY');
+
+    const providers: LlmProvider[] = [];
 
     if (geminiKey) {
-      this.chatModel = 'gemini-2.5-flash';
-      this.isGemini = true;
-      this.client = new OpenAI({
-        apiKey: geminiKey,
-        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      providers.push({
+        name: 'gemini',
+        model: 'gemini-2.5-flash',
+        isGemini: true,
+        client: new OpenAI({
+          apiKey: geminiKey,
+          baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        }),
       });
-    } else if (groqKey) {
-      this.chatModel = 'llama-3.1-8b-instant';
-      this.isGemini = false;
-      this.client = new OpenAI({
-        apiKey: groqKey,
-        baseURL: 'https://api.groq.com/openai/v1',
-      });
-    } else {
-      this.chatModel = 'gpt-4o-mini';
-      this.isGemini = false;
-      this.client = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     }
+    if (groqKey) {
+      providers.push({
+        name: 'groq',
+        model: 'llama-3.1-8b-instant',
+        isGemini: false,
+        client: new OpenAI({
+          apiKey: groqKey,
+          baseURL: 'https://api.groq.com/openai/v1',
+        }),
+      });
+    }
+    if (openaiKey) {
+      providers.push({
+        name: 'openai',
+        model: 'gpt-4o-mini',
+        isGemini: false,
+        client: new OpenAI({ apiKey: openaiKey }),
+      });
+    }
+
+    this.providers = providers;
+
+    if (providers.length === 0) {
+      this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (GEMINI/GROQ/OPENAI)');
+    } else {
+      this.logger.log(`[LINDONA] Provedores LLM (ordem de failover): ${providers.map(p => p.name).join(' → ')}`);
+    }
+  }
+
+  // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
+  // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
+  // response_format json_object funciona em todos; reasoning_effort só no Gemini.
+  private async callLLM(systemPrompt: string, messages: any[]): Promise<string> {
+    if (this.providers.length === 0) {
+      throw new Error('Nenhum provedor LLM configurado');
+    }
+
+    let lastErr: any;
+    for (let i = 0; i < this.providers.length; i++) {
+      const provider = this.providers[i];
+      try {
+        const response = await callWithRetry(
+          () => provider.client.chat.completions.create({
+            model: provider.model,
+            max_tokens: 1024,
+            response_format: { type: 'json_object' },
+            ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages,
+            ],
+          } as any),
+          this.logger,
+        );
+        if (i > 0) {
+          this.logger.warn(`[LINDONA] ✅ Failover ativo: respondido por "${provider.name}"`);
+        }
+        return response.choices[0].message.content?.trim() ?? '';
+      } catch (err) {
+        lastErr = err;
+        this.logger.error(`[LINDONA] Provedor "${provider.name}" falhou: ${err.message}`);
+        if (i < this.providers.length - 1) {
+          this.logger.warn(`[LINDONA] → tentando próximo provedor: "${this.providers[i + 1].name}"`);
+        }
+      }
+    }
+    throw lastErr ?? new Error('Todos os provedores LLM falharam');
   }
 
   getDefaultPromptMegaHair(): string {
@@ -418,23 +487,8 @@ REGRAS:
     ];
 
     try {
-      const response = await callWithRetry(
-        () => this.client.chat.completions.create({
-          model: this.chatModel,
-          max_tokens: 1024,
-          response_format: { type: 'json_object' },
-          // Gemini 2.5 Flash gasta tokens "pensando" antes da saída, truncando o JSON.
-          // reasoning_effort: 'none' desativa o thinking (tarefa de extração não precisa).
-          ...(this.isGemini ? { reasoning_effort: 'none' } : {}),
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages as any,
-          ],
-        } as any),
-        this.logger,
-      );
-
-      let raw = response.choices[0].message.content?.trim() ?? '';
+      // callLLM faz o failover entre provedores (Gemini → Groq → OpenAI) automaticamente.
+      let raw = await this.callLLM(systemPrompt, messages);
       this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
       raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
