@@ -60,16 +60,56 @@ export class UazapiProvider implements IWhatsAppProvider {
     }
   }
 
+  // POST com retry para erros transitórios da uazapi (roteamento instável:
+  // "host not mapped", 5xx, 429, timeout/rede). Retry curto resolve — na 2ª
+  // tentativa o backend da uazapi normaliza e a mensagem é entregue.
+  private async postWithRetry(
+    url: string,
+    body: any,
+    useToken: string,
+    attempts = 3,
+    delayMs = 1500,
+  ): Promise<void> {
+    let lastErr: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await firstValueFrom(
+          this.http.post(url, body, { headers: { token: useToken } }),
+        );
+        if (i > 0) {
+          this.logger.warn(`✅ uazapi: reenvio bem-sucedido na tentativa ${i + 1} — ${url}`);
+        }
+        return;
+      } catch (err) {
+        lastErr = err;
+        const status = err?.response?.status ?? 0;
+        const bodyStr = typeof err?.response?.data === 'string'
+          ? err.response.data
+          : JSON.stringify(err?.response?.data ?? '');
+        const transient =
+          /host not mapped/i.test(bodyStr) ||
+          status === 429 ||
+          status >= 500 ||
+          err?.code === 'ECONNABORTED' ||
+          err?.code === 'ECONNRESET' ||
+          !err?.response; // erro de rede (sem resposta)
+        if (transient && i < attempts - 1) {
+          this.logger.warn(
+            `⚠️ uazapi instável (tentativa ${i + 1}/${attempts}, HTTP ${status}) — aguardando ${delayMs}ms e retentando`,
+          );
+          await new Promise(r => setTimeout(r, delayMs));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr;
+  }
+
   async sendTextMessage(phone: string, text: string, token?: string): Promise<void> {
     const useToken = await this.resolveToken(token);
     try {
-      await firstValueFrom(
-        this.http.post(
-          `${this.baseUrl}/send/text`,
-          { number: phone, text },
-          { headers: { token: useToken } },
-        ),
-      );
+      await this.postWithRetry(`${this.baseUrl}/send/text`, { number: phone, text }, useToken);
     } catch (err) {
       this.logHttpError(`Erro ao enviar mensagem para ${phone}`, err, {
         url: `${this.baseUrl}/send/text`,
@@ -82,12 +122,10 @@ export class UazapiProvider implements IWhatsAppProvider {
   async sendAudioMessage(phone: string, audioBuffer: Buffer, token?: string): Promise<void> {
     const useToken = await this.resolveToken(token);
     try {
-      await firstValueFrom(
-        this.http.post(
-          `${this.baseUrl}/send/media`,
-          { number: phone, type: 'ptt', file: audioBuffer.toString('base64'), delay: 2000 },
-          { headers: { token: useToken } },
-        ),
+      await this.postWithRetry(
+        `${this.baseUrl}/send/media`,
+        { number: phone, type: 'ptt', file: audioBuffer.toString('base64'), delay: 2000 },
+        useToken,
       );
     } catch (err) {
       this.logHttpError(`Erro ao enviar áudio para ${phone}`, err, {
@@ -218,12 +256,10 @@ export class UazapiProvider implements IWhatsAppProvider {
   async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video', caption?: string, token?: string): Promise<void> {
     const useToken = await this.resolveToken(token);
     try {
-      await firstValueFrom(
-        this.http.post(
-          `${this.baseUrl}/send/media`,
-          { number: phone, file: url, type, text: caption ?? '', delay: 1000 },
-          { headers: { token: useToken } },
-        ),
+      await this.postWithRetry(
+        `${this.baseUrl}/send/media`,
+        { number: phone, file: url, type, text: caption ?? '', delay: 1000 },
+        useToken,
       );
     } catch (err) {
       this.logHttpError(`Erro ao enviar mídia para ${phone}`, err, {
