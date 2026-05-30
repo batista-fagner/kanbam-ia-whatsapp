@@ -212,38 +212,21 @@ export class AiService {
   private readonly providers: LlmProvider[];
 
   constructor(private config: ConfigService) {
-    // Pool de provedores em ordem de prioridade.
-    // Gemini comentado — branch feat/gemini preserva a implementação completa.
-    // Primário: Llama 3.3 70B (OpenRouter, free tier generoso, testado ✅)
-    // Fallback 1: Qwen 2.5 72B (OpenRouter, free tier, excelente PT-BR, testado ✅)
-    // Fallback 2: gpt-4o-mini (OpenAI, pago, último recurso)
-    const openrouterKey = config.get('OPENROUTER_API_KEY');
-    const openaiKey     = config.get('OPENAI_API_KEY');
-    // const geminiKey  = config.get('GEMINI_API_KEY'); // ver branch feat/gemini
+    // Pool de provedores: Gemini primário (com cache 75%) → gpt-4o-mini fallback.
+    // OpenRouter preservado em branch feat/openrouter.
+    const geminiKey = config.get('GEMINI_API_KEY');
+    const openaiKey = config.get('OPENAI_API_KEY');
 
     const providers: LlmProvider[] = [];
 
-    if (openrouterKey) {
-      // Qwen primeiro: melhor PT-BR, caracteres especiais corretos (ê, ô, á).
-      // Llama como fallback: mais rápido mas corrompe acentos em prompts grandes.
+    if (geminiKey) {
       providers.push({
-        name: 'qwen-2.5-72b',
-        model: 'qwen/qwen-2.5-72b-instruct',
-        isGemini: false,
+        name: 'gemini',
+        model: 'gemini-2.5-flash',
+        isGemini: true,
         client: new OpenAI({
-          apiKey: openrouterKey,
-          baseURL: 'https://openrouter.ai/api/v1',
-          defaultHeaders: { 'HTTP-Referer': 'https://fisio-secretary.app' },
-        }),
-      });
-      providers.push({
-        name: 'llama-3.3-70b',
-        model: 'meta-llama/llama-3.3-70b-instruct',
-        isGemini: false,
-        client: new OpenAI({
-          apiKey: openrouterKey,
-          baseURL: 'https://openrouter.ai/api/v1',
-          defaultHeaders: { 'HTTP-Referer': 'https://fisio-secretary.app' },
+          apiKey: geminiKey,
+          baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
         }),
       });
     }
@@ -259,7 +242,7 @@ export class AiService {
     this.providers = providers;
 
     if (providers.length === 0) {
-      this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (OPENROUTER/OPENAI)');
+      this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (GEMINI/OPENAI)');
     } else {
       this.logger.log(`[LINDONA] Provedores LLM (ordem de failover): ${providers.map(p => p.name).join(' → ')}`);
     }
@@ -292,6 +275,11 @@ export class AiService {
         );
         if (i > 0) {
           this.logger.warn(`[LINDONA] ✅ Failover ativo: respondido por "${provider.name}"`);
+        }
+        // Loga tokens cacheados quando disponível (Gemini cache implícito: 75% desconto)
+        const usage = (response as any).usage;
+        if (usage?.prompt_tokens_details?.cached_tokens > 0) {
+          this.logger.log(`[LINDONA] 💰 Cache hit: ${usage.prompt_tokens_details.cached_tokens} tokens cacheados de ${usage.prompt_tokens} input (${Math.round(usage.prompt_tokens_details.cached_tokens / usage.prompt_tokens * 100)}% do input)`);
         }
         return response.choices[0].message.content?.trim() ?? '';
       } catch (err) {
