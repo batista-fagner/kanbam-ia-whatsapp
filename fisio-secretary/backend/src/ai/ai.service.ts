@@ -224,9 +224,11 @@ export class AiService {
     const providers: LlmProvider[] = [];
 
     if (openrouterKey) {
+      // Qwen primeiro: melhor PT-BR, caracteres especiais corretos (ê, ô, á).
+      // Llama como fallback: mais rápido mas corrompe acentos em prompts grandes.
       providers.push({
-        name: 'llama-3.3-70b',
-        model: 'meta-llama/llama-3.3-70b-instruct',
+        name: 'qwen-2.5-72b',
+        model: 'qwen/qwen-2.5-72b-instruct',
         isGemini: false,
         client: new OpenAI({
           apiKey: openrouterKey,
@@ -235,8 +237,8 @@ export class AiService {
         }),
       });
       providers.push({
-        name: 'qwen-2.5-72b',
-        model: 'qwen/qwen-2.5-72b-instruct',
+        name: 'llama-3.3-70b',
+        model: 'meta-llama/llama-3.3-70b-instruct',
         isGemini: false,
         client: new OpenAI({
           apiKey: openrouterKey,
@@ -493,13 +495,19 @@ REGRAS:
     ];
 
     try {
-      // callLLM faz o failover entre provedores (Gemini → Groq → OpenAI) automaticamente.
+      // callLLM faz o failover entre provedores automaticamente.
       let raw = await this.callLLM(systemPrompt, messages);
+      // Remove null bytes (0x00) — alguns modelos os geram e o PostgreSQL rejeita.
+      raw = raw.replace(/\x00/g, '');
       this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
-      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+      // Remove markdown code fences que alguns modelos adicionam mesmo com json_object.
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      // Extrai o primeiro objeto JSON válido da resposta (ignora texto antes/depois).
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Resposta sem JSON válido');
       const parsed: AiResponse = JSON.parse(jsonMatch[0]);
+      // Sanitiza o reply: remove null bytes que o modelo possa ter inserido no texto.
+      if (parsed.reply) parsed.reply = parsed.reply.replace(/\x00/g, '');
       parsed.success = true;
       parsed.rawJson = jsonMatch[0];
       return parsed;

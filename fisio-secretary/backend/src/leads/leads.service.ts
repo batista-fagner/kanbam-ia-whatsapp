@@ -93,7 +93,7 @@ export class LeadsService implements OnApplicationBootstrap {
       conversationId,
       direction,
       sender,
-      content,
+      content: content?.replace(/\x00/g, '') ?? '',
       evolutionId,
     });
     const saved = await this.messagesRepo.save(msg);
