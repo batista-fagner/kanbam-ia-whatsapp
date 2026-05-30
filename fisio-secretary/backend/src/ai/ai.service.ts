@@ -212,31 +212,36 @@ export class AiService {
   private readonly providers: LlmProvider[];
 
   constructor(private config: ConfigService) {
-    const geminiKey = config.get('GEMINI_API_KEY');
-    const groqKey   = config.get('GROQ_API_KEY');
-    const openaiKey = config.get('OPENAI_API_KEY');
+    // Pool de provedores em ordem de prioridade.
+    // Gemini comentado — branch feat/gemini preserva a implementação completa.
+    // Primário: Llama 3.3 70B (OpenRouter, free tier generoso, testado ✅)
+    // Fallback 1: Qwen 2.5 72B (OpenRouter, free tier, excelente PT-BR, testado ✅)
+    // Fallback 2: gpt-4o-mini (OpenAI, pago, último recurso)
+    const openrouterKey = config.get('OPENROUTER_API_KEY');
+    const openaiKey     = config.get('OPENAI_API_KEY');
+    // const geminiKey  = config.get('GEMINI_API_KEY'); // ver branch feat/gemini
 
     const providers: LlmProvider[] = [];
 
-    if (geminiKey) {
+    if (openrouterKey) {
       providers.push({
-        name: 'gemini',
-        model: 'gemini-2.5-flash',
-        isGemini: true,
-        client: new OpenAI({
-          apiKey: geminiKey,
-          baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        }),
-      });
-    }
-    if (groqKey) {
-      providers.push({
-        name: 'groq',
-        model: 'llama-3.1-8b-instant',
+        name: 'llama-3.3-70b',
+        model: 'meta-llama/llama-3.3-70b-instruct',
         isGemini: false,
         client: new OpenAI({
-          apiKey: groqKey,
-          baseURL: 'https://api.groq.com/openai/v1',
+          apiKey: openrouterKey,
+          baseURL: 'https://openrouter.ai/api/v1',
+          defaultHeaders: { 'HTTP-Referer': 'https://fisio-secretary.app' },
+        }),
+      });
+      providers.push({
+        name: 'qwen-2.5-72b',
+        model: 'qwen/qwen-2.5-72b-instruct',
+        isGemini: false,
+        client: new OpenAI({
+          apiKey: openrouterKey,
+          baseURL: 'https://openrouter.ai/api/v1',
+          defaultHeaders: { 'HTTP-Referer': 'https://fisio-secretary.app' },
         }),
       });
     }
@@ -252,7 +257,7 @@ export class AiService {
     this.providers = providers;
 
     if (providers.length === 0) {
-      this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (GEMINI/GROQ/OPENAI)');
+      this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (OPENROUTER/OPENAI)');
     } else {
       this.logger.log(`[LINDONA] Provedores LLM (ordem de failover): ${providers.map(p => p.name).join(' → ')}`);
     }
