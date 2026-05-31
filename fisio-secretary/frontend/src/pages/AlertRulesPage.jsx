@@ -1,4 +1,4 @@
-import { Bell, Flame, MessageSquareWarning, Clock, Info } from 'lucide-react'
+import { Bell, Flame, MessageSquareWarning, Clock, Info, CreditCard } from 'lucide-react'
 
 const rules = [
   {
@@ -50,6 +50,40 @@ const rules = [
       },
     ],
     extra: null,
+  },
+  {
+    icon: <CreditCard className="w-5 h-5 text-teal-600" />,
+    title: 'Lembrete de Vencimento',
+    bg: 'bg-teal-50 border-teal-200',
+    headerBg: 'bg-teal-100',
+    description: 'Clientes cadastrados no painel admin recebem uma mensagem automática no WhatsApp 5 dias antes do vencimento mensal do plano.',
+    items: [
+      {
+        label: 'Antecedência',
+        color: 'bg-teal-50 text-teal-700 border-teal-200',
+        rule: '5 dias antes do billingDay',
+        reason: 'Ex: billingDay=10 → lembrete enviado no dia 5 às 9h.',
+      },
+      {
+        label: 'Horário',
+        color: 'bg-gray-50 text-gray-700 border-gray-200',
+        rule: 'Todo dia às 9h (horário de Brasília)',
+        reason: 'Cron roda diariamente; envia apenas no dia correto.',
+      },
+      {
+        label: 'Pré-requisitos',
+        color: 'bg-amber-50 text-amber-700 border-amber-200',
+        rule: 'billingDay + billingPhone preenchidos no painel admin',
+        reason: 'Clientes sem esses campos configurados são ignorados.',
+      },
+      {
+        label: 'Remetente',
+        color: 'bg-purple-50 text-purple-700 border-purple-200',
+        rule: 'Número do admin (via BILLING_SENDER_TENANT_ID no Railway)',
+        reason: 'Instância uazapi configurada nas variáveis de ambiente.',
+      },
+    ],
+    extra: 'O lembrete é enviado mesmo que o lead não esteja com a IA ativa. Clientes suspensos (isActive=false) não recebem o aviso.',
   },
   {
     icon: <Clock className="w-5 h-5 text-rose-500" />,
