@@ -37,8 +37,10 @@ export class BulkMessageService {
     this.envToken = config.get('UAZAPI_TOKEN') ?? '';
   }
 
-  private async getHeaders(): Promise<{ token: string }> {
-    const record = await this.configRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
+  private async getHeaders(tenantId?: string): Promise<{ token: string }> {
+    const record = tenantId
+      ? await this.configRepo.findOne({ where: { id: tenantId } })
+      : await this.configRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
     const token = record?.instanceToken || this.envToken;
     return { token };
   }
@@ -54,7 +56,7 @@ export class BulkMessageService {
     return digits.startsWith('55') ? digits : `55${digits}`;
   }
 
-  async sendBulk(dto: BulkMessageDto): Promise<{ queued: number; campaignId: string }> {
+  async sendBulk(dto: BulkMessageDto, tenantId: string): Promise<{ queued: number; campaignId: string }> {
     const { message, delayMin = 5, delayMax = 15 } = dto;
     const campaignName = dto.campaignName || `Campanha ${new Date().toLocaleDateString('pt-BR')}`;
     const messages: Array<{ number: string; type: string; text: string }> = [];
@@ -72,7 +74,7 @@ export class BulkMessageService {
 
     if (dto.mode === 'system' && dto.leadIds?.length) {
       for (const id of dto.leadIds) {
-        const lead = await this.leadsService.findOne(id);
+        const lead = await this.leadsService.findOne(id, tenantId);
         if (!lead) continue;
         const phone = this.normalizePhone(lead.phone);
         const nome = lead.name || phone;
@@ -94,7 +96,7 @@ export class BulkMessageService {
       this.http.post(
         `${this.uazapiBaseUrl}/sender/advanced`,
         { delayMin, delayMax, scheduled_for: 1, info: campaignName, messages },
-        { headers: await this.getHeaders() },
+        { headers: await this.getHeaders(tenantId) },
       ),
     );
 
@@ -106,6 +108,7 @@ export class BulkMessageService {
     // Salva no banco
     const campaign = this.campaignRepo.create({
       campaignName,
+      tenantId,
       message,
       mode: dto.mode,
       totalRecipients: messages.length,
@@ -119,15 +122,15 @@ export class BulkMessageService {
   }
 
   // Lista campanhas do banco + sincroniza status com a uazapi
-  async getCampaigns(): Promise<Campaign[]> {
-    const campaigns = await this.campaignRepo.find({ order: { createdAt: 'DESC' } });
+  async getCampaigns(tenantId: string): Promise<Campaign[]> {
+    const campaigns = await this.campaignRepo.find({ where: { tenantId }, order: { createdAt: 'DESC' } });
 
     // Sincroniza status das campanhas que ainda não estão concluídas
     const activeCampaigns = campaigns.filter(c => c.folderId && c.status !== 'done' && c.status !== 'deleting');
     if (activeCampaigns.length > 0) {
       try {
         const res = await firstValueFrom(
-          this.http.get(`${this.uazapiBaseUrl}/sender/listfolders`, { headers: await this.getHeaders() }),
+          this.http.get(`${this.uazapiBaseUrl}/sender/listfolders`, { headers: await this.getHeaders(tenantId) }),
         );
         const folders: any[] = Array.isArray(res.data) ? res.data : (res.data?.folders ?? res.data?.data ?? []);
 
@@ -146,13 +149,13 @@ export class BulkMessageService {
     return campaigns;
   }
 
-  async getCampaignMessages(folderId: string, limit = 100, offset = 0): Promise<any> {
+  async getCampaignMessages(folderId: string, tenantId: string, limit = 100, offset = 0): Promise<any> {
     try {
       const res = await firstValueFrom(
         this.http.post(
           `${this.uazapiBaseUrl}/sender/listmessages`,
           { folder_id: folderId, limit, offset },
-          { headers: await this.getHeaders() },
+          { headers: await this.getHeaders(tenantId) },
         ),
       );
       const messages: any[] = Array.isArray(res.data) ? res.data : (res.data?.messages ?? []);
@@ -161,7 +164,7 @@ export class BulkMessageService {
       const phones = messages
         .map(m => m.chatid?.replace('@s.whatsapp.net', '').replace('@g.us', ''))
         .filter(Boolean);
-      const nameMap = await this.leadsService.findByPhones(phones);
+      const nameMap = await this.leadsService.findByPhones(phones, tenantId);
       const enriched = messages.map(m => {
         const phone = m.chatid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
         return { ...m, leadName: nameMap.get(phone) || null };
@@ -174,25 +177,25 @@ export class BulkMessageService {
     }
   }
 
-  async controlCampaign(folderId: string, action: 'stop' | 'continue' | 'delete'): Promise<any> {
+  async controlCampaign(folderId: string, action: 'stop' | 'continue' | 'delete', tenantId: string): Promise<any> {
     const res = await firstValueFrom(
       this.http.post(
         `${this.uazapiBaseUrl}/sender/edit`,
         { folder_id: folderId, action },
-        { headers: await this.getHeaders() },
+        { headers: await this.getHeaders(tenantId) },
       ),
     );
 
-    // Atualiza status no banco
+    // Atualiza status no banco (escopo do tenant)
     const newStatus = action === 'stop' ? 'paused' : action === 'continue' ? 'scheduled' : 'deleting';
-    await this.campaignRepo.update({ folderId }, { status: newStatus });
+    await this.campaignRepo.update({ folderId, tenantId }, { status: newStatus });
 
     this.logger.log(`Ação "${action}" executada na campanha ${folderId}`);
     return res.data;
   }
 
   // Retorna campanha do banco pelo ID (inclui a mensagem enviada)
-  async getCampaignById(id: string): Promise<Campaign | null> {
-    return this.campaignRepo.findOne({ where: { id } });
+  async getCampaignById(id: string, tenantId: string): Promise<Campaign | null> {
+    return this.campaignRepo.findOne({ where: { id, tenantId } });
   }
 }

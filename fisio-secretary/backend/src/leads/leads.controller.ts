@@ -1,9 +1,12 @@
-import { Controller, Get, Param, Patch, Delete, Body, Query, Inject } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Delete, Body, Query, Inject, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from './leads.service';
 import { LeadsGateway } from './leads.gateway';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 
+@UseGuards(JwtAuthGuard)
 @Controller('leads')
 export class LeadsController {
   constructor(
@@ -13,84 +16,84 @@ export class LeadsController {
   ) {}
 
   @Get()
-  findAll() {
-    return this.leadsService.findAll();
+  findAll(@CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.findAll(tenantId);
   }
 
   @Get('deleted')
-  findDeleted() {
-    return this.leadsService.findDeleted();
+  findDeleted(@CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.findDeleted(tenantId);
   }
 
   @Get('dashboard')
-  getDashboard(@Query('period') period?: string) {
+  getDashboard(@CurrentUser('tenantId') tenantId: string, @Query('period') period?: string) {
     const valid = ['7', '30', '90', 'all'];
     const p = valid.includes(period ?? '') ? period : 'all';
-    return this.leadsService.getDashboard(p as any);
+    return this.leadsService.getDashboard(p as any, tenantId);
   }
 
   @Get('deleted/:id')
-  findOneDeleted(@Param('id') id: string) {
-    return this.leadsService.findOneDeleted(id);
+  findOneDeleted(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.findOneDeleted(id, tenantId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.findOne(id, tenantId);
   }
 
   @Get(':id/conversation')
-  getConversation(@Param('id') id: string) {
-    return this.leadsService.getConversationWithMessages(id);
+  getConversation(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.getConversationWithMessages(id, tenantId);
   }
 
   @Get(':id/history')
-  getHistory(@Param('id') id: string) {
-    return this.leadsService.getHistory(id);
+  getHistory(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.getHistory(id, tenantId);
   }
 
   @Patch(':id/stage')
-  async updateStage(@Param('id') id: string, @Body() body: { stage: string }) {
-    const lead = await this.leadsService.updateStage(id, body.stage as any, 'operator');
+  async updateStage(@Param('id') id: string, @Body() body: { stage: string }, @CurrentUser('tenantId') tenantId: string) {
+    const lead = await this.leadsService.updateStage(id, body.stage as any, 'operator', tenantId);
     this.leadsGateway.emitLeadUpdated(lead);
     return lead;
   }
 
   @Patch(':id/name')
-  async updateName(@Param('id') id: string, @Body() body: { name: string }) {
-    const lead = await this.leadsService.updateName(id, body.name);
+  async updateName(@Param('id') id: string, @Body() body: { name: string }, @CurrentUser('tenantId') tenantId: string) {
+    const lead = await this.leadsService.updateName(id, body.name, tenantId);
     this.leadsGateway.emitLeadUpdated(lead);
     return lead;
   }
 
   @Patch(':id/ai')
-  async toggleAi(@Param('id') id: string, @Body() body: { enabled: boolean }) {
-    await this.leadsService.toggleAi(id, body.enabled);
+  async toggleAi(@Param('id') id: string, @Body() body: { enabled: boolean }, @CurrentUser('tenantId') tenantId: string) {
+    await this.leadsService.toggleAi(id, body.enabled, tenantId);
     return { ok: true };
   }
 
   @Patch(':id/observations')
-  async updateObservations(@Param('id') id: string, @Body() body: { observations: string }) {
-    const lead = await this.leadsService.update(id, { observations: body.observations } as any);
+  async updateObservations(@Param('id') id: string, @Body() body: { observations: string }, @CurrentUser('tenantId') tenantId: string) {
+    const lead = await this.leadsService.update(id, { observations: body.observations } as any, tenantId);
     this.leadsGateway.emitLeadUpdated(lead);
     return lead;
   }
 
   @Delete(':id')
-  async deleteLead(@Param('id') id: string, @Body() body: { reason?: string } = {}) {
-    await this.leadsService.deleteLead(id, body.reason ?? '');
-    this.leadsGateway.emitLeadDeleted(id);
+  async deleteLead(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string, @Body() body: { reason?: string } = {}) {
+    await this.leadsService.deleteLead(id, body.reason ?? '', tenantId);
+    this.leadsGateway.emitLeadDeleted(id, tenantId);
     return { ok: true };
   }
 
   @Delete(':id/labels/:label')
-  async removeLabel(@Param('id') id: string, @Param('label') label: string) {
-    const lead = await this.leadsService.findOne(id);
+  async removeLabel(@Param('id') id: string, @Param('label') label: string, @CurrentUser('tenantId') tenantId: string) {
+    const lead = await this.leadsService.findOne(id, tenantId);
     if (!lead) return { ok: false };
 
     // Remove do banco
     const updatedLabels = (lead.labels ?? []).filter((l) => l !== label);
-    await this.leadsService.update(id, { labels: updatedLabels } as any);
+    await this.leadsService.update(id, { labels: updatedLabels } as any, tenantId);
 
     // Remove da uazapi
     const uazapiUrl = this.configService.get('UAZAPI_BASE_URL') || 'https://labsai.uazapi.com';
@@ -115,7 +118,7 @@ export class LeadsController {
       }
     }
 
-    const updatedLead = await this.leadsService.findOne(id);
+    const updatedLead = await this.leadsService.findOne(id, tenantId);
     this.leadsGateway.emitLeadUpdated(updatedLead);
     return updatedLead;
   }

@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Lead, LeadStage } from '../common/entities/lead.entity';
@@ -40,18 +40,18 @@ export class LeadsService implements OnApplicationBootstrap {
     `);
   }
 
-  async findOrCreate(phone: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
+  async findOrCreate(phone: string, tenantId: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
     // INSERT ... ON CONFLICT DO NOTHING — preserva o stage atual do lead existente
     const insertResult = await this.leadsRepo
       .createQueryBuilder()
       .insert()
       .into(Lead)
-      .values({ phone, stage: 'novo_lead' })
+      .values({ phone, tenantId, stage: 'novo_lead' })
       .orIgnore()
       .execute();
 
     let isNew = (insertResult.identifiers?.length ?? 0) > 0 && insertResult.identifiers[0] != null;
-    let lead = await this.leadsRepo.findOne({ where: { phone } });
+    let lead = await this.leadsRepo.findOne({ where: { phone, tenantId } });
 
     // Salva pushName no lead se ainda não tem nome cadastrado
     if (lead && !lead.name && pushName && pushName !== 'null' && pushName.trim().length > 0) {
@@ -107,8 +107,10 @@ export class LeadsService implements OnApplicationBootstrap {
     return saved;
   }
 
-  async updateStage(leadId: string, toStage: LeadStage, changedBy: string): Promise<Lead> {
-    const lead = await this.leadsRepo.findOneOrFail({ where: { id: leadId } });
+  async updateStage(leadId: string, toStage: LeadStage, changedBy: string, tenantId?: string): Promise<Lead> {
+    const where: any = { id: leadId };
+    if (tenantId) where.tenantId = tenantId;
+    const lead = await this.leadsRepo.findOneOrFail({ where });
     const fromStage = lead.stage;
 
     // Não registra "transição" se origem === destino (evita poluir o histórico)
@@ -122,28 +124,37 @@ export class LeadsService implements OnApplicationBootstrap {
     return lead;
   }
 
-  async update(leadId: string, data: Partial<Lead>): Promise<Lead> {
-    await this.leadsRepo.update(leadId, data);
-    return this.leadsRepo.findOneOrFail({ where: { id: leadId } });
+  async update(leadId: string, data: Partial<Lead>, tenantId?: string): Promise<Lead> {
+    const criteria: any = tenantId ? { id: leadId, tenantId } : { id: leadId };
+    await this.leadsRepo.update(criteria, data);
+    return this.leadsRepo.findOneOrFail({ where: criteria });
   }
 
-  async findAll(): Promise<Lead[]> {
-    return this.leadsRepo.find({ order: { lastMessageAt: 'DESC' } });
+  async findAll(tenantId: string): Promise<Lead[]> {
+    return this.leadsRepo.find({ where: { tenantId }, order: { lastMessageAt: 'DESC' } });
   }
 
-  async findOne(id: string): Promise<Lead | null> {
-    return this.leadsRepo.findOne({ where: { id } });
+  countByTenant(tenantId: string): Promise<number> {
+    return this.leadsRepo.count({ where: { tenantId } });
   }
 
-  async findByPhones(phones: string[]): Promise<Map<string, string>> {
+  // tenantId opcional: quando informado, garante que o lead pertence ao tenant (bloqueia acesso cruzado).
+  async findOne(id: string, tenantId?: string): Promise<Lead | null> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    return this.leadsRepo.findOne({ where });
+  }
+
+  async findByPhones(phones: string[], tenantId: string): Promise<Map<string, string>> {
     if (!phones.length) return new Map();
     // Compara só dígitos — o phone no banco pode ter +, espaços, traços
     // regexp_replace remove tudo que não é dígito para comparar
     const leads = await this.leadsRepo.createQueryBuilder('lead')
       .select(['lead.phone', 'lead.name'])
-      .where(
-        `regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phones)
-         OR regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phonesNoPrefix)`,
+      .where('lead.tenantId = :tenantId', { tenantId })
+      .andWhere(
+        `(regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phones)
+         OR regexp_replace(lead.phone, '\\D', '', 'g') IN (:...phonesNoPrefix))`,
         {
           phones,
           phonesNoPrefix: phones.map(p => p.startsWith('55') && p.length > 11 ? p.slice(2) : p),
@@ -161,7 +172,15 @@ export class LeadsService implements OnApplicationBootstrap {
     return result;
   }
 
-  async getConversationWithMessages(leadId: string) {
+  // Garante que o lead pertence ao tenant (quando informado). Lança se não pertencer.
+  private async assertLeadTenant(leadId: string, tenantId?: string): Promise<void> {
+    if (!tenantId) return;
+    const exists = await this.leadsRepo.findOne({ where: { id: leadId, tenantId }, select: ['id'] });
+    if (!exists) throw new NotFoundException('Lead não encontrado.');
+  }
+
+  async getConversationWithMessages(leadId: string, tenantId?: string) {
+    await this.assertLeadTenant(leadId, tenantId);
     return this.conversationsRepo.findOne({
       where: { leadId },
       relations: ['messages'],
@@ -169,14 +188,16 @@ export class LeadsService implements OnApplicationBootstrap {
     });
   }
 
-  async getHistory(leadId: string) {
+  async getHistory(leadId: string, tenantId?: string) {
+    await this.assertLeadTenant(leadId, tenantId);
     return this.historyRepo.find({
       where: { leadId },
       order: { createdAt: 'ASC' },
     });
   }
 
-  async toggleAi(leadId: string, enabled: boolean): Promise<void> {
+  async toggleAi(leadId: string, enabled: boolean, tenantId?: string): Promise<void> {
+    await this.assertLeadTenant(leadId, tenantId);
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
     if (conversation) {
       conversation.aiEnabled = enabled;
@@ -184,8 +205,10 @@ export class LeadsService implements OnApplicationBootstrap {
     }
   }
 
-  async updateName(leadId: string, name: string): Promise<Lead> {
-    const lead = await this.leadsRepo.findOneOrFail({ where: { id: leadId } });
+  async updateName(leadId: string, name: string, tenantId?: string): Promise<Lead> {
+    const where: any = { id: leadId };
+    if (tenantId) where.tenantId = tenantId;
+    const lead = await this.leadsRepo.findOneOrFail({ where });
     lead.name = name.trim() || null;
     return this.leadsRepo.save(lead);
   }
@@ -195,8 +218,10 @@ export class LeadsService implements OnApplicationBootstrap {
     return conversation?.aiEnabled ?? true;
   }
 
-  async deleteLead(leadId: string, reason: string): Promise<void> {
-    const lead = await this.leadsRepo.findOne({ where: { id: leadId } });
+  async deleteLead(leadId: string, reason: string, tenantId?: string): Promise<void> {
+    const where: any = { id: leadId };
+    if (tenantId) where.tenantId = tenantId;
+    const lead = await this.leadsRepo.findOne({ where });
     if (!lead) return;
 
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });
@@ -211,6 +236,7 @@ export class LeadsService implements OnApplicationBootstrap {
 
     await this.deletedLeadsRepo.save({
       originalLeadId: lead.id,
+      tenantId: lead.tenantId,
       phone: lead.phone,
       name: lead.name,
       stage: lead.stage,
@@ -231,15 +257,17 @@ export class LeadsService implements OnApplicationBootstrap {
     await this.leadsRepo.delete(leadId);
   }
 
-  async findDeleted(): Promise<DeletedLead[]> {
-    return this.deletedLeadsRepo.find({ order: { deletedAt: 'DESC' } });
+  async findDeleted(tenantId: string): Promise<DeletedLead[]> {
+    return this.deletedLeadsRepo.find({ where: { tenantId }, order: { deletedAt: 'DESC' } });
   }
 
-  async findOneDeleted(id: string): Promise<DeletedLead | null> {
-    return this.deletedLeadsRepo.findOne({ where: { id } });
+  async findOneDeleted(id: string, tenantId?: string): Promise<DeletedLead | null> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    return this.deletedLeadsRepo.findOne({ where });
   }
 
-  async getDashboard(period: '7' | '30' | '90' | 'all' = 'all') {
+  async getDashboard(period: '7' | '30' | '90' | 'all' = 'all', tenantId?: string) {
     // Calcula data de corte
     const now = new Date();
     let since: Date | null = null;
@@ -248,12 +276,11 @@ export class LeadsService implements OnApplicationBootstrap {
       since = new Date(now.getTime() - days * 86400000);
     }
 
-    // 1. Carrega leads do período (filtrados por createdAt se aplicável)
-    const leads = since
-      ? await this.leadsRepo.createQueryBuilder('lead')
-          .where('lead.createdAt >= :since', { since })
-          .getMany()
-      : await this.leadsRepo.find();
+    // 1. Carrega leads do período (filtrados por createdAt se aplicável) + tenant
+    const leadsQb = this.leadsRepo.createQueryBuilder('lead');
+    if (tenantId) leadsQb.andWhere('lead.tenantId = :tenantId', { tenantId });
+    if (since) leadsQb.andWhere('lead.createdAt >= :since', { since });
+    const leads = await leadsQb.getMany();
 
     // 2. Funil — contagem por stage
     const stages: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'desliza_hair', 'perdido'];
@@ -333,8 +360,8 @@ export class LeadsService implements OnApplicationBootstrap {
     };
     const activeLeads = await this.leadsRepo.find({
       where: [
-        { stage: 'lead_quente' as LeadStage },
-        { stage: 'lead_frio' as LeadStage },
+        { stage: 'lead_quente' as LeadStage, ...(tenantId ? { tenantId } : {}) },
+        { stage: 'lead_frio' as LeadStage, ...(tenantId ? { tenantId } : {}) },
       ],
     });
 
@@ -371,7 +398,7 @@ export class LeadsService implements OnApplicationBootstrap {
     const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
 
     const todayAppointmentsRaw = await this.appointmentsRepo.find({
-      where: { startDateTime: Between(startOfDay, endOfDay) },
+      where: { startDateTime: Between(startOfDay, endOfDay), ...(tenantId ? { tenantId } : {}) },
       order: { startDateTime: 'ASC' },
     });
 
@@ -390,7 +417,7 @@ export class LeadsService implements OnApplicationBootstrap {
     const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente'];
 
     const activeForNoReply = await this.leadsRepo.find({
-      where: activeStagesForNoReply.map((s) => ({ stage: s })),
+      where: activeStagesForNoReply.map((s) => ({ stage: s, ...(tenantId ? { tenantId } : {}) })),
     });
 
     const noReplyLeads: any[] = [];

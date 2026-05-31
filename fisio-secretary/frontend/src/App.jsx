@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import KanbanPage from './pages/KanbanPage'
 import BulkMessagePage from './pages/BulkMessagePage'
@@ -9,31 +9,50 @@ import CalendarPage from './pages/CalendarPage'
 import DeletedLeadsPage from './pages/DeletedLeadsPage'
 import DashboardPage from './pages/DashboardPage'
 import AlertRulesPage from './pages/AlertRulesPage'
+import AdminPage from './pages/AdminPage'
 import Layout from './components/Layout'
 
-export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false)
+function Routing() {
+  const { isAuthenticated, loading, logout } = useAuth()
+
+  // Enquanto valida o token salvo (refresh), evita piscar a tela de login.
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Carregando...</p>
+      </div>
+    )
+  }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/login"
-          element={!loggedIn ? <LoginPage onLogin={() => setLoggedIn(true)} /> : null}
-        />
-        <Route
-          element={loggedIn ? <Layout onLogout={() => setLoggedIn(false)} /> : <LoginPage onLogin={() => setLoggedIn(true)} />}
-        >
-          <Route path="/" element={<KanbanPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/deleted-leads" element={<DeletedLeadsPage />} />
-          <Route path="/mass-message" element={<BulkMessagePage />} />
-          <Route path="/media" element={<MediaPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/alert-rules" element={<AlertRulesPage />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+      />
+      <Route
+        element={isAuthenticated ? <Layout onLogout={logout} /> : <Navigate to="/login" replace />}
+      >
+        <Route path="/" element={<KanbanPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/deleted-leads" element={<DeletedLeadsPage />} />
+        <Route path="/mass-message" element={<BulkMessagePage />} />
+        <Route path="/media" element={<MediaPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/alert-rules" element={<AlertRulesPage />} />
+      </Route>
+    </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routing />
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

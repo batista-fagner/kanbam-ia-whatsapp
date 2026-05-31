@@ -8,6 +8,10 @@ export class Campaign {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // Tenant (multi-cliente): FK lógica para whatsapp_config.id.
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string;
+
   @Column({ name: 'campaign_name' })
   campaignName: string;
 

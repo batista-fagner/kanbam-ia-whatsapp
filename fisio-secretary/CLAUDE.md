@@ -1,5 +1,114 @@
 # fisio-secretary — Contexto para o Claude
 
+## 🚧 TRABALHO EM ANDAMENTO — Multi-Tenant SaaS (continuar aqui — 30/05/2026)
+
+**Objetivo:** transformar o sistema (hoje 1 cliente) em SaaS pronto pra ~10 clientes com isolamento total.
+
+**⚠️ NADA FOI COMMITADO.** Todas as mudanças abaixo estão LOCAIS (uncommitted). Não commitar/deployar até o usuário validar tudo. O backend de produção (Railway) ainda é o ANTIGO (sem auth).
+
+**Tenant atual (único cliente):** Wendel da Cabelô → `whatsapp_config.id = 2c562828-0fe9-43c8-bad0-77a931968afc`
+**Decisão de arquitetura:** `tenantId` = `whatsapp_config.id`. Webhook identifica tenant pela **URL** (`POST /webhooks/uazapi/:tenantId`) — Opção A escolhida.
+
+### ✅ JÁ FEITO (local, sem commit)
+
+**Autenticação JWT (login real, hardcode removido) — FUNCIONANDO, testado local:**
+- Backend: `backend/src/auth/` (auth.module, auth.service, auth.controller, users.service, jwt.strategy, jwt-auth.guard, current-user.decorator)
+- Entidade `User` (`backend/src/common/entities/user.entity.ts`): email, passwordHash (bcryptjs), name, **tenantId**, role (admin|operator), isActive
+- `POST /auth/login` → retorna `{ access_token, user }`; `GET /auth/me` (protegido) reidrata sessão
+- JWT expira em 7 dias, secret = `JWT_SECRET` do .env
+- Seed idempotente no boot (`UsersService.onApplicationBootstrap`): cria admin a partir de `SEED_ADMIN_EMAIL` + `SEED_ADMIN_PASSWORD` (+ `SEED_ADMIN_TENANT_ID`) se não existir
+- `AuthModule` registrado no `app.module.ts` + `User` no array de entities
+- Frontend: `frontend/src/context/AuthContext.jsx` (token no localStorage, persiste no refresh via /auth/me), `authFetch` exportado de `services/api.js` (injeta Bearer + trata 401 → /login), `LoginPage.jsx` real (sem demo), `App.jsx` com AuthProvider + rotas protegidas + Navigate, Layout já tinha `onLogout`
+- `api.js` (23 chamadas), `MediaPage.jsx` e `SettingsPage.jsx` → todas usam `authFetch`
+- Deps instaladas: `@nestjs/jwt @nestjs/passport passport passport-jwt bcryptjs @types/passport-jwt`
+- **.env já configurado:** `SEED_ADMIN_EMAIL=bbfagner2222@gmail.com`, `SEED_ADMIN_PASSWORD=12345`, `SEED_ADMIN_TENANT_ID=2c562828-...` (⚠️ senha fraca, trocar antes de prod)
+- **Tabela `users` já criada no banco de PROD** (synchronize rodou no teste local) + admin seedado
+
+**Item 1 — Fase 1 (schema, parcial):**
+- `tenant_id` (uuid, nullable) adicionado em: `Lead`, `Campaign`, `MediaFile`, `DeletedLead` (entidades)
+- `MediaFile.name` e `Lead.phone` são unique GLOBAL hoje → viram compostos `(tenant_id, X)` na Fase 3
+- Conversation/Message/LeadStageHistory/Appointment NÃO levam tenant_id (isolamento transitivo via lead_id)
+- SQL de backfill + constraints pronto em: `backend/migrations/multi-tenant-phase2-3.sql` (NÃO rodado ainda)
+
+### ✅ A) Login fechado — rotas protegidas (FEITO 30/05, testado runtime)
+`@UseGuards(JwtAuthGuard)` em leads/media/bulk-message/appointments/admin/instance (classe) e em `/webhooks/manual` + `/manual-media` (método). Webhooks uazapi/whatsapp e `GET /` ficam abertos. Testado: GET /leads sem token → 401, com token → 200, webhook → 201.
+
+### ✅ B) Isolamento por tenant (FEITO 30/05, compila + build ok)
+- `evolution.controller`: rota `POST /webhooks/uazapi/:tenantId`, fila/`lastMessageWasAudio` com chave `${tenantId}:${phone}`, `processMessage(tenantId,...)`, **token da instância do tenant em TODOS os envios** (sendText/sendMedia/typing/transcribe/applyTags). Meta webhook usa tenant default via `get()`.
+- `whatsapp-config.service`: `getByTenant(tenantId)` + `getTokenByTenant(tenantId)`; webhook URL agora `/webhooks/uazapi/{id}` (createNewInstance + setupAfterConnect salvam record primeiro pra ter o id)
+- `leads.service`: `findOrCreate(phone, tenantId, ...)`, todas queries de coleção filtradas (findAll/findByPhones/findDeleted/getDashboard); métodos por-id com `tenantId` opcional + `assertLeadTenant`
+- `media.service`, `bulk-message.service`, `appointments.service`: scopados por tenant; `Appointment` ganhou `tenant_id`
+- Controllers frontend (leads/media/bulk-message/appointments/instance) leem `@CurrentUser('tenantId')`
+- `LeadsGateway`: salas por tenant (`tenant:{id}`), socket autentica via JWT no handshake; frontend `useLeads.js` manda `auth.token`. AuthModule exporta JwtModule, LeadsModule importa AuthModule.
+
+**🔴 PASSOS OPERACIONAIS CRÍTICOS ao rodar/deployar este código:**
+1. **BACKFILL JÁ FEITO ✅** (30/05 via REST): leads=58, campaigns=8, media_files=7, deleted_leads=52, appointments=14 → todos no tenant Wendel. Zero NULL. (Se criar tabela nova/ambiente novo, rodar `multi-tenant-phase2-3.sql` Fase 2.)
+2. **Rota de webhook de compatibilidade ADICIONADA ✅**: `POST /webhooks/uazapi` (sem tenant) continua existindo e resolve o tenant default → **deploy NÃO quebra as mensagens do Wendel** (a uazapi dele posta na URL antiga e funciona). Rota nova `POST /webhooks/uazapi/:tenantId` para instâncias novas. Reconfigurar o webhook do Wendel pra URL com tenant é opcional/sem pressa.
+3. Appointments: `synchronize` adiciona `tenant_id` no boot (já sincronizado no teste local).
+4. Antes do deploy: trocar a senha fraca `12345` do admin + garantir `SEED_*` e `JWT_SECRET` no Railway. O admin `bbfagner2222@gmail.com` já existe no banco de prod (seed rodou no teste local).
+
+### ⏳ FALTA FAZER
+
+**Refinamentos B (menor prioridade):** admin.controller (createNewInstance) ainda usa `get()`; deleteRecord/markDisconnected/setupAfterConnect operam no config único (ok p/ 1 tenant, revisar no onboarding multi-tenant).
+
+### ✅ Ambiente de DEV isolado (FEITO 30/05)
+- Postgres local via Docker: serviço `postgres_dev` no docker-compose (porta **5433**, isolado da prod)
+- `.env.development` (raiz + symlink em backend/, gitignored): `SUPABASE_DATABASE_URL=postgresql://fisio:fisio_dev@localhost:5433/fisio_dev`, `DATABASE_SSL=false`, seed `dev@local.com`/`dev123`, `SEED_ADMIN_TENANT_ID` vazio
+- `app.module.ts`: `envFilePath: process.env.ENV_FILE || '.env'` + SSL condicional (`DATABASE_SSL==='false'` → sem SSL)
+- Script `npm run start:dev:local` (ENV_FILE=.env.development, banco local). `npm run start:dev` continua na PROD.
+- Fix seed: `SEED_ADMIN_TENANT_ID` vazio → `null` (coluna uuid rejeita "")
+- **Fluxo de trabalho:** desenvolve/testa no dev → valida → aplica em prod. NUNCA testar migration direto em prod.
+- ⚠️ Mídia (Supabase Storage) no dev ainda aponta pro bucket de prod (banco isolado, Storage não)
+
+### ✅ C) Migrations — synchronize desligado (FEITO 30/05, validado no DEV)
+- `backend/data-source.ts`: DataSource do CLI (lê `ENV_FILE` via dotenv, `migrations: ['src/migrations/*.ts']`, synchronize false)
+- Scripts: `migration:generate`, `migration:run`, `migration:revert` (via `typeorm-ts-node-commonjs`)
+- `app.module.ts`: **`synchronize: false`** 🔴 (nunca reativar em prod)
+- Migrations criadas em `backend/src/migrations/`:
+  - `InitialSchema` — schema completo (baseline)
+  - `TenantConstraints` — Fase 3: `SET NOT NULL` em tenant_id (leads/campaigns/media_files/deleted_leads) + DROP unique global de phone/name + CREATE unique composto `(tenant_id,phone)` e `(tenant_id,name)`
+- Validado no dev: banco vazio → `migration:run` constrói tudo → app sobe + login OK
+- Entidades atualizadas: `Lead`/`MediaFile` com `@Index(unique)` composto + tenantId não-nullable; Campaign/DeletedLead tenantId não-nullable (Appointment segue nullable)
+
+**🔴 APLICAR EM PROD (abordagem A — baseline; fazer no deploy, NÃO antes):**
+1. `pg_dump "<SUPABASE_DIRECT_URL>" > backup-prod-AAAA-MM-DD.sql` (backup local — funciona no free tier)
+2. **NÃO rodar InitialSchema em prod** (schema já existe). Marcar como aplicada inserindo o registro:
+   `INSERT INTO migrations (timestamp, name) VALUES (<timestamp-do-arquivo>, 'InitialSchema<timestamp>');`
+   (criar a tabela `migrations` antes se não existir — `migration:run` cria, mas com a InitialSchema já marcada ele pula pra próxima)
+3. Rodar **só a TenantConstraints** em prod (`migration:run`) — backfill já feito ✅, então NOT NULL + unique composto passam
+4. Deploy do backend com `synchronize: false` + release command `migration:run`
+5. Fluxo futuro: alterou entidade → `migration:generate -- src/migrations/Nome` → revisa SQL → testa no dev → deploy roda em prod
+
+**(Antigo) C) Item 3 — migrations:**
+- Desligar `synchronize: true` no `app.module.ts:30` → `false`
+- Criar datasource.ts + migrations TypeORM, rodar `migration:run` no deploy do Railway
+- Rodar o SQL `multi-tenant-phase2-3.sql` (backfill + unique composto + NOT NULL) — fazer backfill ANTES de trocar constraint
+
+### ✅ D1) Onboarding via painel admin (FEITO 30/05, backend validado no DEV)
+Modelo de negócio: site com planos → paga (Stripe/Kiwify, a decidir) → cria conta. R$800 de implementação assistida (Fagner conecta WhatsApp + prompt + overview). Só quem pagou acessa.
+- **Backend:**
+  - `AdminGuard` (`auth/admin.guard.ts`) — exige `role==='admin'`. Usar `@UseGuards(JwtAuthGuard, AdminGuard)`
+  - `WhatsappConfigService.createTenant(name)` — cria linha NOVA (não reusa get()) + `setActive` + `updateBilling`
+  - `admin.controller` (guard admin): `POST /admin/clients` (cria tenant+user), `GET /admin/clients` (lista + status/leads/users count), `PATCH /admin/clients/:id/active` (suspende/reativa), `PATCH /admin/clients/:id/billing`
+  - `auth.service.validateUser`: bloqueia login se tenant `isActive=false` (admin nunca é bloqueado) → "Conta suspensa"
+  - `POST /auth/change-password` (usuário troca a própria senha)
+  - Campos novos em `whatsapp_config`: `display_name`, `is_active` (default true), `next_payment_date`, `billing_phone` → migration `ClientManagement` (rodada no dev)
+- **Frontend:** `AdminPage.jsx` (rota `/admin`, item "Clientes" no menu só p/ role=admin): lista clientes, criar (mostra credenciais p/ repassar), suspender/reativar, editar data de vencimento (badge "vence em Xd" destacado ≤5 dias). API em `api.js` (getClients/createClient/setClientActive/updateClientBilling/changePassword).
+- **Decisões aplicadas:** (A) admin define senha inicial + cliente troca depois; (B) suspensão MANUAL pelo admin + `nextPaymentDate` com alerta visual no painel; (C) `bbfagner2222` segue tenant=Wendel.
+- ✅ Testado no dev: criar cliente → login do cliente (board vazio/isolado) → suspender (login 401) → reativar → trocar senha.
+- ✅ **Instância uazapi por-tenant (fechado 30/05):** `createNewInstance(name,...,tenantId)`, `setupAfterConnect/markDisconnected/deleteRecord(tenantId)` todos tenant-scoped. Novo `POST /instance` (per-tenant, cria instância pro tenant logado + webhook `/webhooks/uazapi/{tenantId}`). instance.controller passa token do tenant em connect/status/disconnect/reset. SettingsPage "Criar conexão" agora chama `POST /instance` (não mais `/admin/instance`). **Cadeia de conversa completa pra cliente novo** — só testável em PROD (uazapi externa + webhook precisa alcançar o servidor; NÃO testar "Criar conexão" no dev pois usa as keys reais da uazapi).
+
+**⏳ FALTA NO D1 (pequeno):**
+1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage)
+2. **Job de lembrete de vencimento** (5 dias antes → envia WhatsApp pro `billingPhone` do cliente). Hoje só tem o alerta VISUAL no painel admin. Precisa de cron + envio.
+
+**D2) Pagamento (depois):** site de planos → checkout Kiwify/Stripe → webhook cria/libera conta + suspende quem não paga (usa o `isActive` já pronto). Ver [[project-kiwify-checkout]].
+
+### Veredito pra 10 clientes
+A+B+C+D1 prontos (local, sem commit): dados isolados, login real, admin cria clientes, suspensão manual. Falta: aplicar em prod (deploy + migrations baseline) e os 2 itens pequenos do D1. D2 (pagamento) automatiza a entrada depois.
+
+---
+
 ## O que é este projeto
 
 Secretária virtual com IA (Sofia) para clínica de fisioterapia. Recebe mensagens WhatsApp via uazapi, qualifica leads automaticamente usando Claude, e exibe um Kanban em tempo real para o operador.

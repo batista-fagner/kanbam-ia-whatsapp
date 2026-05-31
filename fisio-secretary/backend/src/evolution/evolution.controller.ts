@@ -1,5 +1,7 @@
-import { Controller, Post, Get, Body, Query, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { EvolutionService } from './evolution.service';
@@ -36,8 +38,21 @@ export class EvolutionController {
     private readonly appointmentsService: AppointmentsService,
   ) {}
 
+  // Rota nova (multi-tenant): a URL carrega o tenantId.
+  @Post('uazapi/:tenantId')
+  async handleUazapiWebhookTenant(@Param('tenantId') tenantId: string, @Body() body: any) {
+    return this.handleUazapiWebhook(tenantId, body);
+  }
+
+  // Rota de compatibilidade (legado): instâncias antigas postam aqui sem tenant.
+  // Resolve o tenant default (config única atual) — evita downtime no deploy.
   @Post('uazapi')
-  async handleUazapiWebhook(@Body() body: any) {
+  async handleUazapiWebhookLegacy(@Body() body: any) {
+    const cfg = await this.whatsappConfigService.get();
+    return this.handleUazapiWebhook(cfg?.id ?? '', body);
+  }
+
+  private async handleUazapiWebhook(tenantId: string, body: any) {
     if (body.EventType !== 'messages') return { ok: true };
 
     const message = body.message;
@@ -61,7 +76,7 @@ export class EvolutionController {
       }
 
       try {
-        const { lead, conversation } = await this.leadsService.findOrCreate(phone);
+        const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId);
 
         if (operatorText.toLowerCase() === 'opa') {
           await this.leadsService.toggleAi(lead.id, false);
@@ -102,11 +117,12 @@ export class EvolutionController {
       }
 
       try {
-        const { lead, conversation } = await this.leadsService.findOrCreate(phone, pushName);
+        const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
         await this.leadsService.saveMessage(conversation.id, 'inbound', phone, '[imagem]', messageId);
 
         const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
-        await this.evolutionService.sendTextMessage(phone, reply);
+        const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+        await this.evolutionService.sendTextMessage(phone, reply, tenantToken);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
 
         const updatedLead = await this.leadsService.findOne(lead.id);
@@ -138,10 +154,13 @@ export class EvolutionController {
     this.processedIds.add(messageId);
     setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
 
-    this.lastMessageWasAudio.set(phone, isAudio);
+    // Chave composta tenant:phone — evita misturar filas de clientes diferentes
+    // quando a mesma pessoa fala com dois negócios distintos.
+    const queueKey = `${tenantId}:${phone}`;
+    this.lastMessageWasAudio.set(queueKey, isAudio);
 
     if (isAudio) {
-      this.transcribeAndEnqueue(phone, message, messageId, pushName).catch((err) =>
+      this.transcribeAndEnqueue(tenantId, phone, message, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao transcrever áudio de ${phone}: ${err.message}`),
       );
       return { ok: true };
@@ -149,9 +168,9 @@ export class EvolutionController {
 
     this.logger.log(`Mensagem recebida de ${phone}${pushName ? ` (${pushName})` : ''}: ${text}`);
 
-    this.messageQueue.enqueue(phone, text, (combinedText) => {
+    this.messageQueue.enqueue(queueKey, text, (combinedText) => {
       this.logger.log(`[PROCESSANDO] messageId=${messageId}, phone=${phone}, texto="${combinedText.substring(0, 40)}..."`);
-      this.processMessage(phone, combinedText, messageId, pushName).catch((err) => {
+      this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
         this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`);
         this.logger.error(`❌ [ERRO AO PROCESSAR] Stack: ${err.stack}`);
       });
@@ -160,20 +179,22 @@ export class EvolutionController {
     return { ok: true };
   }
 
-  private async transcribeAndEnqueue(phone: string, message: any, messageId: string, pushName?: string | null) {
+  private async transcribeAndEnqueue(tenantId: string, phone: string, message: any, messageId: string, pushName?: string | null) {
     this.logger.log(`Transcrevendo áudio de ${phone}...`);
-    const transcribedText = await this.evolutionService.transcribeAudio(message.messageid);
+    const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+    const transcribedText = await this.evolutionService.transcribeAudio(message.messageid, tenantToken);
     this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
 
-    this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
-      this.processMessage(phone, combinedText, messageId, pushName).catch((err) =>
+    const queueKey = `${tenantId}:${phone}`;
+    this.messageQueue.enqueue(queueKey, transcribedText, (combinedText) => {
+      this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
       );
     });
   }
 
-  private async processMessage(phone: string, combinedText: string, messageKeyId: string, pushName?: string | null) {
-    const { lead, conversation } = await this.leadsService.findOrCreate(phone, pushName);
+  private async processMessage(tenantId: string, phone: string, combinedText: string, messageKeyId: string, pushName?: string | null) {
+    const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
 
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
@@ -194,11 +215,14 @@ export class EvolutionController {
       this.logger.log(`Lead ${phone} era perdido — movido para lead_frio ao retornar`);
     }
 
-    // Mostra "digitando..." enquanto a IA processa
-    void this.evolutionService.sendTypingIndicator(phone, 5000);
+    // Config + token do tenant — todo envio uazapi DEVE usar o token da instância deste cliente.
+    const instanceConfig = await this.whatsappConfigService.getByTenant(tenantId);
+    const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
-    const instanceConfig = await this.whatsappConfigService.get();
-    const allMedia = await this.mediaService.listAll();
+    // Mostra "digitando..." enquanto a IA processa
+    void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
+
+    const allMedia = await this.mediaService.listAll(tenantId);
     const mediaNames = allMedia.map(m => m.name);
 
     // Detecta links de Instagram (reel/post) e mapeia para mídia cadastrada
@@ -239,14 +263,14 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       // Envia a mensagem final UMA VEZ antes de silenciar
       if (aiResponse.reply) {
         this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
-        await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+        await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
       }
 
       // Aplica etiquetas na uazapi e salva no banco
       const tags = aiResponse.tags ?? [];
       if (tags.length > 0) {
-        await this.applyTagsToLead(phone, tags);
+        await this.applyTagsToLead(phone, tags, tenantId);
         const existingLabels: string[] = lead.labels ?? [];
         const mergedLabels = Array.from(new Set([...existingLabels, ...tags]));
         await this.leadsService.update(lead.id, { labels: mergedLabels } as any);
@@ -299,7 +323,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const existingLabels: string[] = lead.labels ?? [];
       const newTags = normalTags.filter(t => !existingLabels.includes(t));
       if (newTags.length > 0) {
-        await this.applyTagsToLead(phone, newTags);
+        await this.applyTagsToLead(phone, newTags, tenantId);
         const mergedLabels = Array.from(new Set([...existingLabels, ...newTags]));
         await this.leadsService.update(lead.id, { labels: mergedLabels } as any);
       }
@@ -335,6 +359,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
           this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
         }
         await this.appointmentsService.create({
+          tenantId,
           leadId: lead.id,
           clientName: lead.name || lead.phone,
           clientPhone: lead.phone,
@@ -362,7 +387,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (!available) {
         this.logger.warn(`Reagendamento bloqueado — horário ocupado: ${newDateTime.toISOString()}`);
         const busyReply = `Esse horário também está ocupado (${conflictingEvent}). Tem outro horário de preferência? 😊`;
-        await this.evolutionService.sendTextMessage(phone, busyReply);
+        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -387,12 +412,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     // Envio de mídia (imagem/vídeo cadastrada no sistema)
     if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
-      const mediaFile = await this.mediaService.findByName(aiResponse.mediaName);
+      const mediaFile = await this.mediaService.findByName(aiResponse.mediaName, tenantId);
       if (mediaFile) {
         const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
         // Legenda fixa para mídia — não usa o reply da IA. Padroniza a apresentação do vídeo.
         const mediaCaption = 'repare na ponta como ele é todo inteiro, o que acha?';
-        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, mediaCaption);
+        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, mediaCaption, tenantToken);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${mediaCaption}`);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -402,21 +427,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
-    this.lastMessageWasAudio.delete(phone);
+    this.lastMessageWasAudio.delete(`${tenantId}:${phone}`);
 
     // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
-    // Lógica de TTS comentada — pode ser reativada substituindo este bloco pelo if/else original.
-    // const respondWithAudio = this.lastMessageWasAudio.get(phone) === true;
-    // if (respondWithAudio) {
-    //   try {
-    //     const audioBuffer = await this.audioService.textToSpeech(aiResponse.reply);
-    //     await this.evolutionService.sendAudioMessage(phone, audioBuffer);
-    //   } catch (err) {
-    //     await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
-    //   }
-    // }
     this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-    await this.evolutionService.sendTextMessage(phone, aiResponse.reply);
+    await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
@@ -457,6 +472,10 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const phone = rawPhone.replace(/\D/g, '');
       if (!phone) continue;
 
+      // Meta é instância única — usa o tenant default (config mais recente).
+      const metaConfig = await this.whatsappConfigService.get();
+      const tenantId = metaConfig?.id ?? '';
+
       // Ignora mensagens antigas
       const ageSeconds = (Date.now() / 1000) - Number(message.timestamp);
       if (ageSeconds > 300) {
@@ -474,12 +493,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
 
       const isAudio = message.type === 'audio';
-      this.lastMessageWasAudio.set(phone, isAudio);
+      this.lastMessageWasAudio.set(`${tenantId}:${phone}`, isAudio);
 
       if (isAudio) {
         const mediaId: string = message.audio?.id;
         if (!mediaId) continue;
-        this.transcribeAndEnqueueMeta(phone, mediaId, messageId).catch((err) =>
+        this.transcribeAndEnqueueMeta(tenantId, phone, mediaId, messageId).catch((err) =>
           this.logger.error(`Erro ao transcrever áudio Meta de ${phone}: ${err.message}`),
         );
         continue;
@@ -489,8 +508,8 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (!text) continue;
 
       this.logger.log(`Mensagem Meta recebida de ${phone}: ${text}`);
-      this.messageQueue.enqueue(phone, text, (combinedText) => {
-        this.processMessage(phone, combinedText, messageId).catch((err) =>
+      this.messageQueue.enqueue(`${tenantId}:${phone}`, text, (combinedText) => {
+        this.processMessage(tenantId, phone, combinedText, messageId).catch((err) =>
           this.logger.error(`Erro ao processar mensagem Meta de ${phone}: ${err.message}`),
         );
       });
@@ -499,42 +518,46 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     return { ok: true };
   }
 
-  private async transcribeAndEnqueueMeta(phone: string, mediaId: string, messageId: string) {
+  private async transcribeAndEnqueueMeta(tenantId: string, phone: string, mediaId: string, messageId: string) {
     this.logger.log(`Transcrevendo áudio Meta de ${phone}...`);
     const transcribedText = await this.evolutionService.transcribeAudio(mediaId);
     this.logger.log(`Áudio Meta transcrito de ${phone}: "${transcribedText}"`);
 
-    this.messageQueue.enqueue(phone, transcribedText, (combinedText) => {
-      this.processMessage(phone, combinedText, messageId).catch((err) =>
+    this.messageQueue.enqueue(`${tenantId}:${phone}`, transcribedText, (combinedText) => {
+      this.processMessage(tenantId, phone, combinedText, messageId).catch((err) =>
         this.logger.error(`Erro ao processar áudio Meta de ${phone}: ${err.message}`),
       );
     });
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('manual')
-  async sendManual(@Body() body: { phone: string; text: string }) {
-    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone);
+  async sendManual(@Body() body: { phone: string; text: string }, @CurrentUser('tenantId') tenantId: string) {
+    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone, tenantId);
+    const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
     this.logger.log(`📤 [MANUAL] Enviando para ${body.phone}: ${body.text.substring(0, 50)}...`);
-    await this.evolutionService.sendTextMessage(body.phone, body.text);
+    await this.evolutionService.sendTextMessage(body.phone, body.text, tenantToken);
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', body.text);
-    await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
-    const updatedLead = await this.leadsService.findOne(lead.id);
+    await this.leadsService.update(lead.id, { lastMessageAt: new Date() }, tenantId);
+    const updatedLead = await this.leadsService.findOne(lead.id, tenantId);
     this.leadsGateway.emitLeadUpdated(updatedLead);
     return { ok: true };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('manual-media')
-  async sendManualMedia(@Body() body: { phone: string; mediaId: string; caption?: string }) {
-    const media = await this.mediaService.findById(body.mediaId);
+  async sendManualMedia(@Body() body: { phone: string; mediaId: string; caption?: string }, @CurrentUser('tenantId') tenantId: string) {
+    const media = await this.mediaService.findById(body.mediaId, tenantId);
     if (!media) throw new Error('Mídia não encontrada');
-    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone);
+    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone, tenantId);
+    const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
     const type = media.mimeType?.startsWith('video/') ? 'video' : 'image';
     this.logger.log(`📤 [MANUAL-MEDIA] Enviando ${type} "${media.name}" para ${body.phone}`);
-    await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '');
+    await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '', tenantToken);
     const logMsg = `[mídia: ${media.name}]${body.caption ? ' ' + body.caption : ''}`;
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', logMsg);
-    await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
-    const updatedLead = await this.leadsService.findOne(lead.id);
+    await this.leadsService.update(lead.id, { lastMessageAt: new Date() }, tenantId);
+    const updatedLead = await this.leadsService.findOne(lead.id, tenantId);
     this.leadsGateway.emitLeadUpdated(updatedLead);
     return { ok: true };
   }
@@ -546,9 +569,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
    * 3. Busca novamente para pegar IDs atualizados
    * 4. Associa cada etiqueta ao contato (POST /chat/labels com add_labelid)
    */
-  private async applyTagsToLead(phone: string, tags: string[]): Promise<void> {
+  private async applyTagsToLead(phone: string, tags: string[], tenantId?: string): Promise<void> {
     const uazapiUrl = this.configService.get('UAZAPI_BASE_URL') || 'https://labsai.uazapi.com';
-    const uazapiToken = await this.whatsappConfigService.getActiveToken();
+    const uazapiToken = tenantId
+      ? await this.whatsappConfigService.getTokenByTenant(tenantId)
+      : await this.whatsappConfigService.getActiveToken();
 
     if (!uazapiToken) {
       this.logger.warn('Token uazapi não encontrado — etiquetas não aplicadas');

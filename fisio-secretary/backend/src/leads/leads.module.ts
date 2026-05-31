@@ -10,9 +10,10 @@ import { Appointment } from '../common/entities/appointment.entity';
 import { LeadsService } from './leads.service';
 import { LeadsController } from './leads.controller';
 import { LeadsGateway } from './leads.gateway';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([Lead, Conversation, Message, LeadStageHistory, DeletedLead, Appointment])],
+  imports: [ConfigModule, AuthModule, TypeOrmModule.forFeature([Lead, Conversation, Message, LeadStageHistory, DeletedLead, Appointment])],
   providers: [LeadsService, LeadsGateway],
   controllers: [LeadsController],
   exports: [LeadsService, LeadsGateway],

@@ -1,35 +1,26 @@
 import { useState } from 'react'
 import { Lock, Mail, Eye, EyeOff, Stethoscope } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
-const DEMO_EMAIL = 'demo@fisio.com'
-const DEMO_PASSWORD = 'demo123'
-
-export default function LoginPage({ onLogin }) {
+export default function LoginPage() {
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
-
-    setTimeout(() => {
-      if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
-        onLogin()
-      } else {
-        setError('E-mail ou senha incorretos.')
-        setLoading(false)
-      }
-    }, 800)
-  }
-
-  function fillDemo() {
-    setEmail(DEMO_EMAIL)
-    setPassword(DEMO_PASSWORD)
-    setError('')
+    try {
+      await login(email, password)
+      // AuthContext atualiza o estado; App.jsx redireciona para as rotas protegidas.
+    } catch (err) {
+      setError(err.message || 'E-mail ou senha incorretos.')
+      setLoading(false)
+    }
   }
 
   return (
@@ -63,6 +54,7 @@ export default function LoginPage({ onLogin }) {
                   onChange={e => setEmail(e.target.value)}
                   placeholder="seu@email.com"
                   required
+                  autoComplete="email"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
               </div>
@@ -79,6 +71,7 @@ export default function LoginPage({ onLogin }) {
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
+                  autoComplete="current-password"
                   className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
                 <button
@@ -107,23 +100,6 @@ export default function LoginPage({ onLogin }) {
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
           </form>
-
-          {/* Demo hint */}
-          <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-4">
-            <p className="text-xs font-semibold text-blue-700 mb-2">Credenciais de demonstração</p>
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-blue-600 space-y-0.5">
-                <p>E-mail: <span className="font-mono font-medium">{DEMO_EMAIL}</span></p>
-                <p>Senha: <span className="font-mono font-medium">{DEMO_PASSWORD}</span></p>
-              </div>
-              <button
-                onClick={fillDemo}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition"
-              >
-                Preencher
-              </button>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

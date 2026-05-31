@@ -21,8 +21,47 @@ export class WhatsappConfigService {
     return configs[0] ?? null;
   }
 
+  // Multi-tenant: tenantId === whatsapp_config.id
+  async getByTenant(tenantId: string): Promise<WhatsappConfig | null> {
+    if (!tenantId) return null;
+    return this.repo.findOne({ where: { id: tenantId } });
+  }
+
+  async getTokenByTenant(tenantId: string): Promise<string> {
+    const record = await this.getByTenant(tenantId);
+    return record?.instanceToken || this.config.get('UAZAPI_TOKEN') || '';
+  }
+
   async listAll(): Promise<WhatsappConfig[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  // Cria um tenant NOVO (linha nova em whatsapp_config). NÃO reusa o existente.
+  // A instância uazapi é conectada depois, pelo próprio tenant (tela de Settings).
+  async createTenant(displayName: string, agentType = 'megahair'): Promise<WhatsappConfig> {
+    const record = this.repo.create({
+      displayName,
+      profileName: displayName,
+      agentType,
+      isActive: true,
+      connected: false,
+    });
+    return this.repo.save(record);
+  }
+
+  async setActive(tenantId: string, isActive: boolean): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.isActive = isActive;
+    return this.repo.save(record);
+  }
+
+  async updateBilling(tenantId: string, fields: { nextPaymentDate?: string | null; billingPhone?: string | null }): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    if ('nextPaymentDate' in fields) record.nextPaymentDate = fields.nextPaymentDate ? new Date(fields.nextPaymentDate) : null;
+    if ('billingPhone' in fields) record.billingPhone = fields.billingPhone ?? null;
+    return this.repo.save(record);
   }
 
   async getActiveToken(): Promise<string> {
@@ -30,7 +69,10 @@ export class WhatsappConfigService {
     return record?.instanceToken || this.config.get('UAZAPI_TOKEN') || '';
   }
 
-  async createNewInstance(name: string, adminField01?: string, adminField02?: string): Promise<WhatsappConfig> {
+  // tenantId: quando informado, cria a instância uazapi PARA aquele tenant específico
+  // (salva o token na linha dele + webhook /webhooks/uazapi/{tenantId}). Sem tenantId,
+  // mantém o comportamento legado (reusa a config mais recente).
+  async createNewInstance(name: string, adminField01?: string, adminField02?: string, tenantId?: string): Promise<WhatsappConfig> {
     const result = await this.uazapi.createInstance(name, adminField01, adminField02);
 
     const instance = result?.instance ?? {};
@@ -40,9 +82,21 @@ export class WhatsappConfigService {
       throw new Error('uazapi não retornou token da nova instância');
     }
 
-    // Configura webhook desta instância automaticamente
+    // Tenant alvo: a linha específica do cliente (multi-tenant) ou a mais recente (legado).
+    let record = tenantId ? await this.getByTenant(tenantId) : await this.get();
+    if (!record) {
+      record = this.repo.create();
+    }
+    record.instanceToken = instanceToken;
+    record.profileName = instance.name ?? name;
+    record.profilePicUrl = instance.profilePicUrl ?? null;
+    record.connected = false;
+    // Salva primeiro para obter o id (= tenantId) antes de montar a URL do webhook.
+    record = await this.repo.save(record);
+
+    // Webhook por tenant (Opção A): a URL carrega o tenantId.
     const serverUrl = this.config.get('SERVER_URL') ?? 'http://localhost:3000';
-    const webhookUrl = `${serverUrl}/webhooks/uazapi`;
+    const webhookUrl = `${serverUrl}/webhooks/uazapi/${record.id}`;
 
     let webhookConfigured = false;
     try {
@@ -53,25 +107,14 @@ export class WhatsappConfigService {
       this.logger.error(`Erro ao configurar webhook da nova instância "${name}": ${err.message}`);
     }
 
-    // Reusa o registro existente (mesmo se for órfão de uma instância antiga) para preservar
-    // prompts customizados e agentType. Só cria novo se realmente não existe nenhum.
-    let record = await this.get();
-    if (!record) {
-      record = this.repo.create();
-    }
-    record.instanceToken = instanceToken;
-    record.profileName = instance.name ?? name;
-    record.profilePicUrl = instance.profilePicUrl ?? null;
-    record.connected = false;
     record.webhookConfigured = webhookConfigured;
     record.webhookUrl = webhookUrl;
-
     return this.repo.save(record);
   }
 
-  async setupAfterConnect(): Promise<WhatsappConfig> {
-    // 1. Identifica a instância ativa (mais recente no banco)
-    let record = await this.get();
+  async setupAfterConnect(tenantId?: string): Promise<WhatsappConfig> {
+    // 1. Identifica a instância: tenant específico (multi-tenant) ou mais recente (legado)
+    let record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     const token = record?.instanceToken;
 
     // 2. Busca dados atuais da instância usando o token dela
@@ -83,13 +126,25 @@ export class WhatsappConfigService {
     const phone = statusData?.status?.jid?.replace('@s.whatsapp.net', '').replace(/:\d+$/, '') ?? null;
     const profilePicUrl = instance?.profilePicUrl ?? null;
 
-    // 3. Configura webhook se ainda não foi configurado (instâncias legadas via env)
+    // 3. Salva/atualiza config no banco — primeiro para garantir o id (= tenantId)
+    if (!record) {
+      record = this.repo.create();
+    }
+    record.instanceToken = instanceToken;
+    record.profileName = profileName;
+    record.phone = phone;
+    record.profilePicUrl = profilePicUrl;
+    record.connected = true;
+    record = await this.repo.save(record);
+
+    // 4. Webhook por tenant (Opção A): URL carrega o tenantId (= record.id)
     const serverUrl = this.config.get('SERVER_URL') ?? 'http://localhost:3000';
-    const webhookUrl = `${serverUrl}/webhooks/uazapi`;
+    const webhookUrl = `${serverUrl}/webhooks/uazapi/${record.id}`;
     const autoConfigureWebhook = this.config.get('WEBHOOK_AUTO_CONFIGURE') !== 'false';
 
-    let webhookConfigured = record?.webhookConfigured ?? false;
-    if (autoConfigureWebhook && !webhookConfigured) {
+    let webhookConfigured = record.webhookConfigured ?? false;
+    // Reconfigura se ainda não configurado OU se a URL salva não tem o tenantId (legado).
+    if (autoConfigureWebhook && (!webhookConfigured || record.webhookUrl !== webhookUrl)) {
       try {
         await this.uazapi.configureWebhook(webhookUrl, instanceToken);
         webhookConfigured = true;
@@ -99,41 +154,30 @@ export class WhatsappConfigService {
       }
     }
 
-    // 4. Salva/atualiza config no banco
-    if (!record) {
-      record = this.repo.create();
-    }
-
-    record.instanceToken = instanceToken;
-    record.profileName = profileName;
-    record.phone = phone;
-    record.profilePicUrl = profilePicUrl;
-    record.connected = true;
     record.webhookConfigured = webhookConfigured;
     record.webhookUrl = webhookUrl;
-
     return this.repo.save(record);
   }
 
-  async markDisconnected(): Promise<void> {
-    const record = await this.get();
+  async markDisconnected(tenantId?: string): Promise<void> {
+    const record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     if (record) {
       record.connected = false;
       await this.repo.save(record);
     }
   }
 
-  async updateConfig(fields: { customPromptMegaHair?: string | null }): Promise<WhatsappConfig> {
-    let record = await this.get();
+  async updateConfig(fields: { customPromptMegaHair?: string | null }, tenantId?: string): Promise<WhatsappConfig> {
+    let record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     return this.repo.save(record);
   }
 
-  async deleteRecord(): Promise<void> {
+  async deleteRecord(tenantId?: string): Promise<void> {
     // Limpa apenas os campos da instância WhatsApp, MANTÉM customPromptSofia,
     // customPromptMegaHair e agentType para que sobrevivam a "Remover conexão".
-    const record = await this.get();
+    const record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     if (record) {
       record.instanceToken = null as any;
       record.profileName = null as any;

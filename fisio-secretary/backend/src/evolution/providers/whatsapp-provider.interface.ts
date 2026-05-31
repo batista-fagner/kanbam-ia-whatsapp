@@ -1,6 +1,6 @@
 export interface IWhatsAppProvider {
-  sendTextMessage(phone: string, text: string): Promise<void>;
-  sendAudioMessage(phone: string, buffer: Buffer): Promise<void>;
-  sendTypingIndicator(phone: string, durationMs?: number): Promise<void>;
-  transcribeAudio(mediaId: string): Promise<string>;
+  sendTextMessage(phone: string, text: string, token?: string): Promise<void>;
+  sendAudioMessage(phone: string, buffer: Buffer, token?: string): Promise<void>;
+  sendTypingIndicator(phone: string, durationMs?: number, token?: string): Promise<void>;
+  transcribeAudio(mediaId: string, token?: string): Promise<string>;
 }

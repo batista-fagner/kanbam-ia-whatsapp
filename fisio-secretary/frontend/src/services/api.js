@@ -1,4 +1,23 @@
+import { getStoredToken, clearStoredToken } from '../context/AuthContext'
+
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+
+// fetch com Authorization automático + tratamento de 401 (sessão expirada → login)
+export const authFetch = (url, opts = {}) => {
+  const token = getStoredToken()
+  const headers = {
+    ...(opts.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+  return fetch(url, { ...opts, headers }).then((r) => {
+    if (r.status === 401) {
+      clearStoredToken()
+      if (window.location.pathname !== '/login') window.location.href = '/login'
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    return r
+  })
+}
 
 const json = async (r) => {
   const data = await r.json()
@@ -7,114 +26,147 @@ const json = async (r) => {
 }
 
 export const getLeads = () =>
-  fetch(`${BASE}/leads`).then(json)
+  authFetch(`${BASE}/leads`).then(json)
 
 export const getConversation = (id) =>
-  fetch(`${BASE}/leads/${id}/conversation`).then(json)
+  authFetch(`${BASE}/leads/${id}/conversation`).then(json)
 
 export const getHistory = (id) =>
-  fetch(`${BASE}/leads/${id}/history`).then(json)
+  authFetch(`${BASE}/leads/${id}/history`).then(json)
 
 export const updateStage = (id, stage) =>
-  fetch(`${BASE}/leads/${id}/stage`, {
+  authFetch(`${BASE}/leads/${id}/stage`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stage }),
   }).then(json)
 
 export const updateName = (id, name) =>
-  fetch(`${BASE}/leads/${id}/name`, {
+  authFetch(`${BASE}/leads/${id}/name`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   }).then(json)
 
 export const toggleAi = (id, enabled) =>
-  fetch(`${BASE}/leads/${id}/ai`, {
+  authFetch(`${BASE}/leads/${id}/ai`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
   }).then(json)
 
 export const updateObservations = (id, observations) =>
-  fetch(`${BASE}/leads/${id}/observations`, {
+  authFetch(`${BASE}/leads/${id}/observations`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ observations }),
   }).then(json)
 
 export const sendManualMessage = (phone, text) =>
-  fetch(`${BASE}/webhooks/manual`, {
+  authFetch(`${BASE}/webhooks/manual`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, text }),
   }).then(json)
 
 export const sendManualMedia = (phone, mediaId, caption) =>
-  fetch(`${BASE}/webhooks/manual-media`, {
+  authFetch(`${BASE}/webhooks/manual-media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, mediaId, caption }),
   }).then(json)
 
 export const getMediaList = () =>
-  fetch(`${BASE}/media`).then(json)
+  authFetch(`${BASE}/media`).then(json)
 
 export const deleteLead = (id, reason) =>
-  fetch(`${BASE}/leads/${id}`, {
+  authFetch(`${BASE}/leads/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
   }).then(json)
 
 export const getDeletedLeads = () =>
-  fetch(`${BASE}/leads/deleted`).then(json)
+  authFetch(`${BASE}/leads/deleted`).then(json)
 
 export const getDeletedLead = (id) =>
-  fetch(`${BASE}/leads/deleted/${id}`).then(json)
+  authFetch(`${BASE}/leads/deleted/${id}`).then(json)
 
 export const getDashboard = (period = 'all') =>
-  fetch(`${BASE}/leads/dashboard?period=${period}`).then(json)
+  authFetch(`${BASE}/leads/dashboard?period=${period}`).then(json)
 
 export const removeLabel = (id, label) =>
-  fetch(`${BASE}/leads/${id}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }).then(json)
+  authFetch(`${BASE}/leads/${id}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }).then(json)
 
 export const sendBulkMessage = (payload) =>
-  fetch(`${BASE}/bulk-message`, {
+  authFetch(`${BASE}/bulk-message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).then(json)
 
 export const getCampaigns = () =>
-  fetch(`${BASE}/bulk-message/campaigns`).then(json)
+  authFetch(`${BASE}/bulk-message/campaigns`).then(json)
 
 export const getCampaignMessages = (id) =>
-  fetch(`${BASE}/bulk-message/campaigns/${id}/messages`).then(json)
+  authFetch(`${BASE}/bulk-message/campaigns/${id}/messages`).then(json)
 
 export const controlCampaign = (id, action) =>
-  fetch(`${BASE}/bulk-message/campaigns/${id}/action`, {
+  authFetch(`${BASE}/bulk-message/campaigns/${id}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action }),
   }).then(json)
 
 export const getAppointmentsByMonth = (year, month) =>
-  fetch(`${BASE}/appointments?year=${year}&month=${month}`).then(json)
+  authFetch(`${BASE}/appointments?year=${year}&month=${month}`).then(json)
 
 export const createAppointment = (data) =>
-  fetch(`${BASE}/appointments`, {
+  authFetch(`${BASE}/appointments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }).then(json)
 
 export const updateAppointment = (id, data) =>
-  fetch(`${BASE}/appointments/${id}`, {
+  authFetch(`${BASE}/appointments/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }).then(json)
 
 export const deleteAppointment = (id) =>
-  fetch(`${BASE}/appointments/${id}`, { method: 'DELETE' }).then(json)
+  authFetch(`${BASE}/appointments/${id}`, { method: 'DELETE' }).then(json)
+
+// --- Admin: gestão de clientes ---
+export const getClients = () =>
+  authFetch(`${BASE}/admin/clients`).then(json)
+
+export const createClient = (payload) =>
+  authFetch(`${BASE}/admin/clients`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
+export const setClientActive = (id, isActive) =>
+  authFetch(`${BASE}/admin/clients/${id}/active`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isActive }),
+  }).then(json)
+
+export const updateClientBilling = (id, payload) =>
+  authFetch(`${BASE}/admin/clients/${id}/billing`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
+// --- Trocar a própria senha ---
+export const changePassword = (currentPassword, newPassword) =>
+  authFetch(`${BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  }).then(json)

@@ -1,11 +1,17 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('media_files')
+// Unique por tenant: cada cliente tem seu próprio catálogo.
+@Index('UQ_media_files_tenant_name', ['tenantId', 'name'], { unique: true })
 export class MediaFile {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  // Tenant (multi-cliente): catálogo de mídia é por cliente.
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string;
+
+  @Column()
   name: string;
 
   @Column({ type: 'text' })

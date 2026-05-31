@@ -12,6 +12,7 @@ import { UazapiProvider } from './providers/uazapi.provider';
 import { MetaProvider } from './providers/meta.provider';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { LeadsModule } from '../leads/leads.module';
+import { AuthModule } from '../auth/auth.module';
 import { AiModule } from '../ai/ai.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { AudioModule } from '../audio/audio.module';
@@ -24,6 +25,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     ConfigModule,
     TypeOrmModule.forFeature([WhatsappConfig]),
     LeadsModule,
+    AuthModule,
     AiModule,
     CalendarModule,
     AudioModule,

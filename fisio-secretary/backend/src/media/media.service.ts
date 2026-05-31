@@ -23,21 +23,24 @@ export class MediaService {
     this.bucket = config.get('SUPABASE_STORAGE_BUCKET') ?? 'fisio-media';
   }
 
-  async listAll(): Promise<MediaFile[]> {
-    return this.repo.find({ order: { createdAt: 'DESC' } });
+  async listAll(tenantId?: string): Promise<MediaFile[]> {
+    const where = tenantId ? { tenantId } : {};
+    return this.repo.find({ where, order: { createdAt: 'DESC' } });
   }
 
-  async findById(id: string): Promise<MediaFile | null> {
-    return this.repo.findOne({ where: { id } });
+  async findById(id: string, tenantId?: string): Promise<MediaFile | null> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    return this.repo.findOne({ where });
   }
 
-  async findByName(name: string): Promise<MediaFile | null> {
-    // 1. Exact match
-    const exact = await this.repo.findOne({ where: { name } });
+  async findByName(name: string, tenantId?: string): Promise<MediaFile | null> {
+    // 1. Exact match (escopo do tenant quando informado)
+    const exact = await this.repo.findOne({ where: tenantId ? { name, tenantId } : { name } });
     if (exact) return exact;
 
     // 2. Case-insensitive fallback (Gemini pode retornar caixa diferente)
-    const all = await this.repo.find();
+    const all = await this.repo.find({ where: tenantId ? { tenantId } : {} });
     const lower = name.toLowerCase();
     return all.find(m => m.name.toLowerCase() === lower) ?? null;
   }
@@ -65,17 +68,18 @@ export class MediaService {
     return null;
   }
 
-  async findByReelCode(code: string): Promise<MediaFile | null> {
+  async findByReelCode(code: string, tenantId?: string): Promise<MediaFile | null> {
     if (!code) return null;
     // Postgres: usa operador ANY pra buscar dentro do array
-    return this.repo
+    const qb = this.repo
       .createQueryBuilder('m')
-      .where(':code = ANY(m.reel_codes)', { code })
-      .getOne();
+      .where(':code = ANY(m.reel_codes)', { code });
+    if (tenantId) qb.andWhere('m.tenantId = :tenantId', { tenantId });
+    return qb.getOne();
   }
 
-  async updateReelCodes(id: string, codes: string[]): Promise<MediaFile> {
-    const record = await this.repo.findOne({ where: { id } });
+  async updateReelCodes(id: string, codes: string[], tenantId?: string): Promise<MediaFile> {
+    const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');
     const normalized = (codes ?? [])
       .map(c => MediaService.normalizeReelCode(c))
@@ -85,8 +89,8 @@ export class MediaService {
     return this.repo.save(record);
   }
 
-  async upload(file: Express.Multer.File, name: string): Promise<MediaFile> {
-    const existing = await this.findByName(name);
+  async upload(file: Express.Multer.File, name: string, tenantId?: string): Promise<MediaFile> {
+    const existing = await this.findByName(name, tenantId);
     if (existing) {
       throw new ConflictException(`Já existe uma mídia com o nome "${name}"`);
     }
@@ -112,6 +116,7 @@ export class MediaService {
 
     const record = this.repo.create();
     record.name = name;
+    record.tenantId = tenantId as string; // controller sempre passa o tenant do token
     record.url = publicUrlData.publicUrl;
     record.storagePath = storagePath;
     record.mimeType = file.mimetype;
@@ -120,11 +125,11 @@ export class MediaService {
     return this.repo.save(record);
   }
 
-  async rename(id: string, newName: string): Promise<MediaFile> {
-    const record = await this.repo.findOne({ where: { id } });
+  async rename(id: string, newName: string, tenantId?: string): Promise<MediaFile> {
+    const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');
 
-    const conflict = await this.findByName(newName);
+    const conflict = await this.findByName(newName, tenantId);
     if (conflict && conflict.id !== id) {
       throw new ConflictException(`Já existe uma mídia com o nome "${newName}"`);
     }
@@ -133,8 +138,8 @@ export class MediaService {
     return this.repo.save(record);
   }
 
-  async delete(id: string): Promise<void> {
-    const record = await this.repo.findOne({ where: { id } });
+  async delete(id: string, tenantId?: string): Promise<void> {
+    const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');
 
     const { error } = await this.supabase.storage

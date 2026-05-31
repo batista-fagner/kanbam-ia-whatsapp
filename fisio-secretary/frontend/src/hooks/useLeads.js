@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { io } from 'socket.io-client'
 import { getLeads } from '../services/api'
+import { getStoredToken } from '../context/AuthContext'
 
 export function useLeads() {
   const [leads, setLeads] = useState([])
@@ -18,7 +19,9 @@ export function useLeads() {
   useEffect(() => {
     fetchLeads()
 
-    const socket = io(import.meta.env.VITE_API_URL ?? 'http://localhost:3000')
+    const socket = io(import.meta.env.VITE_API_URL ?? 'http://localhost:3000', {
+      auth: { token: getStoredToken() },
+    })
 
     socket.on('lead:updated', (updatedLead) => {
       setLeads((prev) => {

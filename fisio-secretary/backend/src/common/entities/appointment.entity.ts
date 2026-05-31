@@ -12,6 +12,10 @@ export class Appointment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // Tenant (multi-cliente): FK lógica → whatsapp_config.id. Nullable na Fase 1.
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'lead_id', nullable: true, type: 'uuid' })
   leadId: string | null;
 

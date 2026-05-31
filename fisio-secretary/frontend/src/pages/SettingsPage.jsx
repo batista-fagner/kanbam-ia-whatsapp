@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus } from 'lucide-react'
+import { authFetch } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -54,7 +55,7 @@ export default function SettingsPage() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/instance/status`)
+      const res = await authFetch(`${API_URL}/instance/status`)
       const data = await res.json()
       const status = data?.instance?.status ?? 'disconnected'
       setInstanceStatus(data)
@@ -67,7 +68,7 @@ export default function SettingsPage() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_URL}/instance/config`)
+      const res = await authFetch(`${API_URL}/instance/config`)
       const data = await res.json()
       setInstanceConfig(data)
       setWebhookConfigured(data?.webhookConfigured ?? false)
@@ -81,7 +82,7 @@ export default function SettingsPage() {
 
   const fetchDefaultPrompts = async () => {
     try {
-      const res = await fetch(`${API_URL}/instance/default-prompts`)
+      const res = await authFetch(`${API_URL}/instance/default-prompts`)
       const data = await res.json()
       setDefaultPromptMegaHair(data.megahair ?? '')
       setCustomPromptMegaHair(prev => prev || data.megahair)
@@ -117,7 +118,7 @@ export default function SettingsPage() {
   const setupWebhook = async () => {
     setSettingUpWebhook(true)
     try {
-      const res = await fetch(`${API_URL}/instance/setup-webhook`, { method: 'POST' })
+      const res = await authFetch(`${API_URL}/instance/setup-webhook`, { method: 'POST' })
       const data = await res.json()
       setWebhookConfigured(data?.webhookConfigured ?? false)
       setInstanceConfig(data)
@@ -158,7 +159,8 @@ export default function SettingsPage() {
     setError(null)
     setCreatingInstance(true)
     try {
-      const res = await fetch(`${API_URL}/admin/instance`, {
+      // Cria a instância uazapi para o TENANT logado (não admin-only).
+      const res = await authFetch(`${API_URL}/instance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: instanceName.trim() }),
@@ -187,7 +189,7 @@ export default function SettingsPage() {
 
     try {
       const body = connectMode === 'paircode' ? { phone: phoneInput.replace(/\D/g, '') } : {}
-      const res = await fetch(`${API_URL}/instance/connect`, {
+      const res = await authFetch(`${API_URL}/instance/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -215,7 +217,7 @@ export default function SettingsPage() {
     setPairCode(null)
     setWebhookConfigured(false)
     try {
-      await fetch(`${API_URL}/instance/disconnect`, { method: 'POST' })
+      await authFetch(`${API_URL}/instance/disconnect`, { method: 'POST' })
       await fetchStatus()
     } catch {
       setError('Não foi possível desconectar. Verifique sua internet e tente novamente.')
@@ -228,7 +230,7 @@ export default function SettingsPage() {
     setResetting(true)
     setError(null)
     try {
-      await fetch(`${API_URL}/instance/reset`, { method: 'POST' })
+      await authFetch(`${API_URL}/instance/reset`, { method: 'POST' })
       const { status, data } = await fetchStatus()
       if (status === 'connecting') {
         if (data?.instance?.qrcode) setQrCode(data.instance.qrcode)
@@ -247,7 +249,7 @@ export default function SettingsPage() {
     setError(null)
     stopPolling()
     try {
-      await fetch(`${API_URL}/instance`, { method: 'DELETE' })
+      await authFetch(`${API_URL}/instance`, { method: 'DELETE' })
       setInstanceStatus(null)
       // Recarrega config pois o backend MANTÉM o registro (prompts preservados),
       // apenas zera os campos da instância WhatsApp.
@@ -512,7 +514,7 @@ export default function SettingsPage() {
                 setQrCode(null)
                 setPairCode(null)
                 try {
-                  await fetch(`${API_URL}/instance/disconnect`, { method: 'POST' })
+                  await authFetch(`${API_URL}/instance/disconnect`, { method: 'POST' })
                   await fetchStatus()
                 } catch { /* ignora erro silencioso ao cancelar */ }
               }}
@@ -555,7 +557,7 @@ export default function SettingsPage() {
                 if (!customPromptMegaHair?.trim()) return
                 setSavingPrompt(true)
                 try {
-                  await fetch(`${API_URL}/instance/config`, {
+                  await authFetch(`${API_URL}/instance/config`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ customPromptMegaHair }),

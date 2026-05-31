@@ -4,6 +4,7 @@ import { Repository, Between } from 'typeorm';
 import { Appointment, AppointmentService as ServiceType, AppointmentStatus } from '../common/entities/appointment.entity';
 
 export interface CreateAppointmentDto {
+  tenantId?: string | null;
   leadId?: string | null;
   clientName: string;
   clientPhone?: string | null;
@@ -23,24 +24,27 @@ export class AppointmentsService {
     private readonly repo: Repository<Appointment>,
   ) {}
 
-  async findByMonth(year: number, month: number): Promise<Appointment[]> {
+  async findByMonth(year: number, month: number, tenantId?: string): Promise<Appointment[]> {
     const start = new Date(year, month - 1, 1, 0, 0, 0);
     const end = new Date(year, month, 0, 23, 59, 59);
     return this.repo.find({
-      where: { startDateTime: Between(start, end) },
+      where: { startDateTime: Between(start, end), ...(tenantId ? { tenantId } : {}) },
       order: { startDateTime: 'ASC' },
       relations: ['lead'],
     });
   }
 
-  async findOne(id: string): Promise<Appointment> {
-    const appt = await this.repo.findOne({ where: { id }, relations: ['lead'] });
+  async findOne(id: string, tenantId?: string): Promise<Appointment> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    const appt = await this.repo.findOne({ where, relations: ['lead'] });
     if (!appt) throw new NotFoundException('Agendamento não encontrado');
     return appt;
   }
 
   async create(dto: CreateAppointmentDto): Promise<Appointment> {
     const appt = this.repo.create({
+      tenantId: dto.tenantId ?? null,
       leadId: dto.leadId ?? null,
       clientName: dto.clientName,
       clientPhone: dto.clientPhone ?? null,
@@ -53,8 +57,8 @@ export class AppointmentsService {
     return this.repo.save(appt);
   }
 
-  async update(id: string, dto: UpdateAppointmentDto): Promise<Appointment> {
-    const appt = await this.findOne(id);
+  async update(id: string, dto: UpdateAppointmentDto, tenantId?: string): Promise<Appointment> {
+    const appt = await this.findOne(id, tenantId);
     if (dto.clientName !== undefined) appt.clientName = dto.clientName;
     if (dto.clientPhone !== undefined) appt.clientPhone = dto.clientPhone;
     if (dto.service !== undefined) appt.service = dto.service;
@@ -68,8 +72,9 @@ export class AppointmentsService {
     return this.repo.save(appt);
   }
 
-  async delete(id: string): Promise<void> {
-    const result = await this.repo.delete(id);
+  async delete(id: string, tenantId?: string): Promise<void> {
+    const criteria: any = tenantId ? { id, tenantId } : { id };
+    const result = await this.repo.delete(criteria);
     if (result.affected === 0) throw new NotFoundException('Agendamento não encontrado');
   }
 

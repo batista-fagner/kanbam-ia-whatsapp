@@ -1,7 +1,7 @@
 import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne,
-  BeforeInsert, BeforeUpdate,
+  BeforeInsert, BeforeUpdate, Index,
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 import { LeadStageHistory } from './lead-stage-history.entity';
@@ -13,11 +13,17 @@ export type LeadStage =
 export type LeadTemperature = 'quente' | 'morno' | 'frio';
 
 @Entity('leads')
+// Unique por tenant: o mesmo número pode existir em clientes diferentes.
+@Index('UQ_leads_tenant_phone', ['tenantId', 'phone'], { unique: true })
 export class Lead {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  // Tenant (multi-cliente): FK lógica para whatsapp_config.id.
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string;
+
+  @Column()
   phone: string;
 
   @Column({ type: 'varchar', nullable: true })

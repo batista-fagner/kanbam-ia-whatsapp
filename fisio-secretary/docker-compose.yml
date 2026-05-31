@@ -16,8 +16,31 @@ services:
       timeout: 5s
       retries: 5
 
+  # Postgres de desenvolvimento — banco isolado da produção (Supabase).
+  # Usado com .env.development (npm run start:dev:local). Zero risco pra prod.
+  postgres_dev:
+    image: postgres:16-alpine
+    container_name: fisio_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fisio
+      POSTGRES_PASSWORD: fisio_dev
+      POSTGRES_DB: fisio_dev
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - fisio_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fisio -d fisio_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   redis_data:
+  postgres_dev_data:
 
 networks:
   fisio_net:

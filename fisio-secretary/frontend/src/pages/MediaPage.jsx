@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2 } from 'lucide-react'
+import { authFetch } from '../services/api'
 
 // Extrai code de um link de Instagram (reel/post) ou valida code direto
 function normalizeReelInput(input) {
@@ -43,7 +44,7 @@ export default function MediaPage() {
 
   const fetchFiles = async () => {
     try {
-      const res = await fetch(`${API_URL}/media`)
+      const res = await authFetch(`${API_URL}/media`)
       const data = await res.json()
       setFiles(data)
     } catch {
@@ -78,7 +79,7 @@ export default function MediaPage() {
       form.append('file', selectedFile)
       form.append('name', name.trim())
 
-      const res = await fetch(`${API_URL}/media/upload`, { method: 'POST', body: form })
+      const res = await authFetch(`${API_URL}/media/upload`, { method: 'POST', body: form })
       const data = await res.json()
 
       if (!res.ok) {
@@ -114,7 +115,7 @@ export default function MediaPage() {
     if (!renameValue.trim()) return
     setRenamingLoading(true)
     try {
-      const res = await fetch(`${API_URL}/media/${id}/rename`, {
+      const res = await authFetch(`${API_URL}/media/${id}/rename`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: renameValue.trim() }),
@@ -136,7 +137,7 @@ export default function MediaPage() {
   const saveReelCodes = async (id, codes) => {
     setReelSaving(true)
     try {
-      const res = await fetch(`${API_URL}/media/${id}/reel-codes`, {
+      const res = await authFetch(`${API_URL}/media/${id}/reel-codes`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reelCodes: codes }),
@@ -179,7 +180,7 @@ export default function MediaPage() {
     setShowConfirmDelete(null)
     setDeletingId(id)
     try {
-      await fetch(`${API_URL}/media/${id}`, { method: 'DELETE' })
+      await authFetch(`${API_URL}/media/${id}`, { method: 'DELETE' })
       setFiles(prev => prev.filter(f => f.id !== id))
     } catch {
       setError('Não foi possível remover a mídia.')
