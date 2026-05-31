@@ -163,7 +163,7 @@ export const resetClientPassword = (id, newPassword) =>
     body: JSON.stringify({ newPassword }),
   }).then(json)
 
-export const updateClientBilling = (id, payload) =>
+export const updateClientBilling = (id, payload) => // payload: { nextPaymentDate?, billingPhone?, billingDay? }
   authFetch(`${BASE}/admin/clients/${id}/billing`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

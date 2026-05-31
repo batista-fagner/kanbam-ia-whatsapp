@@ -64,9 +64,25 @@ export default function AdminPage() {
     finally { setResetting(false) }
   }
 
-  async function saveBilling(id, nextPaymentDate) {
-    await updateClientBilling(id, { nextPaymentDate: nextPaymentDate || null })
-    await load()
+  function nextDueDate(billingDay) {
+    if (!billingDay) return null
+    const now = new Date()
+    const y = now.getFullYear(), m = now.getMonth()
+    const lastDay = new Date(y, m + 1, 0).getDate()
+    const day = Math.min(billingDay, lastDay)
+    const due = new Date(y, m, day)
+    if (due <= now) { // já passou esse mês → próximo mês
+      const lastDayNext = new Date(y, m + 2, 0).getDate()
+      return new Date(y, m + 1, Math.min(billingDay, lastDayNext))
+    }
+    return due
+  }
+
+  function daysUntilDay(billingDay) {
+    const due = nextDueDate(billingDay)
+    if (!due) return null
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    return Math.round((due - today) / 86400000)
   }
 
   if (loading) {
@@ -111,8 +127,9 @@ export default function AdminPage() {
           <div className="p-8 text-center text-gray-400 text-sm">Nenhum cliente ainda. Crie o primeiro.</div>
         )}
         {clients.map(c => {
-          const dleft = daysUntil(c.nextPaymentDate)
+          const dleft = daysUntilDay(c.billingDay)
           const dueSoon = dleft !== null && dleft <= 5
+          const due = nextDueDate(c.billingDay)
           return (
             <div key={c.id} className="p-4 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
@@ -140,18 +157,26 @@ export default function AdminPage() {
                     className="text-xs border border-gray-200 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
                 </div>
-                {/* Vencimento */}
+                {/* Dia de vencimento mensal */}
                 <div className="flex items-center gap-2 mt-2">
                   <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-xs text-gray-400">Vence dia</span>
                   <input
-                    type="date"
-                    defaultValue={c.nextPaymentDate ? String(c.nextPaymentDate).slice(0, 10) : ''}
-                    onBlur={(e) => saveBilling(c.id, e.target.value)}
-                    className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    type="number" min="1" max="31"
+                    defaultValue={c.billingDay ?? ''}
+                    onBlur={(e) => {
+                      const v = parseInt(e.target.value)
+                      const day = v >= 1 && v <= 31 ? v : null
+                      if (day !== c.billingDay) updateClientBilling(c.id, { billingDay: day }).then(load)
+                    }}
+                    placeholder="—"
+                    className="text-xs border border-gray-200 rounded px-2 py-1 w-14 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
-                  {dleft !== null && (
+                  <span className="text-xs text-gray-400">de cada mês</span>
+                  {due && (
                     <span className={`text-xs px-2 py-0.5 rounded-full ${dueSoon ? 'bg-amber-100 text-amber-700 font-medium' : 'bg-gray-100 text-gray-500'}`}>
-                      {dleft < 0 ? `vencido há ${-dleft}d` : dleft === 0 ? 'vence hoje' : `vence em ${dleft}d`}
+                      {due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      {dleft === 0 ? ' — hoje' : dleft <= 5 ? ` — ${dleft}d` : ''}
                     </span>
                   )}
                 </div>

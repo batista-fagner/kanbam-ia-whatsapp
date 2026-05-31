@@ -68,6 +68,7 @@ export class AdminController {
         connected: t.connected,
         isActive: t.isActive,
         nextPaymentDate: t.nextPaymentDate,
+        billingDay: t.billingDay,
         billingPhone: t.billingPhone,
         agentType: t.agentType,
         leadsCount,

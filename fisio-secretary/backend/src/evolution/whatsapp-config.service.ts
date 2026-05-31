@@ -56,11 +56,12 @@ export class WhatsappConfigService {
     return this.repo.save(record);
   }
 
-  async updateBilling(tenantId: string, fields: { nextPaymentDate?: string | null; billingPhone?: string | null }): Promise<WhatsappConfig | null> {
+  async updateBilling(tenantId: string, fields: { nextPaymentDate?: string | null; billingPhone?: string | null; billingDay?: number | null }): Promise<WhatsappConfig | null> {
     const record = await this.getByTenant(tenantId);
     if (!record) return null;
     if ('nextPaymentDate' in fields) record.nextPaymentDate = fields.nextPaymentDate ? new Date(fields.nextPaymentDate) : null;
     if ('billingPhone' in fields) record.billingPhone = fields.billingPhone ?? null;
+    if ('billingDay' in fields) record.billingDay = fields.billingDay ?? null;
     return this.repo.save(record);
   }
 

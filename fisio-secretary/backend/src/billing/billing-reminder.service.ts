@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -20,7 +20,8 @@ export class BillingReminderService {
     private readonly http: HttpService,
   ) {}
 
-  // Roda todo dia às 9h (horário de Brasília). Envia lembrete 5 dias antes do vencimento.
+  // Roda todo dia às 9h (Brasília). Envia lembrete para clientes cujo vencimento
+  // é daqui a 5 dias (calculado a partir do billingDay fixo mensal).
   @Cron('0 9 * * *', { timeZone: TZ })
   async sendPaymentReminders() {
     const senderTenantId = this.config.get<string>('BILLING_SENDER_TENANT_ID');
@@ -39,23 +40,37 @@ export class BillingReminderService {
     }
 
     const tenants = await this.configRepo.find({
-      where: { billingPhone: Not(IsNull()), nextPaymentDate: Not(IsNull()), isActive: true },
+      where: { billingPhone: Not(IsNull()), billingDay: Not(IsNull()), isActive: true },
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+    const todayDay = now.getDate();
+    const todayMonth = now.getMonth();
+    const todayYear = now.getFullYear();
 
     for (const tenant of tenants) {
-      if (!tenant.nextPaymentDate || !tenant.billingPhone) continue;
+      if (!tenant.billingPhone || !tenant.billingDay) continue;
 
-      const due = new Date(tenant.nextPaymentDate);
-      due.setHours(0, 0, 0, 0);
+      // Próxima data de vencimento: este mês se ainda não passou, senão próximo mês
+      const lastDayThis = new Date(todayYear, todayMonth + 1, 0).getDate();
+      const dayThis = Math.min(tenant.billingDay, lastDayThis);
+      let billingDate = new Date(todayYear, todayMonth, dayThis);
+      if (billingDate.getTime() <= now.getTime()) {
+        const lastDayNext = new Date(todayYear, todayMonth + 2, 0).getDate();
+        billingDate = new Date(todayYear, todayMonth + 1, Math.min(tenant.billingDay, lastDayNext));
+      }
 
-      const daysLeft = Math.round((due.getTime() - today.getTime()) / 86400000);
-      if (daysLeft !== 5) continue;
+      // Lembrete = 5 dias antes do vencimento
+      const reminderDate = new Date(billingDate.getTime() - 5 * 86400000);
 
-      const dueDateFormatted = due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      if (
+        reminderDate.getDate() !== todayDay ||
+        reminderDate.getMonth() !== todayMonth ||
+        reminderDate.getFullYear() !== todayYear
+      ) continue;
+
       const clientName = tenant.displayName || tenant.profileName || 'Cliente';
+      const dueDateFormatted = billingDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
       const message =
         `Olá, ${clientName}! 👋\n\n` +
@@ -63,7 +78,7 @@ export class BillingReminderService {
         `Entre em contato para renovar e manter seu acesso ao sistema. 🙏`;
 
       const sent = await this.sendWhatsApp(tenant.billingPhone, message, senderToken);
-      if (sent) this.logger.log(`[BILLING] Lembrete enviado → ${tenant.billingPhone} (${clientName}, vence ${dueDateFormatted})`);
+      if (sent) this.logger.log(`[BILLING] Lembrete enviado → ${tenant.billingPhone} (${clientName}, vence dia ${tenant.billingDay})`);
     }
   }
 

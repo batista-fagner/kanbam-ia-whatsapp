@@ -44,9 +44,13 @@ export class WhatsappConfig {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
-  // Data do próximo vencimento — usada pra alertar 5 dias antes (admin + cliente)
+  // Data do próximo vencimento — referência visual no painel admin
   @Column({ name: 'next_payment_date', type: 'date', nullable: true })
   nextPaymentDate: Date | null;
+
+  // Dia fixo de vencimento mensal (1-31). Lembrete enviado 5 dias antes todo mês.
+  @Column({ name: 'billing_day', type: 'integer', nullable: true })
+  billingDay: number | null;
 
   // Telefone de contato pra cobrança (mensagem de vencimento)
   @Column({ name: 'billing_phone', type: 'varchar', nullable: true })
