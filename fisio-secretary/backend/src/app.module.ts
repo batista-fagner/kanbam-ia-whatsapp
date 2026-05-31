@@ -11,6 +11,9 @@ import { MediaFile } from './common/entities/media-file.entity';
 import { Appointment } from './common/entities/appointment.entity';
 import { DeletedLead } from './common/entities/deleted-lead.entity';
 import { User } from './common/entities/user.entity';
+import { InitialSchema1780170753448 } from './migrations/1780170753448-InitialSchema';
+import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
+import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -33,6 +36,10 @@ import { AuthModule } from './auth/auth.module';
         entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
+        // Roda migrations pendentes no boot (antes de atender requisições).
+        // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189],
+        migrationsRun: true,
         logging: false,
       }),
     }),
