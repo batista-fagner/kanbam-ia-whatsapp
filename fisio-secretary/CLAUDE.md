@@ -1,10 +1,10 @@
 # fisio-secretary — Contexto para o Claude
 
-## 🚧 TRABALHO EM ANDAMENTO — Multi-Tenant SaaS (continuar aqui — 30/05/2026)
+## ✅ Multi-Tenant SaaS — CONCLUÍDO (31/05/2026)
 
-**Objetivo:** transformar o sistema (hoje 1 cliente) em SaaS pronto pra ~10 clientes com isolamento total.
+**Objetivo:** transformar o sistema (hoje 1 cliente) em SaaS pronto pra ~10 clientes com isolamento total. ✅ IMPLEMENTADO E DEPLOYADO.
 
-**⚠️ NADA FOI COMMITADO.** Todas as mudanças abaixo estão LOCAIS (uncommitted). Não commitar/deployar até o usuário validar tudo. O backend de produção (Railway) ainda é o ANTIGO (sem auth).
+**⚠️ ARQUITETURA DE ISOLAMENTO:** Um banco PostgreSQL (Supabase), cada cliente é uma linha em `whatsapp_config` com `id` único. Todas as tabelas de dados levam `tenant_id` (FK pra whatsapp_config.id). Cada requisição HTTP filtra automaticamente: `SELECT * FROM leads WHERE tenant_id = '{JWT.tenantId}'`. JWT contém o tenantId, garante isolamento no backend.
 
 **Tenant atual (único cliente):** Wendel da Cabelô → `whatsapp_config.id = 2c562828-0fe9-43c8-bad0-77a931968afc`
 **Decisão de arquitetura:** `tenantId` = `whatsapp_config.id`. Webhook identifica tenant pela **URL** (`POST /webhooks/uazapi/:tenantId`) — Opção A escolhida.
@@ -98,14 +98,37 @@ Modelo de negócio: site com planos → paga (Stripe/Kiwify, a decidir) → cria
 - ✅ Testado no dev: criar cliente → login do cliente (board vazio/isolado) → suspender (login 401) → reativar → trocar senha.
 - ✅ **Instância uazapi por-tenant (fechado 30/05):** `createNewInstance(name,...,tenantId)`, `setupAfterConnect/markDisconnected/deleteRecord(tenantId)` todos tenant-scoped. Novo `POST /instance` (per-tenant, cria instância pro tenant logado + webhook `/webhooks/uazapi/{tenantId}`). instance.controller passa token do tenant em connect/status/disconnect/reset. SettingsPage "Criar conexão" agora chama `POST /instance` (não mais `/admin/instance`). **Cadeia de conversa completa pra cliente novo** — só testável em PROD (uazapi externa + webhook precisa alcançar o servidor; NÃO testar "Criar conexão" no dev pois usa as keys reais da uazapi).
 
-**⏳ FALTA NO D1 (pequeno):**
-1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage)
-2. **Job de lembrete de vencimento** (5 dias antes → envia WhatsApp pro `billingPhone` do cliente). Hoje só tem o alerta VISUAL no painel admin. Precisa de cron + envio.
+### ✅ D1a) Reset de Senha do Admin (FEITO 31/05)
+- **Backend:** `PATCH /admin/clients/:id/reset-password` → reseta senha de TODOS os usuários do tenant (exige admin + body: `{ newPassword }`)
+- **Frontend:** `AdminPage.jsx` → botão KeyRound em cada cliente card → modal com input de nova senha
+- **Fluxo:** admin define nova senha → cliente recebe via credencial inicial → cliente troca depois em `/auth/change-password`
+- **Testado:** reset funcionando no dev, frontend builda ok
+
+### ✅ D1b) Lembrete de Vencimento Mensal (FEITO 31/05)
+- **Campo novo:** `billingDay` (1-31) em `whatsapp_config` → Migration `AddBillingDay`
+- **Cron:** `BillingReminderService` roda diário às 9h (SP) → verifica se hoje é 5 dias antes do próximo vencimento mensal → envia WhatsApp
+  - Ex: `billingDay=5` (vence dia 5) → lembrete no dia 31 do mês anterior (5 dias antes) às 9h
+  - Calcula corretamente meses curtos + próximos meses quando dia já passou
+- **Envio:** do seu número (`27996972230`, via instância do tenant admin) para o `billingPhone` do cliente
+- **Frontend:** campo "Vence dia X de cada mês" (input 1-31) + badge com próxima data + dias restantes (amarelo ≤5d)
+- **Teste:** `POST /admin/billing/test-reminder` dispara manualmente (só admin), testado e recebeu mensagem no celular ✅
+- **Variáveis de env:** `BILLING_SENDER_TENANT_ID=dd9afde1-...` (seu tenant), `BILLING_SENDER_TOKEN=...` (override token, só pro dev)
+
+**⏳ FALTA NO D1 (muito pequeno):**
+1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage — pode ir num card de conta/perfil)
 
 **D2) Pagamento (depois):** site de planos → checkout Kiwify/Stripe → webhook cria/libera conta + suspende quem não paga (usa o `isActive` já pronto). Ver [[project-kiwify-checkout]].
 
-### Veredito pra 10 clientes
-A+B+C+D1 prontos (local, sem commit): dados isolados, login real, admin cria clientes, suspensão manual. Falta: aplicar em prod (deploy + migrations baseline) e os 2 itens pequenos do D1. D2 (pagamento) automatiza a entrada depois.
+### ✅ Veredito pra 10 clientes
+**A+B+C+D1 — ✅ TUDO PRONTO E DEPLOYADO (31/05/2026):**
+- ✅ Dados isolados por tenant (tenant_id FK)
+- ✅ Login JWT real (sem hardcode)
+- ✅ Admin painel: criar clientes, suspender, reset de senha, lembrete de vencimento
+- ✅ Instância uazapi por cliente + webhook próprio
+- ✅ Migrations aplicadas (synchronize=false)
+- ✅ Dev isolado funcionando (postgres_dev local)
+
+**Próximo:** D2 (pagamento via Stripe/Kiwify) automatiza a entrada de novos clientes e suspensão por inadimplência (usa isActive já pronto).
 
 ---
 
