@@ -38,18 +38,12 @@ export class EvolutionController {
     private readonly appointmentsService: AppointmentsService,
   ) {}
 
-  // Rota nova (multi-tenant): a URL carrega o tenantId.
+  // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
+  // já migradas) posta aqui. A rota sem tenantId foi removida — ela resolvia pelo
+  // "mais recente" e misturava clientes quando havia 2+ tenants.
   @Post('uazapi/:tenantId')
   async handleUazapiWebhookTenant(@Param('tenantId') tenantId: string, @Body() body: any) {
     return this.handleUazapiWebhook(tenantId, body);
-  }
-
-  // Rota de compatibilidade (legado): instâncias antigas postam aqui sem tenant.
-  // Resolve o tenant default (config única atual) — evita downtime no deploy.
-  @Post('uazapi')
-  async handleUazapiWebhookLegacy(@Body() body: any) {
-    const cfg = await this.whatsappConfigService.get();
-    return this.handleUazapiWebhook(cfg?.id ?? '', body);
   }
 
   private async handleUazapiWebhook(tenantId: string, body: any) {
