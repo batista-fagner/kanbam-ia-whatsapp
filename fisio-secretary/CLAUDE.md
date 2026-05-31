@@ -114,6 +114,85 @@ Modelo de negócio: site com planos → paga (Stripe/Kiwify, a decidir) → cria
 - **Teste:** `POST /admin/billing/test-reminder` dispara manualmente (só admin), testado e recebeu mensagem no celular ✅
 - **Variáveis de env:** `BILLING_SENDER_TENANT_ID=dd9afde1-...` (seu tenant), `BILLING_SENDER_TOKEN=...` (override token, só pro dev)
 
+### 🔔 Como Funciona o Lembrete de 5 Dias (Guia Completo)
+
+**O Conceito:**
+Cada cliente tem um `billingDay` (1-31) que representa o dia fixo do mês em que o plano vence. Ex: billingDay=30 → plano vence todo dia 30. O sistema envia automaticamente um lembrete 5 dias antes (no dia 25, às 9h) informando que o vencimento está chegando.
+
+**Fluxo Dia a Dia:**
+
+```
+Dia 25, às 9h (horário de Brasília):
+  ↓
+BillingReminderService (cron) inicia
+  ↓
+Para cada cliente com billingPhone + billingDay + isActive=true:
+  ↓
+Calcula: "Qual é a próxima data de vencimento?"
+  - Se billingDay ainda não passou neste mês → vencimento = dia X deste mês
+  - Se billingDay já passou → vencimento = dia X do próximo mês
+  - Respeita meses curtos (ex: fevereiro tem 28/29 dias)
+  ↓
+Calcula: "É hoje 5 dias antes desse vencimento?"
+  - reminderDate = vencimento - 5 dias
+  - Se hoje == reminderDate → envia mensagem
+  - Senão → pula pra próximo cliente
+  ↓
+Envia WhatsApp:
+  - De: seu número (27996972230, via BILLING_SENDER_TOKEN)
+  - Para: billingPhone do cliente
+  - Conteúdo: "Seu plano vence em 5 dias (DD/MM/YYYY)"
+  ↓
+Log: "[BILLING] Lembrete enviado → 71992867765 (Cliente X, vence dia 30)"
+```
+
+**Exemplos Práticos:**
+
+| billingDay | Próx. Vencimento | Data Lembrete | Dia Envio |
+|-----------|------------------|---------------|-----------|
+| 5 | Jun/5 | Jun/31 anterior | Mai/31 ✅ |
+| 15 | Jun/15 | Jun/10 | Jun/10 ✅ |
+| 30 | Jun/30 | Jun/25 | Jun/25 ✅ |
+
+**Como Configurar:**
+
+1. **Painel Admin** (`/admin`): cliente Clinica Teste
+2. Clica no campo "Vence dia" → digita `5` → salva
+3. Preenche "Cobrança:" com `71992867765` (celular do cliente)
+4. Badge mostra "05/06 — 5d" (próx. vencimento em 5 dias)
+5. No dia 31 às 9h, cliente recebe a mensagem automaticamente
+
+**Variáveis Críticas (Production):**
+
+```
+# Railway env vars:
+BILLING_SENDER_TENANT_ID=dd9afde1-eb25-4988-a1f2-b5b50c7628fc  # seu tenant (ConvertIQ)
+# OU
+BILLING_SENDER_TOKEN=42f7695e-139d-48e3-930a-b981d161aab0      # token direto (override)
+```
+
+Se usar `BILLING_SENDER_TOKEN`, o sistema não depende do banco — você pode remover/reutilizar a instância ConvertIQ em outro projeto sem quebrar o lembrete. Apenas renove o token no painel uazapi a cada 60 dias (tokens de produção expiram).
+
+**Teste Manual:**
+
+```bash
+# Dev local (com backend rodando)
+curl -X POST http://localhost:3000/admin/billing/test-reminder \
+  -H "Authorization: Bearer <seu-jwt>" \
+  -H "Content-Type: application/json"
+# Retorna: {"ok":true}
+# Mensagem chega imediatamente (ignora o horário)
+```
+
+**Troubleshooting:**
+
+| Sintoma | Causa | Solução |
+|---------|-------|---------|
+| "Instância do admin não encontrada" | BILLING_SENDER_TENANT_ID inválido ou token expirado | Verifique no Railway; renove token se necessário |
+| "Falha ao enviar [HTTP 401]" | Token da instância inválido | Reconecte a instância no painel uazapi |
+| Mensagem não chega | Cliente sem billingPhone ou billingDay | Preencha ambos no admin; verifique isActive=true |
+| Lembrete enviado no dia errado | Timezone incorreta ou cálculo de mês curto | Deploy de correção já inclui handling de meses curtos (fev, abr, jun, set, nov) |
+
 **⏳ FALTA NO D1 (muito pequeno):**
 1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage — pode ir num card de conta/perfil)
 
