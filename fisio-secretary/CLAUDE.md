@@ -193,6 +193,27 @@ curl -X POST http://localhost:3000/admin/billing/test-reminder \
 | Mensagem não chega | Cliente sem billingPhone ou billingDay | Preencha ambos no admin; verifique isActive=true |
 | Lembrete enviado no dia errado | Timezone incorreta ou cálculo de mês curto | Deploy de correção já inclui handling de meses curtos (fev, abr, jun, set, nov) |
 
+**🔄 Estratégia Futura (quando reutilizar o número em outro projeto):**
+
+Hoje o lembrete depende de:
+- `BILLING_SENDER_TOKEN=42f7695e-...` (token da instância ConvertIQ)
+- OU `BILLING_SENDER_TENANT_ID=dd9afde1-...` (tenant ConvertIQ no banco)
+
+**Quando você quiser usar `27996972230` em outro projeto:**
+1. A instância ConvertIQ será "desconectada" deste fisio-secretary
+2. O lembrete vai quebrar: token expirado + instância removida do banco
+3. **Solução:** Criar uma instância fictícia "Admin Billing" separada
+   - Nova entrada em `whatsapp_config` apenas pra armazenar token de cobrança
+   - Sem webhook, sem cliente real, só pra guardar credenciais
+   - `BILLING_SENDER_TENANT_ID` aponta pra esta instância
+   - Quando renovar token no painel uazapi, atualiza aqui também
+4. **Ou usar BILLING_SENDER_TOKEN hardcoded:** remover dependência do banco completamente
+   - Coloca `BILLING_SENDER_TOKEN=xxx` no Railway
+   - Remove `BILLING_SENDER_TENANT_ID`
+   - Serve para qualquer token, não precisa de entrada no banco
+
+**Recomendação:** Quando chegar a hora, use a opção **Admin Billing fictício** (mais limpo, mantém tudo centralizado no sistema).
+
 **⏳ FALTA NO D1 (muito pequeno):**
 1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage — pode ir num card de conta/perfil)
 
