@@ -75,6 +75,18 @@ export class UsersService implements OnApplicationBootstrap {
     await this.repo.save(user);
   }
 
+  // Admin reseta a senha de qualquer usuário (sem exigir a senha atual).
+  async resetPassword(userId: string, newPassword: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.repo.save(user);
+  }
+
+  findByTenant(tenantId: string): Promise<User[]> {
+    return this.repo.find({ where: { tenantId }, order: { createdAt: 'ASC' } });
+  }
+
   listAll(): Promise<User[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }

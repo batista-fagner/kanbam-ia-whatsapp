@@ -156,6 +156,13 @@ export const setClientActive = (id, isActive) =>
     body: JSON.stringify({ isActive }),
   }).then(json)
 
+export const resetClientPassword = (id, newPassword) =>
+  authFetch(`${BASE}/admin/clients/${id}/reset-password`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword }),
+  }).then(json)
+
 export const updateClientBilling = (id, payload) =>
   authFetch(`${BASE}/admin/clients/${id}/billing`, {
     method: 'PATCH',

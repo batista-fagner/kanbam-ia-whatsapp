@@ -22,7 +22,7 @@ export class AdminController {
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
   // A senha é definida pelo admin e repassada ao cliente (ele troca depois em /auth/change-password).
   @Post('clients')
-  async createClient(@Body() body: { name: string; email: string; password: string; agentType?: string }) {
+  async createClient(@Body() body: { name: string; email: string; password: string; agentType?: string; billingPhone?: string }) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome do cliente é obrigatório');
     if (!body?.email?.trim()) throw new BadRequestException('Email é obrigatório');
     if (!body?.password || body.password.length < 5) throw new BadRequestException('Senha mínima de 5 caracteres');
@@ -32,6 +32,11 @@ export class AdminController {
 
     // 1. Cria o tenant (linha nova — não sobrescreve nenhum cliente existente)
     const tenant = await this.whatsappConfigService.createTenant(body.name.trim(), body.agentType ?? 'megahair');
+
+    // Salva billingPhone se informado na criação
+    if (body.billingPhone?.trim()) {
+      await this.whatsappConfigService.updateBilling(tenant.id, { billingPhone: body.billingPhone.trim() });
+    }
 
     // 2. Cria o usuário operador ligado ao tenant
     const user = await this.usersService.create({
@@ -78,6 +83,17 @@ export class AdminController {
     const updated = await this.whatsappConfigService.setActive(id, body.isActive);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true, isActive: updated.isActive };
+  }
+
+  // Admin reseta a senha de um cliente (sem exigir a senha atual).
+  @Patch('clients/:id/reset-password')
+  async resetPassword(@Param('id') tenantId: string, @Body() body: { newPassword: string }) {
+    if (!body.newPassword || body.newPassword.length < 5) throw new BadRequestException('Senha mínima de 5 caracteres');
+    const users = await this.usersService.findByTenant(tenantId);
+    if (!users.length) throw new BadRequestException('Nenhum usuário encontrado para este cliente');
+    // Reseta a senha de todos os usuários do tenant (geralmente 1)
+    await Promise.all(users.map(u => this.usersService.resetPassword(u.id, body.newPassword)));
+    return { ok: true, usersUpdated: users.length };
   }
 
   // Atualiza dados de cobrança (data de vencimento + telefone de contato)

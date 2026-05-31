@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling } from '../services/api'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound } from 'lucide-react'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -15,8 +15,11 @@ export default function AdminPage() {
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const [created, setCreated] = useState(null) // credenciais p/ repassar ao cliente
+  const [form, setForm] = useState({ name: '', email: '', password: '', billingPhone: '' })
+  const [created, setCreated] = useState(null)
+  const [resetModal, setResetModal] = useState(null) // { id, name }
+  const [newPassword, setNewPassword] = useState('')
+  const [resetting, setResetting] = useState(false)
 
   const load = async () => {
     try {
@@ -36,7 +39,7 @@ export default function AdminPage() {
     try {
       await createClient(form)
       setCreated({ email: form.email, password: form.password })
-      setForm({ name: '', email: '', password: '' })
+      setForm({ name: '', email: '', password: '', billingPhone: '' })
       setShowCreate(false)
       await load()
     } catch (e) {
@@ -49,6 +52,16 @@ export default function AdminPage() {
   async function toggleActive(c) {
     await setClientActive(c.id, !c.isActive)
     await load()
+  }
+
+  async function handleReset(e) {
+    e.preventDefault()
+    setError(''); setResetting(true)
+    try {
+      await resetClientPassword(resetModal.id, newPassword)
+      setResetModal(null); setNewPassword('')
+    } catch (e) { setError(e.message) }
+    finally { setResetting(false) }
   }
 
   async function saveBilling(id, nextPaymentDate) {
@@ -112,7 +125,20 @@ export default function AdminPage() {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
                   {c.leadsCount} leads · {c.usersCount} usuário(s)
-                  {c.phone ? ` · ${c.phone}` : ''}
+                  {c.phone ? ` · WA: ${c.phone}` : ''}
+                </div>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="text-xs text-gray-400">Cobrança:</span>
+                  <input
+                    type="tel"
+                    defaultValue={c.billingPhone ?? ''}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      if (v !== (c.billingPhone ?? '')) updateClientBilling(c.id, { billingPhone: v || null }).then(load)
+                    }}
+                    placeholder="ex: 27996972230"
+                    className="text-xs border border-gray-200 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
                 </div>
                 {/* Vencimento */}
                 <div className="flex items-center gap-2 mt-2">
@@ -130,18 +156,57 @@ export default function AdminPage() {
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => toggleActive(c)}
-                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition ${
-                  c.isActive ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'
-                }`}
-              >
-                {c.isActive ? <><PowerOff className="w-3.5 h-3.5" /> Suspender</> : <><Power className="w-3.5 h-3.5" /> Reativar</>}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => { setResetModal({ id: c.id, name: c.displayName }); setNewPassword('') }}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                  title="Resetar senha"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => toggleActive(c)}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition ${
+                    c.isActive ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {c.isActive ? <><PowerOff className="w-3.5 h-3.5" /> Suspender</> : <><Power className="w-3.5 h-3.5" /> Reativar</>}
+                </button>
+              </div>
             </div>
           )
         })}
       </div>
+
+      {/* Modal resetar senha */}
+      {resetModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800">Resetar senha</h2>
+              <button onClick={() => setResetModal(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Cliente: <span className="font-medium text-gray-700">{resetModal.name}</span></p>
+            <form onSubmit={handleReset} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
+                <input
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  required minLength={5} autoFocus
+                  placeholder="mínimo 5 caracteres"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Repasse a senha nova ao cliente após salvar.</p>
+              </div>
+              <button type="submit" disabled={resetting}
+                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-teal-400 text-white font-semibold py-2.5 rounded-lg transition text-sm flex items-center justify-center gap-2">
+                {resetting ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><Check className="w-4 h-4" /> Salvar nova senha</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal criar cliente */}
       {showCreate && (
@@ -167,6 +232,13 @@ export default function AdminPage() {
                 <input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={5}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 <p className="text-xs text-gray-400 mt-1">Você repassa pro cliente; ele troca depois.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp de cobrança <span className="text-gray-400 font-normal">(opcional)</span></label>
+                <input type="tel" value={form.billingPhone} onChange={e => setForm({ ...form, billingPhone: e.target.value })}
+                  placeholder="ex: 27996972230"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <p className="text-xs text-gray-400 mt-1">Número que receberá o lembrete de vencimento (5 dias antes).</p>
               </div>
               <button type="submit" disabled={creating}
                 className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-teal-400 text-white font-semibold py-2.5 rounded-lg transition text-sm flex items-center justify-center gap-2">

@@ -21,6 +21,7 @@ import { BulkMessageModule } from './bulk-message/bulk-message.module';
 import { MediaModule } from './media/media.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { AuthModule } from './auth/auth.module';
       }),
     }),
     AuthModule,
+    BillingModule,
     EvolutionModule,
     LeadsModule,
     CalendarModule,
