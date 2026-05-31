@@ -4,6 +4,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ScheduleModule } from '@nestjs/schedule';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { BillingReminderService } from './billing-reminder.service';
+import { BillingController } from './billing.controller';
 
 @Module({
   imports: [
@@ -12,5 +13,6 @@ import { BillingReminderService } from './billing-reminder.service';
     HttpModule,
   ],
   providers: [BillingReminderService],
+  controllers: [BillingController],
 })
 export class BillingModule {}

@@ -29,8 +29,11 @@ export class BillingReminderService {
       return;
     }
 
-    const senderConfig = await this.configRepo.findOne({ where: { id: senderTenantId } });
-    if (!senderConfig?.instanceToken) {
+    // BILLING_SENDER_TOKEN permite override direto (útil no dev sem DB prod)
+    const envToken = this.config.get<string>('BILLING_SENDER_TOKEN');
+    const senderConfig = envToken ? null : await this.configRepo.findOne({ where: { id: senderTenantId } });
+    const senderToken = envToken || senderConfig?.instanceToken || this.config.get<string>('UAZAPI_TOKEN') || '';
+    if (!senderToken) {
       this.logger.warn('[BILLING] Instância do admin não encontrada ou sem token');
       return;
     }
@@ -59,24 +62,26 @@ export class BillingReminderService {
         `Seu plano vence em *5 dias* (${dueDateFormatted}).\n\n` +
         `Entre em contato para renovar e manter seu acesso ao sistema. 🙏`;
 
-      await this.sendWhatsApp(tenant.billingPhone, message, senderConfig.instanceToken);
-      this.logger.log(`[BILLING] Lembrete enviado → ${tenant.billingPhone} (${clientName}, vence ${dueDateFormatted})`);
+      const sent = await this.sendWhatsApp(tenant.billingPhone, message, senderToken);
+      if (sent) this.logger.log(`[BILLING] Lembrete enviado → ${tenant.billingPhone} (${clientName}, vence ${dueDateFormatted})`);
     }
   }
 
-  private async sendWhatsApp(phone: string, text: string, token: string) {
+  private async sendWhatsApp(phone: string, text: string, token: string): Promise<boolean> {
     const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
     try {
       await firstValueFrom(
         this.http.post(
           `${baseUrl}/send/text`,
-          { number: phone, text, delay: 1000 },
+          { number: phone, text },
           { headers: { token } },
         ),
       );
+      return true;
     } catch (err) {
       const status = err?.response?.status ?? 'N/A';
       this.logger.error(`[BILLING] Falha ao enviar para ${phone} [HTTP ${status}]: ${err.message}`);
+      return false;
     }
   }
 }
