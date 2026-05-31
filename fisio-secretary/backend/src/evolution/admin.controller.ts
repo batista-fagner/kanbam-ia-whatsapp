@@ -60,10 +60,11 @@ export class AdminController {
     const result: any[] = [];
     for (const t of tenants) {
       const leadsCount = await this.leadsService.countByTenant(t.id);
-      const usersCount = await this.usersService.countByTenant(t.id);
+      const users = await this.usersService.findByTenant(t.id);
       result.push({
         id: t.id,
         displayName: t.displayName ?? t.profileName,
+        email: users[0]?.email ?? null,
         phone: t.phone,
         connected: t.connected,
         isActive: t.isActive,
@@ -72,7 +73,7 @@ export class AdminController {
         billingPhone: t.billingPhone,
         agentType: t.agentType,
         leadsCount,
-        usersCount,
+        usersCount: users.length,
       });
     }
     return result;

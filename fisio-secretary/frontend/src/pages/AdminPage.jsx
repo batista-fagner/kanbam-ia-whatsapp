@@ -141,6 +141,7 @@ export default function AdminPage() {
                   {!c.isActive && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">suspenso</span>}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
+                  {c.email && <span className="font-mono mr-2">{c.email}</span>}
                   {c.leadsCount} leads · {c.usersCount} usuário(s)
                   {c.phone ? ` · WA: ${c.phone}` : ''}
                 </div>
