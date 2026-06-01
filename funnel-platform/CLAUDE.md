@@ -9,9 +9,16 @@ Ads (Meta) → VSL (vídeo + pixel) → Formulário → Scoring → Email Automa
 ```
 
 **Tech Stack:**
-- Backend: NestJS 11, TypeORM, PostgreSQL (Supabase), Redis (Bull Queue)
+- Backend: NestJS 11, TypeORM, PostgreSQL (Supabase)
 - Frontend: React 18 + Vite + shadcn/ui + Tailwind
 - Integrações: Meta Ads API, Resend (email), uazapi (WhatsApp), RapidAPI (Instagram)
+
+**Infraestrutura (Produção — 2026-05-08):**
+- Backend: Railway → `https://zippy-friendship-production-cee4.up.railway.app`
+- leadscomia: Vercel → `https://leadscomia.vercel.app`
+- Banco: Supabase PostgreSQL (já em nuvem)
+- Webhook uazapi: `.../api/webhooks/uazapi` (não `/webhooks/whatsapp`)
+- Redis: NÃO implementado — menção no CLAUDE.md era planejamento futuro
 
 ---
 
@@ -186,16 +193,27 @@ Dashboard mostra todas as mensagens
 ```json
 {
   "name": "João Silva",
-  "email": "joao@email.com",
   "phone": "11999999999",
   "instagram": "joaosilva",
+  "revenue": "10k-30k",
   "fbclid": "IwAR...",
+  "fbc": "fb.1.1778264610786.IwAR...",
+  "fbp": "fb.1.1776713944686.322208632117177642",
+  "clickId": "uuid-gerado-automaticamente",
   "utmSource": "facebook",
   "utmMedium": "publico-frio",
   "utmCampaign": "janeiro-2025",
-  "utmContent": "ad-id-123"
+  "utmContent": "ad-id-123",
+  "userAgent": "Mozilla/5.0..."
 }
 ```
+
+**Tracking de anúncios — como configurar a URL no Meta Ads:**
+```
+URL de destino: https://leadscomia.vercel.app/
+Parâmetros:    utm_source=facebook&utm_medium=publico-frio&utm_campaign=lancamento-maio&utm_content=video-depoimento
+```
+O Meta adiciona `fbclid` automaticamente. O Pixel seta `_fbc` e `_fbp` nos cookies automaticamente.
 
 ### Status Geral
 **Implementado:**
@@ -241,12 +259,38 @@ Dashboard mostra todas as mensagens
   - Frontend: card "Follow-up com Stories" na página /leads com textarea editável + botão enviar
   - **RapidAPI fallback**: `/profile` → se 500 → tenta `/userInfo` automaticamente (backend e leadscomia)
   - leadscomia: `instagramApi.ts` também tem o mesmo fallback para o form da LP
+- ✅ **Deploy em produção (2026-05-08)**
+  - Backend no Railway (NestJS, porta dinâmica via `process.env.PORT`)
+  - leadscomia no Vercel
+  - Endpoint proxy `POST /api/instagram/profile` — leadscomia chama backend em vez de RapidAPI diretamente (evita CORS)
+  - Fix phone: Efraim normaliza 6 variantes (com/sem DDI 55, com/sem 9 extra) — `efraim.controller.ts`
+  - Faturamento (`revenueRange`) exibido na seção "Sobre o Lead" na página `/leads` com badge colorido
+  - Modal animada de análise no leadscomia com 4 etapas progressivas (`LeadForm.tsx`)
+  - Bullet "armadilha da indicação" adicionado na seção "O que você vai descobrir" em `Result.tsx`
 - ✅ **Facebook CAPI: Qualidade do evento aprimorada** (2026-04-24)
   - Novos parâmetros: fbp (cookie _fbp), external_id (lead UUID), client_ip_address, client_user_agent
   - Nota esperada: 6.9/10 → 8-9/10
   - leadscomia captura fbp do Meta Pixel cookie
   - Backend extrai clientIp de X-Forwarded-For header
   - Todos os parâmetros com hash adequado (fbc, em, ph, fn)
+- ✅ **Facebook CAPI: fix do cookie _fbc** (2026-05-08)
+  - Problema: `fbc` não estava sendo enviado ao Meta → nota de qualidade abaixo do esperado
+  - Fix: leadscomia captura cookie `_fbc` (setado pelo Meta Pixel quando vem de anúncio) e envia ao backend
+  - Backend prioriza o `_fbc` do browser (timestamp real do clique) sobre o `fbc` construído no servidor
+  - `fbc` adicionado ao `CaptureDto` no `forms.controller.ts`
+  - `sendLeadEvent` agora aceita `fbc` em extra e sobrescreve o construído a partir do fbclid
+  - Testado e validado em produção: `fbp` e `fbc` chegando no CAPI com IP real
+  - Nota esperada: 6.4/10 → 8-9/10
+- ✅ **Botão de remover lead com modal de confirmação** (2026-05-08)
+  - Ícone lixeira no canto superior direito do painel de detalhes do lead
+  - Abre modal de confirmação com nome do lead antes de deletar
+  - Endpoint `DELETE /leads/:id` adicionado no backend
+  - Lead é removido da lista após confirmação (sem precisar recarregar)
+  - Não aparece no lead demo (id = 'demo-lead-1')
+
+
+##  Obs:
+O front end desse projeto esta rodando local, logo a aprte do follow-up com stories, logo é necessario rodar o projeto local pra funcionar as features. O deploy em produção é apenas para a landing page leadscomia, que já está usando o backend hospedado no Railway.
 
 ### Integrações Instagram (app CRM-CLAUDE-IG)
 - **Token:** IGAAX — usa `graph.instagram.com` (NÃO `graph.facebook.com`)
@@ -464,8 +508,16 @@ agentMode = null          → Efraim padrão
 - [x] **Melhorar qualidade evento Facebook** — ✅ CONCLUÍDO em 2026-04-24 (6.9 → 8-9/10)
 - [ ] **Renovar token uazapi** — temporário (1h), precisa gerar novo quando expirar
 - [ ] **Otimizar prompt do follow-up de vídeo (Efraim)** — método `generateVideoFollowup()` em `efraim.service.ts`; ajustar tom, exemplo de nicho e CTA de confirmação para o evento
+- [x] **Humanizar mensagens de faturamento (Efraim)** — ✅ CONCLUÍDO em 2026-05-18
+  - Todas as faixas abrem com "Fala {nome}... Efraim aqui da equipe do Fagner"
+  - Cada faixa tem insight específico da dor antes de perguntar
+  - 100k-300k conecta com funil estruturado como alavanca de crescimento
+  - Stage "video" do Efraim agora usa mensagem genérica (sem prometer resolver o problema específico do lead)
+  - Arquivo: `backend/src/forms/forms.service.ts` método `sendRevenueMessage()`
 - [ ] **Integração Kiwify webhook** — POST /api/checkout/webhook pra marcar convertido via checkout
 - [ ] **Kanban board visual** — opcional, usa waStage para mostrar progresso dos leads
+- [ ] **Agente Pós-Imersão** — segundo agente WhatsApp com prompt de reengajamento; quando lead responde follow-up de stories, roteamento por `agentMode` no lead
+- [ ] **Reduzir imagem Docker** — trocar `puppeteer` por `puppeteer-core` + `@sparticuz/chromium` (~50MB vs 577MB atual)
 - [x] **Copy da landing page leadscomia (página inicial)** — ✅ CONCLUÍDO em 2026-04-26
   - `HeroContent.tsx`: título, subtítulo (em negrito) e bullets atualizados
   - `LeadForm.tsx`: título do box, subtítulo, botão e rodapé atualizados
@@ -494,4 +546,79 @@ agentMode = null          → Efraim padrão
 
 ---
 
-**Última atualização:** 2026-05-02 (Meta Pixel leadscomia ✅ | UX/copy leadscomia ✅ | Follow-up Stories + Visão ✅ | Fallback RapidAPI ✅)
+## 🔌 ConvertIQ — Chrome Extension Social Selling (2026-05-13)
+
+**Projeto separado:** `/Users/fagnerbatista/Documents/planningPsi/convertiq-extension/`
+**Plano completo:** `/Users/fagnerbatista/Documents/planningPsi/CONVERTIQ_PLAN.md`
+**Status:** Localhost (ainda não publicado na Chrome Web Store)
+
+### O que é
+Extensão Chrome para automação de social selling no Instagram. Side Panel fixo na lateral do browser. Captura e analisa seguidores automaticamente, salvando no pipeline para aquecimento e DM.
+
+### Stack
+- Chrome Extension Manifest V3
+- TypeScript + React 18 + Vite + `@crxjs/vite-plugin`
+- Tailwind CSS + Zustand
+- `chrome.storage.local` (persistência local)
+- `chrome.alarms` (ciclo a cada 1 min)
+- Content script injeta no Instagram
+
+### Arquitetura de comunicação
+```
+Side Panel (React UI)
+    ↕  chrome.runtime.connect() [long-lived port]
+Background Service Worker
+    ↕  chrome.tabs.sendMessage()
+Content Script (instagram.com)
+```
+
+### ✅ Implementado (Passo 1 + Passo 2 — base)
+- Side Panel fixo na lateral do Chrome com log ao vivo
+- Status badge (Rodando / Pausado) com dot animado
+- Stats bar: Qualificados / Descartados / Erros
+- Tabs: Log ao Vivo | Pipeline
+- Pipeline board mostrando perfis com: username, nome, bio, seguidores, posts, stories
+- Background service worker com `chrome.alarms` (1 min)
+- **Captura real de seguidores do `@fbatistaz`:**
+  - Navega para o perfil automaticamente
+  - Clica no link "seguidores" para abrir o modal (MouseEvent real para React)
+  - Scroll com detecção de elemento rolável via `computedStyle` + dispara evento `scroll` para lista virtualizada do Instagram
+  - Captura até 50 usernames novos por ciclo
+  - Para cada seguidor: entra no perfil, extrai bio/seguidores/posts/stories/privacidade
+  - QUALIF = conta aberta | FORA = conta privada
+  - Não reprocessa perfis já analisados (persiste em `chrome.storage.local`)
+- Botão Pausar interrompe o ciclo imediatamente
+- Logs de debug `[ConvertIQ]` no console do Instagram para diagnóstico
+
+### Como rodar (desenvolvimento)
+```bash
+cd /Users/fagnerbatista/Documents/planningPsi/convertiq-extension
+npm run build        # build único
+npm run dev          # watch mode (rebuild automático)
+```
+Carregar no Chrome: `chrome://extensions` → Modo desenvolvedor → "Carregar sem compactação" → pasta `dist/`
+
+### ⚠️ Pendências ConvertIQ
+
+| Passo | Feature | Descrição |
+|-------|---------|-----------|
+| 3 | **Qualificação ICP via IA** | GPT-4o-mini lê bio + nome e classifica como ICP ou não, com prompt customizável |
+| 4 | **Ações de aquecimento** | Curtir post recente, ver story — simula comportamento humano |
+| 5 | **DM automático** | Envia DM com template personalizável para perfis QUALIF |
+| 6 | **Pipeline Kanban visual** | Arrastar entre stages (QUALIF / PROCESSO / FORA / ERRO) |
+| 7 | **"Precisam de você"** | Fila de ações que precisam aprovação manual antes de executar |
+| 8 | **Integração fisio-secretary** | Sync de leads qualificados para backend via JWT/API Key |
+| 9 | **Publicar na Chrome Web Store** | Empacotar e publicar para uso além do localhost |
+| 10 | **Prospecção ativa** | Buscar seguidores de outros perfis (não só quem segue @fbatistaz) |
+
+### Notas técnicas importantes
+- Instagram usa lista virtualizada → precisa `dispatchEvent(new Event('scroll'))` após `scrollTop +=`
+- O clique no link de seguidores precisa de `MouseEvent` real (mousedown + mouseup + click) pois Instagram usa React
+- `chrome.tabs.query({ url: 'https://www.instagram.com/*' })` encontra a aba ativa do usuário — NÃO abre nova aba
+- Delays aleatórios 4-8s entre perfis + 1.2-1.8s entre scrolls para simular humano
+- Todo o fluxo atual é **zero custo de API** — só scraping DOM
+- Custo de IA entra apenas no Passo 3 (~$0.0001 por perfil com GPT-4o-mini)
+
+---
+
+**Última atualização:** 2026-05-13 (ConvertIQ Chrome Extension — Passos 1+2 funcionando ✅ | Captura real de seguidores @fbatistaz ✅)
