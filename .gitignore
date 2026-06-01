@@ -1,3 +1,8 @@
+# Projetos com repo próprio
+funnel-platform/
+convertiq-extension/
+converthair/
+
 # Env
 .env
 .env.*
