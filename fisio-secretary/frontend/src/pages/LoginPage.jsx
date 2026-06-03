@@ -29,8 +29,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
 
         {/* Logo / Brand */}
-        <div className="text-center mb-8">
-          <img src={logo} alt="Convert Hair" className="h-20 mx-auto mb-2 object-contain" />
+        <div className="text-center mb-4">
+          <img src={logo} alt="Convert Hair" className="h-16 mx-auto object-contain" />
           <p className="text-gray-500 text-sm mt-1">Plataforma de gestão de leads</p>
         </div>
 
