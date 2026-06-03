@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Stethoscope, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Scissors, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function Layout({ onLogout }) {
@@ -34,9 +34,9 @@ export default function Layout({ onLogout }) {
           {!collapsed && (
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 bg-pink-600 rounded flex items-center justify-center">
-                <Stethoscope className="w-3 h-3 text-white" />
+                <Scissors className="w-3 h-3 text-white" />
               </div>
-              <span className="text-xs font-bold text-gray-800">Lindona</span>
+              <span className="text-xs font-bold text-gray-800">Convert Hair</span>
             </div>
           )}
           <button
