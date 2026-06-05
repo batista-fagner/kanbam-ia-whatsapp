@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
-import logo from '../assets/logo.png'
+import logo from '../assets/logo_hair.png'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
