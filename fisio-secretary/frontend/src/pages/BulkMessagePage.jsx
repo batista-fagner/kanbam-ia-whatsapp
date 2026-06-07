@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, CheckCircle, AlertCircle, Loader2, History, StopCircle, PlayCircle, Trash2, RefreshCw, X, Eye } from 'lucide-react'
 import { getLeads, sendBulkMessage, getCampaigns, getCampaignMessages, controlCampaign } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
-const STAGES = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'desliza_hair', 'perdido']
+const WENDEL_TENANT_ID = '2c562828-0fe9-43c8-bad0-77a931968afc'
+const BASE_STAGES = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'perdido']
 const TEMPERATURES = ['quente', 'morno', 'frio']
 
 // Variáveis disponíveis por modo
@@ -29,6 +31,10 @@ const STATUS_CONFIG = {
 }
 
 export default function BulkMessagePage() {
+  const { user } = useAuth()
+  const STAGES = user?.tenantId === WENDEL_TENANT_ID
+    ? [...BASE_STAGES.slice(0, -1), 'desliza_hair', BASE_STAGES[BASE_STAGES.length - 1]]
+    : BASE_STAGES
   const [activeTab, setActiveTab] = useState('manual')
   const [manualNumbers, setManualNumbers] = useState('')
   const [message, setMessage] = useState('')

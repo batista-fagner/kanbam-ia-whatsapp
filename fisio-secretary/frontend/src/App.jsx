@@ -10,6 +10,8 @@ import DeletedLeadsPage from './pages/DeletedLeadsPage'
 import DashboardPage from './pages/DashboardPage'
 import AlertRulesPage from './pages/AlertRulesPage'
 import AdminPage from './pages/AdminPage'
+import CheckoutPage from './pages/CheckoutPage'
+import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
 import Layout from './components/Layout'
 
 function Routing() {
@@ -26,6 +28,9 @@ function Routing() {
 
   return (
     <Routes>
+      {/* Rotas públicas (checkout) — fora do guard de autenticação */}
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}

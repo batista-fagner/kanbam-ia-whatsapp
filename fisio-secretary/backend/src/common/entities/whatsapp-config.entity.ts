@@ -56,6 +56,25 @@ export class WhatsappConfig {
   @Column({ name: 'billing_phone', type: 'varchar', nullable: true })
   billingPhone: string | null;
 
+  // --- Pagamento Stripe (D2) ---
+  @Column({ name: 'stripe_customer_id', type: 'varchar', nullable: true })
+  stripeCustomerId: string | null;
+
+  @Column({ name: 'stripe_subscription_id', type: 'varchar', nullable: true })
+  stripeSubscriptionId: string | null;
+
+  // 'manual' (legado/sem Stripe) | 'card' (subscription) | 'pix' (Stripe PIX mensal)
+  @Column({ name: 'payment_method', type: 'varchar', default: 'manual' })
+  paymentMethod: string;
+
+  // 'active' | 'past_due' | 'pending' | 'canceled'
+  @Column({ name: 'plan_status', type: 'varchar', default: 'active' })
+  planStatus: string;
+
+  // Data do último PIX enviado — evita reenvio no mesmo dia
+  @Column({ name: 'last_pix_sent_at', type: 'date', nullable: true })
+  lastPixSentAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

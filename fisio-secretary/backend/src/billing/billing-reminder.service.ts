@@ -6,8 +6,10 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
+import { PaymentsService } from '../payments/payments.service';
 
 const TZ = 'America/Sao_Paulo';
+const MS_DAY = 86400000;
 
 @Injectable()
 export class BillingReminderService {
@@ -18,24 +20,18 @@ export class BillingReminderService {
     private readonly configRepo: Repository<WhatsappConfig>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
+    private readonly payments: PaymentsService,
   ) {}
 
-  // Roda todo dia às 9h (Brasília). Envia lembrete para clientes cujo vencimento
-  // é daqui a 5 dias (calculado a partir do billingDay fixo mensal).
+  // Roda todo dia às 9h (Brasília). Trata cobrança conforme o método do cliente:
+  //  - 'pix'    → gera/reenvia QR PIX (Stripe) na janela de 5 dias antes até o vencimento
+  //  - 'manual' → lembrete de texto exatamente 5 dias antes (legado, sem Stripe)
+  //  - 'card'   → nada (cobrança recorrente automática no cartão)
   @Cron('0 9 * * *', { timeZone: TZ })
   async sendPaymentReminders() {
-    const senderTenantId = this.config.get<string>('BILLING_SENDER_TENANT_ID');
-    if (!senderTenantId) {
-      this.logger.warn('[BILLING] BILLING_SENDER_TENANT_ID não configurado — job ignorado');
-      return;
-    }
-
-    // BILLING_SENDER_TOKEN permite override direto (útil no dev sem DB prod)
-    const envToken = this.config.get<string>('BILLING_SENDER_TOKEN');
-    const senderConfig = envToken ? null : await this.configRepo.findOne({ where: { id: senderTenantId } });
-    const senderToken = envToken || senderConfig?.instanceToken || this.config.get<string>('UAZAPI_TOKEN') || '';
+    const senderToken = await this.resolveSenderToken();
     if (!senderToken) {
-      this.logger.warn('[BILLING] Instância do admin não encontrada ou sem token');
+      this.logger.warn('[BILLING] Sem token de remetente — job ignorado');
       return;
     }
 
@@ -44,53 +40,110 @@ export class BillingReminderService {
     });
 
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
-    const todayDay = now.getDate();
-    const todayMonth = now.getMonth();
-    const todayYear = now.getFullYear();
 
     for (const tenant of tenants) {
-      if (!tenant.billingPhone || !tenant.billingDay) continue;
+      try {
+        if (!tenant.billingPhone || !tenant.billingDay) continue;
 
-      // Próxima data de vencimento: este mês se ainda não passou, senão próximo mês
-      const lastDayThis = new Date(todayYear, todayMonth + 1, 0).getDate();
-      const dayThis = Math.min(tenant.billingDay, lastDayThis);
-      let billingDate = new Date(todayYear, todayMonth, dayThis);
-      if (billingDate.getTime() <= now.getTime()) {
-        const lastDayNext = new Date(todayYear, todayMonth + 2, 0).getDate();
-        billingDate = new Date(todayYear, todayMonth + 1, Math.min(tenant.billingDay, lastDayNext));
+        const dueDate = this.computeDue(tenant.billingDay, now, /* strictlyAfter */ false);
+        const daysBefore = this.daysBetween(now, dueDate);
+
+        if (tenant.paymentMethod === 'pix') {
+          await this.handlePixCycle(tenant, now, daysBefore);
+        } else if (tenant.paymentMethod === 'card') {
+          // cobrança automática — nada a fazer aqui
+        } else {
+          // 'manual' (legado): lembrete em texto 5 dias antes
+          if (daysBefore === 5) {
+            const msg = this.buildManualReminder(tenant, dueDate);
+            const sent = await this.sendWhatsApp(tenant.billingPhone, msg, senderToken);
+            if (sent) this.logger.log(`[BILLING] Lembrete (manual) enviado → ${tenant.billingPhone} (${tenant.displayName ?? 'Cliente'})`);
+          }
+        }
+      } catch (err) {
+        this.logger.error(`[BILLING] Erro ao processar tenant ${tenant.id}: ${err.message}`);
       }
-
-      // Lembrete = 5 dias antes do vencimento
-      const reminderDate = new Date(billingDate.getTime() - 5 * 86400000);
-
-      if (
-        reminderDate.getDate() !== todayDay ||
-        reminderDate.getMonth() !== todayMonth ||
-        reminderDate.getFullYear() !== todayYear
-      ) continue;
-
-      const clientName = tenant.displayName || tenant.profileName || 'Cliente';
-      const dueDateFormatted = billingDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-      const message =
-        `Olá, ${clientName}! 👋\n\n` +
-        `Seu plano vence em *5 dias* (${dueDateFormatted}).\n\n` +
-        `Entre em contato para renovar e manter seu acesso ao sistema. 🙏`;
-
-      const sent = await this.sendWhatsApp(tenant.billingPhone, message, senderToken);
-      if (sent) this.logger.log(`[BILLING] Lembrete enviado → ${tenant.billingPhone} (${clientName}, vence dia ${tenant.billingDay})`);
     }
+  }
+
+  // Janela PIX: 0..5 dias antes do vencimento. Reenvia diariamente até pagar (webhook → 'active').
+  private async handlePixCycle(tenant: WhatsappConfig, now: Date, daysBefore: number) {
+    if (daysBefore < 0 || daysBefore > 5) return;
+
+    const recentlyBilled = tenant.lastPixSentAt && this.daysBetween(new Date(tenant.lastPixSentAt), now) <= 6;
+    const alreadyPaidThisCycle = tenant.planStatus === 'active' && recentlyBilled;
+
+    if (!alreadyPaidThisCycle) {
+      if (!this.isSameDay(tenant.lastPixSentAt, now)) {
+        await this.payments.generateAndSendMonthlyPix(tenant); // grava lastPixSentAt
+      }
+      if (tenant.planStatus === 'active') {
+        tenant.planStatus = 'pending';
+        await this.configRepo.save(tenant);
+      }
+    }
+
+    // Dia do vencimento sem pagamento confirmado → alerta no painel (sem bloquear)
+    if (daysBefore === 0 && tenant.planStatus !== 'active') {
+      tenant.planStatus = 'past_due';
+      await this.configRepo.save(tenant);
+      this.logger.warn(`[BILLING] PIX não pago no vencimento → tenant ${tenant.id} marcado past_due`);
+    }
+  }
+
+  private buildManualReminder(tenant: WhatsappConfig, dueDate: Date): string {
+    const clientName = tenant.displayName || tenant.profileName || 'Cliente';
+    const due = dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return (
+      `Olá, ${clientName}! 👋\n\n` +
+      `Seu plano vence em *5 dias* (${due}).\n\n` +
+      `Entre em contato para renovar e manter seu acesso ao sistema. 🙏`
+    );
+  }
+
+  // ───────────────────────── helpers de data ─────────────────────────
+
+  // Próximo vencimento. strictlyAfter=false → o próprio dia de hoje conta como vencimento (daysBefore=0).
+  private computeDue(billingDay: number, now: Date, strictlyAfter: boolean): Date {
+    const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+    const lastThis = new Date(y, m + 1, 0).getDate();
+    const dayThis = Math.min(billingDay, lastThis);
+    const cond = strictlyAfter ? dayThis > d : dayThis >= d;
+    if (cond) return new Date(y, m, dayThis);
+    const lastNext = new Date(y, m + 2, 0).getDate();
+    return new Date(y, m + 1, Math.min(billingDay, lastNext));
+  }
+
+  private daysBetween(from: Date, to: Date): number {
+    const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+    const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+    return Math.round((b - a) / MS_DAY);
+  }
+
+  private isSameDay(a: Date | null | undefined, b: Date): boolean {
+    if (!a) return false;
+    const d = new Date(a);
+    return d.getFullYear() === b.getFullYear() && d.getMonth() === b.getMonth() && d.getDate() === b.getDate();
+  }
+
+  // ───────────────────────── envio WhatsApp ─────────────────────────
+
+  private async resolveSenderToken(): Promise<string> {
+    const envToken = this.config.get<string>('BILLING_SENDER_TOKEN');
+    if (envToken) return envToken;
+    const senderTenantId = this.config.get<string>('BILLING_SENDER_TENANT_ID');
+    if (senderTenantId) {
+      const sc = await this.configRepo.findOne({ where: { id: senderTenantId } });
+      if (sc?.instanceToken) return sc.instanceToken;
+    }
+    return this.config.get<string>('UAZAPI_TOKEN') ?? '';
   }
 
   private async sendWhatsApp(phone: string, text: string, token: string): Promise<boolean> {
     const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
     try {
       await firstValueFrom(
-        this.http.post(
-          `${baseUrl}/send/text`,
-          { number: phone, text },
-          { headers: { token } },
-        ),
+        this.http.post(`${baseUrl}/send/text`, { number: phone, text }, { headers: { token } }),
       );
       return true;
     } catch (err) {

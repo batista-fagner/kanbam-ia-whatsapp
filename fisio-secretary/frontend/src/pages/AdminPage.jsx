@@ -111,6 +111,14 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Alerta de PIX em atraso — admin decide bloquear manualmente */}
+      {clients.filter(c => c.planStatus === 'past_due').length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-3 rounded-xl mb-4 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {clients.filter(c => c.planStatus === 'past_due').length} cliente(s) com pagamento PIX em atraso — revise e suspenda manualmente se necessário.
+        </div>
+      )}
+
       {/* Credenciais recém-criadas — repassar ao cliente */}
       {created && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
@@ -139,6 +147,8 @@ export default function AdminPage() {
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-600"><Wifi className="w-3 h-3" /> conectado</span>
                     : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><WifiOff className="w-3 h-3" /> desconectado</span>}
                   {!c.isActive && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">suspenso</span>}
+                  {c.planStatus === 'past_due' && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">PIX em atraso</span>}
+                  {c.paymentMethod && c.paymentMethod !== 'manual' && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{c.paymentMethod === 'card' ? '💳 cartão' : '⚡ pix'}</span>}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
                   {c.email && <span className="font-mono mr-2">{c.email}</span>}

@@ -72,6 +72,8 @@ export class AdminController {
         billingDay: t.billingDay,
         billingPhone: t.billingPhone,
         agentType: t.agentType,
+        paymentMethod: t.paymentMethod,
+        planStatus: t.planStatus,
         leadsCount,
         usersCount: users.length,
       });

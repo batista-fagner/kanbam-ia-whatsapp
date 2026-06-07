@@ -912,6 +912,115 @@ if (normalTags.length > 0) {
 
 ---
 
+## ✅ Follow-up Agendado por Lead (FEITO 07/06/2026, validado no DEV)
+
+**Objetivo:** o operador agenda uma mensagem de reengajamento para um lead específico, com o tempo definido por ele (1h / 4h / 24h). Pode digitar a mensagem ou pedir pra IA gerar baseada na conversa daquela sessão; revisa/aprova e agenda.
+
+**⚠️ Diferente do "Follow-up Automático de 7 Dias" (cadência por cron, ainda pendente):** este é **manual, 1 mensagem por vez, por lead**, disparado pelo operador no modal do Kanban.
+
+**Fluxo:**
+```
+Operador abre o lead (LeadModal) → seção "Follow-up agendado"
+  → digita a mensagem OU clica "Gerar com IA"
+      (POST /followups/generate → IA lê a conversa → sugere texto)
+  → revisa/edita o texto
+  → escolhe o tempo (1h / 4h / 24h)
+  → "Agendar envio" (POST /followups { leadId, message, delayHours })
+  → cron (a cada minuto) envia quando scheduledAt <= agora
+  → mensagem salva na conversa (sender=operator) + lead atualizado no kanban (gateway)
+```
+
+**LLM da geração:** `gemini-2.5-flash-lite` (mais barato que o `gemini-2.5-flash` da Lindona). Cliente dedicado `liteClient` no `AiService` (só ativa com `GEMINI_API_KEY`; cai pro pool principal se ausente). Método `AiService.generateFollowupSuggestion(leadName, transcript)` — retorna **texto puro** (sem JSON), `reasoning_effort: 'none'`, usa as últimas 30 mensagens da conversa como transcript. NÃO inventa preço/data.
+
+**Backend (`backend/src/followup/`):**
+- `Followup` entity (tabela `followups`): `tenant_id`, `lead_id`, `phone`, `message`, `scheduled_at`, `status` (pending|sent|canceled|failed), `source` (manual|ai), `sent_at`, `error`. Índice `(status, scheduled_at)`.
+- `FollowupService`:
+  - `generateSuggestion(leadId, tenantId)` → carrega conversa → `aiService.generateFollowupSuggestion`
+  - `schedule(leadId, tenantId, message, delayHours)` → valida delay ∈ {1,4,24} → `scheduledAt = now + delayHours*1h`
+  - `listForLead` / `cancel`
+  - `@Cron(EVERY_MINUTE) processDue()` → envia vencidos via uazapi `/send/text` (token do tenant via `WhatsappConfig.instanceToken`, fallback `UAZAPI_TOKEN`), salva msg + emite gateway, marca `sent`/`failed`
+- `FollowupController` (`@UseGuards(JwtAuthGuard)`, scopado por `@CurrentUser('tenantId')`): `POST /followups/generate`, `POST /followups`, `GET /followups/lead/:leadId`, `DELETE /followups/:id`
+- `FollowupModule` registrado no `app.module.ts`; entity + migration `CreateFollowups1780300000000` registradas
+- Migration aplicada no DEV ✅ (tabela criada, estrutura conferida)
+
+**Frontend:**
+- `api.js`: `generateFollowup`, `scheduleFollowup`, `getFollowups`, `cancelFollowup`
+- `LeadModal.jsx` → seção "Follow-up agendado" (coluna esquerda): lista de pendentes (data + preview + cancelar), textarea, botão "Gerar com IA" (roxo, com loader), seletor 1h/4h/24h, botão "Agendar envio". Build OK.
+
+**Validado no DEV:** backend compila, frontend builda, migration aplicada, rotas registradas (401 sem token), nome do modelo válido (429 = throttle do free-tier, não 404). **Geração ao vivo não testada** — cota diária do Gemini free-tier (dev) esgotada; em prod o key tem billing.
+
+**⏳ Pendências menores:** (1) se a chamada lite falhar de forma persistente, hoje a geração só lança erro (front degrada pra digitação manual) — avaliar fallback pro pool principal; (2) não há reagendamento automático de follow-up `failed`.
+
+---
+
+## ⏳ D2) Pagamento — Stripe Cartão + Efí Bank PIX (EM DESENVOLVIMENTO — 04/06/2026)
+
+**Objetivo:** checkout público (cartão recorrente + PIX mensal) para criar contas SaaS automaticamente.
+
+**Stack escolhido:**
+- **Cartão:** Stripe Checkout Sessions (subscription mode) — R$ 310/mês recorrente
+- **PIX:** Efí Bank (ex-Gerencianet) — PIX Automático + PIX pela API (QR dinâmico)
+
+**Decisão: Efí Bank escolhido como provider de PIX**
+- **Alternativas exploradas:**
+  - InfinitePay: simples, mas sem dados de cliente → descartado
+  - uazapi `/send/pix-button`: só funciona se webhook confirmar pagamento → uazapi não suporta webhook de PIX → descartado
+  - Efí Bank: **mais profissional, API completa, webhook confiável** → ESCOLHIDO
+- **Por que Efí Bank:**
+  - PIX pela API: gera QR code + código PIX via REST API (R$ 0,0119 por transação = 1,19%)
+  - PIX Automático: cobrança recorrente tokenizada (cliente autoriza UMA VEZ, Efí cobra automaticamente cada mês)
+  - Webhook robusto: confirma pagamento em tempo real
+  - Documentação excelente, muito usado por devs brasileiros
+  - Integração modular com uazapi: lembrete WhatsApp 5 dias antes (`/send/pix-button` ou link InfinitePay)
+
+**Arquitetura (quando implementar):**
+```
+Checkout novo cliente:
+  → formulário (nome/email/WhatsApp)
+  → escolhe cartão → Stripe Session → paga → webhook → cria conta + envia credenciais WhatsApp
+  → escolhe PIX → Efí Bank (QR) → paga → webhook → cria conta + envia credenciais WhatsApp
+
+Renovação mensal (cliente existente):
+  → BillingReminderService cron (9h, dia -5 do vencimento)
+  → Chama Efí Bank para gerar novo PIX Automático
+  → Envia `/send/pix-button` (via uazapi) para o billingPhone
+  → Cliente clica → vê PIX → escaneia/copia → paga
+  → Efí webhook confirma → set planStatus='active'
+```
+
+**Campos no banco (`whatsapp_config`):**
+- `stripe_customer_id`, `stripe_subscription_id` (cartão)
+- `payment_method` = 'card'|'pix'|'manual'
+- `plan_status` = 'active'|'past_due'|'pending'|'canceled'
+- `last_pix_sent_at` (evita reenvio no mesmo dia)
+
+**Credenciais Efí Bank (preencher quando tiver):**
+```
+EFI_CLIENT_ID=...
+EFI_CLIENT_SECRET=...
+EFI_CERTIFICATE_PATH=... (mTLS)
+```
+
+**Status do código (06/06/2026):**
+- ✅ Stripe cartão — checkout completo em dev
+- ✅ `PaymentsService.createEfiPixQrCode()` — scaffolding pronto (método + endpoints esperados comentados)
+- ✅ `PaymentsService.handleEfiWebhook()` — webhook pronto (recebe confirmações)
+- ✅ `PaymentsController` — rota `/webhooks/efi` adicionada
+- ✅ `generateAndSendMonthlyPix()` — adaptado para enviar PIX real (com fallback a texto)
+- ✅ `.env.development` — `EFI_CLIENT_ID` e `EFI_CLIENT_SECRET` adicionados (vazios)
+- ⏳ Credenciais Efí Bank: **em avaliação, aprovação prevista 07/06**
+
+**Próximos passos (quando aprovado amanhã):**
+1. Preencher `EFI_CLIENT_ID` e `EFI_CLIENT_SECRET` no `.env.development`
+2. Obter documentação real da API Efí Bank
+3. Adaptar endpoints em `createEfiPixQrCode()` (linha ~140) conforme doc
+4. Adaptar formato do webhook em `handleEfiWebhook()` (linha ~164) conforme doc
+5. Testar checkout PIX → geração de QR → webhook → account criada
+6. Commit da integração completa
+7. Testar renovação mensal: `-5 dias` → gera PIX → envia via WhatsApp → cliente paga
+
+---
+
 ## Pendências Futuras
 
 ### 0. Envio de Vídeo na Conversa com a IA

@@ -9,7 +9,8 @@ import {
 } from '@dnd-kit/core'
 import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X } from 'lucide-react'
 
-import { COLUMNS } from '../data/mockData'
+import { getColumns } from '../data/mockData'
+import { useAuth } from '../context/AuthContext'
 import { useLeads } from '../hooks/useLeads'
 import { updateStage, deleteLead } from '../services/api'
 import KanbanColumn from '../components/KanbanColumn'
@@ -18,6 +19,8 @@ import LeadModal from '../components/LeadModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 export default function KanbanPage() {
+  const { user } = useAuth()
+  const COLUMNS = getColumns(user?.tenantId)
   const { leads, setLeads, loading } = useLeads()
   const [activeId, setActiveId] = useState(null)
   const [selectedLead, setSelectedLead] = useState(null)

@@ -1,12 +1,27 @@
-export const COLUMNS = [
+// Tenant do Wendel (Cabelô) — única conta com a raia exclusiva Desliza Hair
+const WENDEL_TENANT_ID = '2c562828-0fe9-43c8-bad0-77a931968afc'
+
+const BASE_COLUMNS = [
   { id: 'novo_lead',     label: 'Novo Lead',             emoji: '🆕', bg: 'bg-blue-500',   light: 'bg-blue-50',   border: 'border-blue-200' },
   { id: 'lead_frio',     label: 'Lead Frio',             emoji: '🧊', bg: 'bg-sky-500',    light: 'bg-sky-50',    border: 'border-sky-200' },
   { id: 'lead_quente',   label: 'Lead Quente',           emoji: '🔥', bg: 'bg-orange-500', light: 'bg-orange-50', border: 'border-orange-200' },
   { id: 'agendado',      label: 'Agendado / Prometeu Vir', emoji: '📅', bg: 'bg-teal-500', light: 'bg-teal-50',   border: 'border-teal-200' },
   { id: 'vendas',        label: 'Vendas',                emoji: '💰', bg: 'bg-green-500',  light: 'bg-green-50',  border: 'border-green-200' },
-  { id: 'desliza_hair',  label: 'Desliza Hair',          emoji: '💆', bg: 'bg-violet-500', light: 'bg-violet-50', border: 'border-violet-200' },
   { id: 'perdido',       label: 'Lead Perdida',          emoji: '❌', bg: 'bg-slate-400',  light: 'bg-slate-50',  border: 'border-slate-200' },
 ]
+
+const DESLIZA_HAIR_COLUMN = { id: 'desliza_hair', label: 'Desliza Hair', emoji: '💆', bg: 'bg-violet-500', light: 'bg-violet-50', border: 'border-violet-200' }
+
+export function getColumns(tenantId) {
+  if (tenantId === WENDEL_TENANT_ID) {
+    // Insere Desliza Hair antes de "perdido"
+    return [...BASE_COLUMNS.slice(0, -1), DESLIZA_HAIR_COLUMN, BASE_COLUMNS[BASE_COLUMNS.length - 1]]
+  }
+  return BASE_COLUMNS
+}
+
+// Mantém COLUMNS como fallback (sem Desliza Hair) para imports que não têm tenantId
+export const COLUMNS = BASE_COLUMNS
 
 export const initialLeads = [
   {

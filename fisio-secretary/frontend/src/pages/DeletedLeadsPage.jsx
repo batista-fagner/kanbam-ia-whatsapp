@@ -8,8 +8,8 @@ const STAGE_LABELS = {
   lead_quente:  'Lead Quente',
   agendado:     'Agendado / Prometeu Vir',
   vendas:       'Vendas',
-  desliza_hair: 'Desliza Hair',
   perdido:      'Lead Perdida',
+  desliza_hair: 'Desliza Hair', // exclusivo Wendel
 }
 
 function formatDate(iso) {

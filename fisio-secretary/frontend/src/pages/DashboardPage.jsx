@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import { BarChart2, Users, Target, TrendingDown, CheckCircle2, Clock, RefreshCw, Flame, MessageCircle, X, Calendar, MessageSquareWarning } from 'lucide-react'
 import { getDashboard } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
-const STAGE_CONFIG = [
+const WENDEL_TENANT_ID = '2c562828-0fe9-43c8-bad0-77a931968afc'
+
+const BASE_STAGE_CONFIG = [
   { id: 'novo_lead',    label: 'Novo Lead',             color: 'bg-blue-50 text-blue-700 border-blue-200' },
   { id: 'lead_frio',    label: 'Lead Frio',             color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
   { id: 'lead_quente',  label: 'Lead Quente',           color: 'bg-orange-50 text-orange-700 border-orange-200' },
   { id: 'agendado',     label: 'Agendado / Prometeu',   color: 'bg-teal-50 text-teal-700 border-teal-200' },
   { id: 'vendas',       label: 'Vendas',                color: 'bg-green-50 text-green-700 border-green-200' },
-  { id: 'desliza_hair', label: 'Desliza Hair',          color: 'bg-violet-50 text-violet-700 border-violet-200' },
   { id: 'perdido',      label: 'Perdida',               color: 'bg-red-50 text-red-700 border-red-200' },
 ]
+const DESLIZA_STAGE = { id: 'desliza_hair', label: 'Desliza Hair', color: 'bg-violet-50 text-violet-700 border-violet-200' }
 
 const PERIODS = [
   { id: '7',   label: '7 dias' },
@@ -32,6 +35,10 @@ const STAGE_COLOR = {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const STAGE_CONFIG = user?.tenantId === WENDEL_TENANT_ID
+    ? [...BASE_STAGE_CONFIG.slice(0, -1), DESLIZA_STAGE, BASE_STAGE_CONFIG[BASE_STAGE_CONFIG.length - 1]]
+    : BASE_STAGE_CONFIG
   const [period, setPeriod] = useState('30')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)

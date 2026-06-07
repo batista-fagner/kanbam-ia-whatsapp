@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2 } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup } from '../services/api'
 
 const labelColor = {
   inativo:          'bg-red-100 text-red-600 border-red-200',
@@ -26,8 +26,8 @@ const stageLabel   = {
   lead_quente:  'Lead Quente',
   agendado:     'Agendado / Prometeu Vir',
   vendas:       'Vendas',
-  desliza_hair: 'Desliza Hair',
   perdido:      'Lead Perdida',
+  desliza_hair: 'Desliza Hair', // exclusivo Wendel
 }
 
 function formatTime(dateStr) {
@@ -65,17 +65,26 @@ export default function LeadModal({ lead, onClose }) {
   const [observations, setObservations] = useState(lead?.observations ?? '')
   const [obsStatus, setObsStatus] = useState('idle') // 'idle' | 'saving' | 'saved'
   const obsInitialRef = useRef(lead?.observations ?? '')
+  // Follow-up agendado
+  const [followups, setFollowups] = useState([])
+  const [fuText, setFuText] = useState('')
+  const [fuDelay, setFuDelay] = useState(24) // horas: 1 | 4 | 24
+  const [fuGenerating, setFuGenerating] = useState(false)
+  const [fuScheduling, setFuScheduling] = useState(false)
 
   useEffect(() => {
     if (!lead) return
     setObservations(lead.observations ?? '')
     obsInitialRef.current = lead.observations ?? ''
     setObsStatus('idle')
+    setFuText('')
+    setFuDelay(24)
     getConversation(lead.id).then(conv => {
       setMessages(mapMessages(conv?.messages))
       setAiEnabled(conv?.aiEnabled ?? true)
     })
     getHistory(lead.id).then(h => setHistory(mapHistory(h)))
+    getFollowups(lead.id).then(setFollowups).catch(() => setFollowups([]))
   }, [lead])
 
   useEffect(() => {
@@ -109,6 +118,42 @@ export default function LeadModal({ lead, onClose }) {
       setTimeout(() => setObsStatus('idle'), 2000)
     } catch {
       setObsStatus('idle')
+    }
+  }
+
+  async function handleGenerateFollowup() {
+    if (fuGenerating) return
+    setFuGenerating(true)
+    try {
+      const { text } = await generateFollowup(lead.id)
+      setFuText(text ?? '')
+    } catch {
+      // silencioso — operador pode digitar manualmente
+    } finally {
+      setFuGenerating(false)
+    }
+  }
+
+  async function handleScheduleFollowup() {
+    if (!fuText.trim() || fuScheduling) return
+    setFuScheduling(true)
+    try {
+      const created = await scheduleFollowup(lead.id, fuText.trim(), fuDelay)
+      setFollowups(prev => [...prev, created])
+      setFuText('')
+    } catch {
+      // mantém o texto pro operador tentar de novo
+    } finally {
+      setFuScheduling(false)
+    }
+  }
+
+  async function handleCancelFollowup(id) {
+    setFollowups(prev => prev.filter(f => f.id !== id))
+    try {
+      await cancelFollowup(id)
+    } catch {
+      getFollowups(lead.id).then(setFollowups).catch(() => {})
     }
   }
 
@@ -327,6 +372,80 @@ export default function LeadModal({ lead, onClose }) {
                   rows={4}
                   className="w-full text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none placeholder:text-amber-400/70 text-gray-700"
                 />
+              </div>
+
+              {/* Follow-up agendado */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Follow-up agendado
+                </p>
+
+                {/* Pendentes */}
+                {followups.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {followups.map(f => (
+                      <div key={f.id} className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-purple-700 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {new Date(f.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{f.message}</p>
+                        </div>
+                        <button
+                          onClick={() => handleCancelFollowup(f.id)}
+                          className="text-purple-400 hover:text-red-500 transition shrink-0"
+                          title="Cancelar follow-up"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Composer */}
+                <textarea
+                  value={fuText}
+                  onChange={e => setFuText(e.target.value)}
+                  placeholder="Mensagem do follow-up (digite ou gere com a IA)..."
+                  rows={3}
+                  className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none text-gray-700"
+                />
+
+                <button
+                  onClick={handleGenerateFollowup}
+                  disabled={fuGenerating}
+                  className="mt-1.5 w-full flex items-center justify-center gap-1.5 text-xs font-medium text-purple-600 hover:text-purple-700 border border-purple-200 hover:bg-purple-50 rounded-lg py-2 transition disabled:opacity-50"
+                >
+                  {fuGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {fuGenerating ? 'Gerando...' : 'Gerar com IA'}
+                </button>
+
+                {/* Tempo */}
+                <div className="flex items-center gap-1.5 mt-2">
+                  {[{ h: 1, l: '1h' }, { h: 4, l: '4h' }, { h: 24, l: '24h' }].map(opt => (
+                    <button
+                      key={opt.h}
+                      onClick={() => setFuDelay(opt.h)}
+                      className={`flex-1 text-xs font-semibold py-1.5 rounded-lg border transition ${
+                        fuDelay === opt.h
+                          ? 'bg-purple-600 text-white border-purple-600'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-purple-300'
+                      }`}
+                    >
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleScheduleFollowup}
+                  disabled={!fuText.trim() || fuScheduling}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 bg-purple-600 disabled:bg-gray-300 text-white text-sm font-medium py-2 rounded-lg transition"
+                >
+                  {fuScheduling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Agendar envio
+                </button>
               </div>
 
               {/* Stage history */}

@@ -210,6 +210,10 @@ export class AiService {
   // Provedores em ordem de prioridade. Failover em runtime: se o primário falha
   // (cota/rate limit), o próximo assume na mesma requisição — cliente não vê erro.
   private readonly providers: LlmProvider[];
+  // Cliente "lite" dedicado para tarefas auxiliares (ex: sugestão de follow-up).
+  // Usa o modelo mais barato (gemini-2.5-flash-lite). Cai pro pool principal se ausente.
+  private readonly liteClient: OpenAI | null = null;
+  private readonly liteModel = 'gemini-2.5-flash-lite';
 
   constructor(private config: ConfigService) {
     // Pool de provedores: Gemini primário (com cache 75%) → gpt-4o-mini fallback.
@@ -241,11 +245,58 @@ export class AiService {
 
     this.providers = providers;
 
+    if (geminiKey) {
+      this.liteClient = new OpenAI({
+        apiKey: geminiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      });
+    }
+
     if (providers.length === 0) {
       this.logger.error('[LINDONA] Nenhuma API key de LLM configurada (GEMINI/OPENAI)');
     } else {
       this.logger.log(`[LINDONA] Provedores LLM (ordem de failover): ${providers.map(p => p.name).join(' → ')}`);
     }
+  }
+
+  // Sugere uma mensagem de follow-up para reengajar o lead, baseada na conversa.
+  // Usa o modelo lite (gemini-2.5-flash-lite) — tarefa leve, sem JSON.
+  // Retorna apenas o texto da mensagem (o operador revisa/aprova antes de agendar).
+  async generateFollowupSuggestion(leadName: string | null, transcript: string): Promise<string> {
+    const client = this.liteClient ?? this.providers[0]?.client;
+    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
+    if (!client) throw new Error('Nenhum provedor LLM configurado');
+
+    const systemPrompt = `Vc é a Lindona, consultora de Mega Hair da Cabelô.
+A operadora quer reengajar uma cliente que parou de responder.
+Escreva UMA mensagem de follow-up curta (máximo 2-3 linhas), calorosa e natural, em português do Brasil, usando "vc".
+Continue de onde a conversa parou — referencie o contexto real da conversa.
+NÃO invente preços, datas, nem informações que não apareceram na conversa.
+Responda APENAS com o texto da mensagem, sem aspas, sem rótulos, sem JSON, sem explicações.`;
+
+    const userPrompt = `Nome da cliente: ${leadName?.trim() || 'desconhecido'}
+
+Conversa até agora:
+${transcript || '(sem histórico de mensagens)'}
+
+Escreva a mensagem de follow-up:`;
+
+    const resp = await callWithRetry(
+      () => client.chat.completions.create({
+        model,
+        max_tokens: 400,
+        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any),
+      this.logger,
+    );
+
+    const text = (resp.choices[0].message.content ?? '').trim().replace(/^["']|["']$/g, '').replace(/\x00/g, '');
+    this.logger.log(`[FOLLOWUP] Sugestão gerada (${this.liteClient ? this.liteModel : model}): "${text.substring(0, 60)}..."`);
+    return text;
   }
 
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de

@@ -76,6 +76,30 @@ export const sendManualMedia = (phone, mediaId, caption) =>
     body: JSON.stringify({ phone, mediaId, caption }),
   }).then(json)
 
+// ───────────────────────── Follow-up agendado ─────────────────────────
+
+// IA sugere uma mensagem baseada na conversa (operador revisa antes de agendar)
+export const generateFollowup = (leadId) =>
+  authFetch(`${BASE}/followups/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ leadId }),
+  }).then(json)
+
+// Agenda o envio (delayHours: 1 | 4 | 24)
+export const scheduleFollowup = (leadId, message, delayHours) =>
+  authFetch(`${BASE}/followups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ leadId, message, delayHours }),
+  }).then(json)
+
+export const getFollowups = (leadId) =>
+  authFetch(`${BASE}/followups/lead/${leadId}`).then(json)
+
+export const cancelFollowup = (id) =>
+  authFetch(`${BASE}/followups/${id}`, { method: 'DELETE' }).then(json)
+
 export const getMediaList = () =>
   authFetch(`${BASE}/media`).then(json)
 
@@ -169,6 +193,18 @@ export const updateClientBilling = (id, payload) => // payload: { nextPaymentDat
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).then(json)
+
+// --- Checkout público (Stripe) — sem auth ---
+export const createCheckout = (payload) => // { name, email, phone, method: 'card'|'pix' }
+  fetch(`${BASE}/payments/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
+// --- Admin: clientes com PIX em atraso ---
+export const getOverdueClients = () =>
+  authFetch(`${BASE}/payments/overdue`).then(json)
 
 // --- Trocar a própria senha ---
 export const changePassword = (currentPassword, newPassword) =>
