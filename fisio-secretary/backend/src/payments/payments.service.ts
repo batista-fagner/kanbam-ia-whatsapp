@@ -22,6 +22,7 @@ export interface CheckoutResult {
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   private readonly stripe: any;
+  private _efiTokenCache: { token: string; expiresAt: number } | null = null;
 
   constructor(
     @InjectRepository(WhatsappConfig)
@@ -147,6 +148,11 @@ export class PaymentsService {
   }
 
   private async _efiToken(): Promise<string> {
+    // Reutiliza o token em cache se ainda válido (margem de 60s antes de expirar)
+    if (this._efiTokenCache && this._efiTokenCache.expiresAt > Date.now() + 60_000) {
+      return this._efiTokenCache.token;
+    }
+
     const cid = this.config.get<string>('EFI_CLIENT_ID');
     const cs = this.config.get<string>('EFI_CLIENT_SECRET');
     if (!cid || !cs) throw new BadRequestException('Efí Bank não configurado (EFI_CLIENT_ID/SECRET ausente)');
@@ -162,7 +168,10 @@ export class PaymentsService {
         },
       ),
     );
-    return r.data.access_token as string;
+    const token = r.data.access_token as string;
+    const expiresIn = (r.data.expires_in ?? 3600) as number;
+    this._efiTokenCache = { token, expiresAt: Date.now() + expiresIn * 1000 };
+    return token;
   }
 
   // Gera cobrança PIX e retorna imagem QR (base64) + código copia-e-cola.
