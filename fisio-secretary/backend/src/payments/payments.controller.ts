@@ -20,7 +20,7 @@ export class PaymentsController {
     const phone = body.phone.replace(/\D/g, '');
 
     if (body.method === 'pix') {
-      throw new BadRequestException('Pagamento via PIX em breve. Use cartão por enquanto.');
+      return this.payments.createPixCheckout(name, email, phone);
     }
 
     return this.payments.createCardCheckout(name, email, phone);

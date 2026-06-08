@@ -1023,7 +1023,40 @@ EFI_CERTIFICATE_PATH=... (mTLS)
 
 ## Pendências Futuras
 
-### 0. Envio de Vídeo na Conversa com a IA
+### 0c. Notificações WhatsApp para o Vendedor por Evento
+**Status:** ⏳ Pendente
+**Objetivo:** Quando um evento relevante acontece na conversa entre a IA e o lead, o sistema envia uma notificação automática para um número configurado (ex: vendedora da loja).
+
+**Eventos candidatos:**
+- Lead virou `lead_quente` — cliente qualificado, vendedora age rápido
+- Lead agendou (`agendado`) — vendedora confirma presença
+- IA desativou por `shouldIgnore=true` — operador precisa intervir manualmente
+- Lead reengajou após 3+ dias parado
+
+**Arquitetura planejada:**
+- Campo `notificationPhone` em `whatsapp_config` (por tenant) — número que recebe os alertas
+- `AlertRulesPage.jsx` já existe no frontend — pode ser expandida pra configurar quais eventos disparam notificação
+- Disparo dentro do `processMessage()` em `evolution.controller.ts` — quando o stage/evento muda, chama `sendNotification(tenantId, event, lead)`
+- Mensagem modelo: "🔥 Lead quente: {nome} ({telefone}) — acabou de qualificar!"
+
+---
+
+### 0. Ativar Stripe em Produção (Railway)
+**Status:** ⏳ Pendente
+**O que fazer:**
+1. Criar endpoint no painel Stripe → Developers → Webhooks → Add endpoint
+   - URL: `https://seu-backend.railway.app/webhooks/stripe`
+   - Eventos: `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`
+2. Adicionar no Railway as variáveis:
+   - `STRIPE_SECRET_KEY=sk_live_...`
+   - `STRIPE_WEBHOOK_SECRET=whsec_...` (gerado ao criar o endpoint)
+   - `STRIPE_PRICE_ID_MONTHLY=price_...` (ID do price R$310/mês)
+   - `FRONTEND_URL=https://...` (URL do frontend em prod)
+3. Testar fluxo completo: `/checkout` → paga → webhook → conta criada → credenciais no WhatsApp
+
+---
+
+### 0b. Envio de Vídeo na Conversa com a IA
 **Status:** ✅ Implementado (14/05/2026)  
 Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
 

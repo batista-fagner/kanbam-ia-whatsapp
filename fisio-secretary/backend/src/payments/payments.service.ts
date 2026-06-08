@@ -1,3 +1,4 @@
+import * as https from 'https';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -126,91 +127,158 @@ export class PaymentsService {
     }
   }
 
-  // ───────────────────────── Efí Bank PIX ─────────────────────────
+  // ───────────────────────── Efí Bank — helpers ─────────────────────────
 
-  async createEfiPixQrCode(tenantId: string, phone: string): Promise<{ qrCode: string; pixCode: string }> {
-    const clientId = this.config.get<string>('EFI_CLIENT_ID');
-    const clientSecret = this.config.get<string>('EFI_CLIENT_SECRET');
+  private get _efiBaseUrl(): string {
+    return this.config.get<string>('EFI_SANDBOX') === 'true'
+      ? 'https://pix-h.api.efipay.com.br'
+      : 'https://pix.api.efipay.com.br';
+  }
 
-    if (!clientId || !clientSecret) {
-      throw new BadRequestException('Efí Bank não configurado (EFI_CLIENT_ID ou EFI_CLIENT_SECRET ausente)');
+  private _efiAgent(): https.Agent {
+    const certB64 = this.config.get<string>('EFI_CERT_BASE64');
+    const pass = this.config.get<string>('EFI_CERT_PASSPHRASE') ?? '';
+    const sandbox = this.config.get<string>('EFI_SANDBOX') === 'true';
+    if (certB64) {
+      return new https.Agent({ pfx: Buffer.from(certB64, 'base64'), passphrase: pass, rejectUnauthorized: !sandbox });
+    }
+    // Sem certificado — só funciona em sandbox com rejectUnauthorized:false
+    return new https.Agent({ rejectUnauthorized: false });
+  }
+
+  private async _efiToken(): Promise<string> {
+    const cid = this.config.get<string>('EFI_CLIENT_ID');
+    const cs = this.config.get<string>('EFI_CLIENT_SECRET');
+    if (!cid || !cs) throw new BadRequestException('Efí Bank não configurado (EFI_CLIENT_ID/SECRET ausente)');
+
+    const creds = Buffer.from(`${cid}:${cs}`).toString('base64');
+    const r = await firstValueFrom(
+      this.http.post(
+        `${this._efiBaseUrl}/oauth/token`,
+        'grant_type=client_credentials',
+        {
+          headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          httpsAgent: this._efiAgent(),
+        },
+      ),
+    );
+    return r.data.access_token as string;
+  }
+
+  // Gera cobrança PIX e retorna imagem QR (base64) + código copia-e-cola.
+  // txid = UUID sem hífens (32 chars, dentro do limite 26-35 da Efí).
+  private async _efiCreateCob(txid: string, descricao: string): Promise<{ qrCode: string; pixCode: string }> {
+    const pixKey = this.config.get<string>('EFI_PIX_KEY');
+    if (!pixKey) throw new BadRequestException('EFI_PIX_KEY não configurada');
+
+    const token = await this._efiToken();
+    const agent = this._efiAgent();
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    const cobR = await firstValueFrom(
+      this.http.put(
+        `${this._efiBaseUrl}/v2/cob/${txid}`,
+        { calendario: { expiracao: 86400 }, valor: { original: '310.00' }, chave: pixKey, solicitacaoPagador: descricao },
+        { headers, httpsAgent: agent },
+      ),
+    );
+
+    const locId: number = cobR.data?.loc?.id;
+    if (!locId) throw new Error('locId não retornado pela Efí Bank');
+
+    const qrR = await firstValueFrom(
+      this.http.get(`${this._efiBaseUrl}/v2/loc/${locId}/qrcode`, { headers, httpsAgent: agent }),
+    );
+
+    return {
+      qrCode: qrR.data.imagemQrcode as string,  // PNG base64 (data:image/png;base64,...)
+      pixCode: qrR.data.qrcode as string,         // texto copia-e-cola
+    };
+  }
+
+  // ───────────────────────── Efí Bank PIX — Checkout inicial ─────────────────────────
+
+  // Checkout PIX para novo cliente: pré-cria conta (isActive=false) → gera QR → ativa no webhook.
+  async createPixCheckout(name: string, email: string, phone: string): Promise<{ qrCode: string; pixCode: string; expiresAt: string }> {
+    if (await this.usersService.findByEmail(email)) {
+      throw new BadRequestException('E-mail já cadastrado. Entre em contato ou use outro e-mail.');
     }
 
+    const billingDay = new Date().getDate();
+    const tenant = await this.configRepo.save(this.configRepo.create({
+      displayName: name,
+      profileName: name,
+      agentType: 'megahair',
+      isActive: false,     // ativado só após confirmação do pagamento
+      connected: false,
+      paymentMethod: 'pix',
+      planStatus: 'pending',
+      billingPhone: phone || null,
+      billingDay,
+    }));
+
+    // Cria usuário já com senha temporária (hash). Senha real só vai no webhook após pagamento.
+    const tempPassword = this._generatePassword();
+    await this.usersService.create({ email, password: tempPassword, name, tenantId: tenant.id, role: 'operator' });
+
+    const txid = tenant.id.replace(/-/g, ''); // 32 hex chars
     try {
-      // ⚠️ TODO: adaptar conforme documentação real da API Efí Bank
-      // Endpoints esperados:
-      // - POST /account/{account_id}/finances/pix/qrcodes/ → gerar QR dinâmico
-      // - Resposta esperada: { qrCode: "string", pixCode: "string", expiresAt: "timestamp" }
-
-      const payload = {
-        amount: 31000, // R$ 310,00 em centavos
-        type: 'DYNAMIC',
-        label: 'Plano Convert Hair',
-      };
-
-      const response = await firstValueFrom(
-        this.http.post('https://api.pagar.me/core/v5/pix', payload, {
-          headers: {
-            'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-      );
-
-      this.logger.log(`[EFI] QR code gerado para tenant ${tenantId}`);
-      return {
-        qrCode: response.data?.qr_code_image,
-        pixCode: response.data?.qr_code,
-      };
+      const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`);
+      this.logger.log(`[EFI] Checkout PIX criado txid=${txid} (${email})`);
+      return { ...pix, expiresAt: new Date(Date.now() + 86400_000).toISOString() };
     } catch (err) {
-      this.logger.error(`[EFI] Erro ao gerar QR code: ${err.message}`);
-      throw new BadRequestException(`Efí: ${err.message}`);
+      // Limpa registros criados para não deixar tenant fantasma
+      const users = await this.usersService.findByTenant(tenant.id);
+      for (const u of users) await this.usersService.resetPassword(u.id, '_disabled_');
+      await this.configRepo.delete(tenant.id);
+      throw new BadRequestException(`Erro ao gerar PIX: ${err.message}`);
     }
   }
 
+  // ───────────────────────── Efí Bank PIX — Webhook ─────────────────────────
+
   async handleEfiWebhook(body: any): Promise<{ received: boolean }> {
-    this.logger.log(`[EFI] Webhook recebido: ${JSON.stringify(body)}`);
-
-    // ⚠️ TODO: adaptar conforme documentação real da API Efí Bank
-    // Webhook esperado:
-    // {
-    //   event: "charge.paid" | "charge.failed",
-    //   data: {
-    //     charge_id: "string",
-    //     amount: 31000,
-    //     status: "paid" | "failed",
-    //     metadata: { tenantId: "uuid", phone: "string" }
-    //   }
-    // }
-
-    const tenantId = body?.data?.metadata?.tenantId;
-    const phone = body?.data?.metadata?.phone;
-    const status = body?.data?.status;
-
-    if (!tenantId || !status) {
+    // A Efí envia: { "pix": [{ "txid": "...", "valor": "310.00", "endToEndId": "..." }] }
+    // Também pode enviar { "evento": "teste_webhook" } no momento da configuração.
+    if (body?.evento === 'teste_webhook') {
+      this.logger.log('[EFI] Webhook de teste recebido ✅');
       return { received: true };
     }
 
-    if (status === 'paid') {
-      // Novo cliente (cadastro inicial via PIX)
-      const existingUser = await this.usersService.findByEmail(body?.data?.metadata?.email);
-      if (!existingUser) {
-        await this._createClientFromPayment(
-          body?.data?.metadata?.name ?? 'Cliente',
-          body?.data?.metadata?.email ?? '',
-          phone,
-          'pix',
-          {},
-        );
-      } else {
-        // Renovação mensal (cliente existente)
-        const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
-        if (tenant) {
-          tenant.planStatus = 'active';
-          tenant.lastPixSentAt = new Date();
-          await this.configRepo.save(tenant);
-          this.logger.log(`[EFI] PIX mensal pago → tenant ${tenant.id} reativado`);
+    const pixList: Array<{ txid?: string }> = body?.pix ?? [];
+    for (const pix of pixList) {
+      if (!pix.txid || pix.txid.length !== 32) continue;
+
+      // Reconstrói UUID a partir do txid (32 hex → 8-4-4-4-12)
+      const raw = pix.txid;
+      const tenantId = `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
+
+      const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+      if (!tenant) {
+        this.logger.warn(`[EFI] Tenant não encontrado para txid=${raw}`);
+        continue;
+      }
+
+      if (tenant.planStatus === 'pending') {
+        // Ativação inicial: gera nova senha, ativa conta, envia credenciais
+        tenant.isActive = true;
+        tenant.planStatus = 'active';
+        await this.configRepo.save(tenant);
+
+        const users = await this.usersService.findByTenant(tenantId);
+        const user = users[0];
+        if (user) {
+          const password = this._generatePassword();
+          await this.usersService.resetPassword(user.id, password);
+          if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
         }
+        this.logger.log(`[EFI] Pagamento inicial confirmado → tenant ${tenantId} ativado`);
+      } else {
+        // Renovação mensal
+        tenant.planStatus = 'active';
+        tenant.lastPixSentAt = new Date();
+        await this.configRepo.save(tenant);
+        this.logger.log(`[EFI] PIX mensal confirmado → tenant ${tenantId}`);
       }
     }
 
@@ -223,29 +291,29 @@ export class PaymentsService {
     if (!tenant.billingPhone) return;
 
     let pixCode = '';
-    let pixQrUrl = '';
+    let qrCode = '';
 
-    // Tenta gerar QR code via Efí Bank
     try {
-      const pix = await this.createEfiPixQrCode(tenant.id, tenant.billingPhone);
-      pixQrUrl = pix.qrCode;
+      const txid = tenant.id.replace(/-/g, '');
+      const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`);
+      qrCode = pix.qrCode;
       pixCode = pix.pixCode;
+      this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id}`);
     } catch (err) {
-      this.logger.error(`[EFI] Falha ao gerar QR: ${err.message}`);
-      // Continua mesmo sem QR (envia lembrete simples)
+      this.logger.error(`[EFI] Falha ao gerar QR mensal: ${err.message}`);
     }
 
-    // Monta mensagem
     const msg =
-      `Olá! 👋 Seu plano *Convert Hair* está chegando no vencimento.\n\n` +
+      `Olá! 👋 Seu plano *Convert Hair* vence em breve.\n\n` +
       `💰 Valor: *R$ 310,00*\n\n` +
-      (pixCode ? `Pix para pagar:\n*${pixCode}*` : `Entre em contato para renovar o seu plano.`);
+      (pixCode ? `📋 PIX copia e cola:\n${pixCode}` : `Entre em contato para renovar.`);
 
-    // Envia texto
     await this._sendText(tenant.billingPhone, msg);
 
-    // ⚠️ TODO: enviar QR code via `/send/pix-button` (uazapi) quando Efí estiver pronto
-    // await this._sendPixButton(tenant.billingPhone, pixQrUrl, pixCode);
+    // Envia imagem do QR code se disponível
+    if (qrCode) {
+      await this._sendText(tenant.billingPhone, qrCode); // TODO: enviar como imagem via sendMediaByUrl quando tiver upload de base64
+    }
 
     tenant.lastPixSentAt = new Date();
     await this.configRepo.save(tenant);
