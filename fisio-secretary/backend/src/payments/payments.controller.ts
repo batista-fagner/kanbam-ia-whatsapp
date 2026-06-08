@@ -40,6 +40,12 @@ export class PaymentsController {
     return this.payments.listOverdue();
   }
 
+  // Validação de endpoint exigida pela Efí Bank ao registrar o webhook
+  @Get('webhooks/efi')
+  async efiWebhookValidation() {
+    return;
+  }
+
   // Público: recebe confirmações de pagamento da Efí Bank
   @Post('webhooks/efi')
   async efiWebhook(@Body() body: any) {
