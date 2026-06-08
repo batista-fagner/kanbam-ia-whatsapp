@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CreditCard, QrCode, Loader2, User, Mail, Phone } from 'lucide-react'
+import { CreditCard, QrCode, Loader2, User, Mail, Phone, Copy, Check, Clock } from 'lucide-react'
 import { createCheckout } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
@@ -10,19 +10,81 @@ export default function CheckoutPage() {
   const [method, setMethod] = useState('card')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pix, setPix] = useState(null) // { qrCode, pixCode, expiresAt }
+  const [copied, setCopied] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError(''); setLoading(true)
     try {
       const res = await createCheckout({ ...form, method })
-      if (res.url) window.location.href = res.url
-      else throw new Error('Não foi possível iniciar o checkout.')
+      if (res.url) {
+        window.location.href = res.url
+      } else if (res.qrCode) {
+        setPix(res)
+      } else {
+        throw new Error('Não foi possível iniciar o checkout.')
+      }
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  function copyPixCode() {
+    navigator.clipboard.writeText(pix.pixCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Tela de QR code PIX após geração
+  if (pix) {
+    const expiresAt = new Date(pix.expiresAt)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-4">
+            <img src={logo} alt="Convert Hair" className="h-16 mx-auto object-contain" />
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <QrCode className="w-5 h-5 text-green-600" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">PIX gerado!</h2>
+            <p className="text-sm text-gray-500 mb-5">Escaneie o QR code ou copie o código abaixo</p>
+
+            {/* QR code */}
+            <div className="flex justify-center mb-5">
+              <img src={pix.qrCode} alt="QR Code PIX" className="w-52 h-52 border border-gray-200 rounded-xl p-2" />
+            </div>
+
+            {/* Código copia-e-cola */}
+            <div className="bg-gray-50 rounded-xl p-3 mb-4">
+              <p className="text-xs text-gray-400 mb-1">PIX copia e cola</p>
+              <p className="text-xs text-gray-600 break-all font-mono leading-relaxed">{pix.pixCode}</p>
+            </div>
+
+            <button onClick={copyPixCode}
+              className={`w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition ${
+                copied ? 'bg-green-500 text-white' : 'bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:opacity-90'
+              }`}>
+              {copied ? <><Check className="w-4 h-4" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar código PIX</>}
+            </button>
+
+            <div className="flex items-center justify-center gap-1 mt-4 text-xs text-gray-400">
+              <Clock className="w-3 h-3" />
+              <span>Válido até {expiresAt.toLocaleString('pt-BR')}</span>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-4">
+              Após o pagamento, você receberá suas credenciais de acesso no WhatsApp informado.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -79,13 +141,15 @@ export default function CheckoutPage() {
                   }`}>
                   <CreditCard className="w-4 h-4" /> Cartão
                 </button>
-                <button type="button" disabled title="Em breve"
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium border-gray-200 text-gray-300 cursor-not-allowed">
-                  <QrCode className="w-4 h-4" /> PIX <span className="text-[10px]">(em breve)</span>
+                <button type="button" onClick={() => setMethod('pix')}
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition ${
+                    method === 'pix' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  <QrCode className="w-4 h-4" /> PIX
                 </button>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                {method === 'card' ? 'Cobrança recorrente automática todo mês.' : 'Você receberá um link de pagamento PIX.'}
+                {method === 'card' ? 'Cobrança recorrente automática todo mês.' : 'QR code gerado na hora. Pague com qualquer app bancário.'}
               </p>
             </div>
 
@@ -95,12 +159,12 @@ export default function CheckoutPage() {
 
             <button type="submit" disabled={loading}
               className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processando...</> : 'Assinar agora'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</> : 'Assinar agora'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">Pagamento seguro via Stripe</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Pagamento seguro · Stripe & Efí Bank</p>
       </div>
     </div>
   )
