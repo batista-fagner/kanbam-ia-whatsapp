@@ -1,7 +1,8 @@
 import * as https from 'https';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -143,16 +144,13 @@ export class PaymentsService {
     if (certB64) {
       return new https.Agent({ pfx: Buffer.from(certB64, 'base64'), passphrase: pass, rejectUnauthorized: !sandbox });
     }
-    // Sem certificado — só funciona em sandbox com rejectUnauthorized:false
     return new https.Agent({ rejectUnauthorized: false });
   }
 
   private async _efiToken(): Promise<string> {
-    // Reutiliza o token em cache se ainda válido (margem de 60s antes de expirar)
     if (this._efiTokenCache && this._efiTokenCache.expiresAt > Date.now() + 60_000) {
       return this._efiTokenCache.token;
     }
-
     const cid = this.config.get<string>('EFI_CLIENT_ID');
     const cs = this.config.get<string>('EFI_CLIENT_SECRET');
     if (!cid || !cs) throw new BadRequestException('Efí Bank não configurado (EFI_CLIENT_ID/SECRET ausente)');
@@ -205,123 +203,194 @@ export class PaymentsService {
     };
   }
 
-  // ───────────────────────── Efí Bank PIX — Checkout inicial ─────────────────────────
+  // Consulta o status de uma cobrança. Retorna 'ATIVA' | 'CONCLUIDA' | 'REMOVIDA_*' | null (não existe).
+  private async _efiGetCobStatus(txid: string): Promise<string | null> {
+    const token = await this._efiToken();
+    try {
+      const r = await firstValueFrom(
+        this.http.get(`${this._efiBaseUrl}/v2/cob/${txid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          httpsAgent: this._efiAgent(),
+        }),
+      );
+      return (r.data?.status as string) ?? null;
+    } catch (err) {
+      if (err?.response?.status === 404) return null;
+      throw err;
+    }
+  }
 
-  // Checkout PIX para novo cliente: pré-cria conta (isActive=false) → gera QR → ativa no webhook.
-  async createPixCheckout(name: string, email: string, phone: string): Promise<{ qrCode: string; pixCode: string; expiresAt: string }> {
+  // ───────────────────────── Efí Bank PIX — Checkout (assíncrono) ─────────────────────────
+
+  // Pré-cria a conta (isActive=false, pending) e dispara o envio do QR pelo WhatsApp em background.
+  // Responde IMEDIATAMENTE — não espera a Efí Bank. O QR chega no WhatsApp em até ~2 min.
+  // A confirmação do pagamento é feita por polling (pollPendingPix), não por webhook → sem mTLS.
+  async createPixCheckout(name: string, email: string, phone: string): Promise<{ ok: true; phone: string }> {
     if (await this.usersService.findByEmail(email)) {
       throw new BadRequestException('E-mail já cadastrado. Entre em contato ou use outro e-mail.');
     }
+    if (!phone) throw new BadRequestException('WhatsApp é obrigatório para enviar o PIX');
 
     const billingDay = new Date().getDate();
     const tenant = await this.configRepo.save(this.configRepo.create({
       displayName: name,
       profileName: name,
       agentType: 'megahair',
-      isActive: false,     // ativado só após confirmação do pagamento
+      isActive: false,     // ativado só após confirmação do pagamento (polling)
       connected: false,
       paymentMethod: 'pix',
       planStatus: 'pending',
-      billingPhone: phone || null,
+      billingPhone: phone,
       billingDay,
     }));
 
-    // Cria usuário já com senha temporária (hash). Senha real só vai no webhook após pagamento.
+    // Cria usuário já com senha temporária. Senha real só é gerada/enviada após pagamento.
     const tempPassword = this._generatePassword();
     await this.usersService.create({ email, password: tempPassword, name, tenantId: tenant.id, role: 'operator' });
 
-    const txid = tenant.id.replace(/-/g, ''); // 32 hex chars
+    // Dispara em background — não bloqueia a resposta ao cliente.
+    void this._sendCheckoutPix(tenant.id, name, phone, email);
+
+    return { ok: true, phone };
+  }
+
+  // Gera o QR na Efí Bank e envia pelo WhatsApp. Roda em background (pode levar ~2 min).
+  // Se falhar, limpa o tenant fantasma e avisa o cliente.
+  private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
+    const txid = tenantId.replace(/-/g, ''); // 32 hex chars
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`);
-      this.logger.log(`[EFI] Checkout PIX criado txid=${txid} (${email})`);
-      return { ...pix, expiresAt: new Date(Date.now() + 86400_000).toISOString() };
+      this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
+
+      const intro =
+        `Olá, ${name}! 👋\n\n` +
+        `Aqui está o PIX para ativar seu plano *Convert Hair*.\n\n` +
+        `💰 Valor: *R$ 310,00*\n\n` +
+        `📋 *PIX copia e cola:*`;
+      await this._sendText(phone, intro);
+      await this._sendText(phone, pix.pixCode); // mensagem separada = fácil de copiar
+      await this._sendImage(phone, pix.qrCode, 'Ou escaneie o QR code acima 📲');
+      await this._sendText(phone, `Assim que o pagamento for confirmado, você recebe aqui o login e a senha de acesso. ✅`);
     } catch (err) {
-      // Limpa registros criados para não deixar tenant fantasma
-      const users = await this.usersService.findByTenant(tenant.id);
+      this.logger.error(`[EFI] Falha ao gerar/enviar QR de checkout (tenant ${tenantId}): ${err.message}`);
+      // Limpa o tenant fantasma para liberar o e-mail e permitir nova tentativa
+      const users = await this.usersService.findByTenant(tenantId);
       for (const u of users) await this.usersService.resetPassword(u.id, '_disabled_');
-      await this.configRepo.delete(tenant.id);
-      throw new BadRequestException(`Erro ao gerar PIX: ${err.message}`);
+      await this.configRepo.delete(tenantId);
+      await this._sendText(phone, `Ops! Tivemos um problema ao gerar seu PIX. 😕 Por favor, tente novamente em instantes.`);
     }
   }
 
-  // ───────────────────────── Efí Bank PIX — Webhook ─────────────────────────
+  // ───────────────────────── Polling de pagamentos PIX (substitui o webhook) ─────────────────────────
+
+  // A cada minuto, consulta a Efí Bank pelo status das cobranças pendentes.
+  // Quando CONCLUIDA → ativa a conta e envia credenciais. Sem webhook = sem mTLS.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async pollPendingPix(): Promise<void> {
+    if (!this.config.get<string>('EFI_CLIENT_ID')) return; // Efí não configurada
+
+    const pendings = await this.configRepo.find({
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+    });
+    if (pendings.length === 0) return;
+
+    for (const tenant of pendings) {
+      const txid = tenant.id.replace(/-/g, '');
+      let status: string | null;
+      try {
+        status = await this._efiGetCobStatus(txid);
+      } catch (err) {
+        this.logger.error(`[EFI] Polling falhou para tenant ${tenant.id}: ${err.message}`);
+        continue;
+      }
+
+      if (status === 'CONCLUIDA') {
+        await this._activatePaidTenant(tenant);
+        continue;
+      }
+
+      // Expira cobranças pendentes (não-pagas) com mais de 25h → remove tenant fantasma
+      const ageMs = Date.now() - new Date(tenant.createdAt).getTime();
+      if (tenant.planStatus === 'pending' && ageMs > 25 * 3600_000) {
+        const users = await this.usersService.findByTenant(tenant.id);
+        for (const u of users) await this.usersService.resetPassword(u.id, '_disabled_');
+        await this.configRepo.delete(tenant.id);
+        this.logger.log(`[EFI] Checkout PIX expirado (>25h) → tenant ${tenant.id} removido`);
+      }
+    }
+  }
+
+  // Ativa o tenant após pagamento confirmado. Idempotente: se já está ativo, sai.
+  private async _activatePaidTenant(tenant: WhatsappConfig): Promise<void> {
+    if (tenant.planStatus === 'active' && tenant.isActive) return;
+
+    const wasPending = tenant.planStatus === 'pending';
+    tenant.isActive = true;
+    tenant.planStatus = 'active';
+    tenant.lastPixSentAt = new Date();
+    await this.configRepo.save(tenant);
+
+    if (wasPending) {
+      // Primeira ativação: gera senha definitiva e envia credenciais
+      const users = await this.usersService.findByTenant(tenant.id);
+      const user = users[0];
+      if (user) {
+        const password = this._generatePassword();
+        await this.usersService.resetPassword(user.id, password);
+        if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
+      }
+      this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO + credenciais enviadas`);
+    } else {
+      // Renovação mensal confirmada
+      if (tenant.billingPhone) {
+        await this._sendText(tenant.billingPhone, `✅ Pagamento confirmado! Seu plano *Convert Hair* está renovado. Obrigado! 🙏`);
+      }
+      this.logger.log(`[EFI] Renovação confirmada → tenant ${tenant.id}`);
+    }
+  }
+
+  // ───────────────────────── Efí Bank PIX — Webhook (fallback, exige mTLS) ─────────────────────────
 
   async handleEfiWebhook(body: any): Promise<{ received: boolean }> {
-    // A Efí envia: { "pix": [{ "txid": "...", "valor": "310.00", "endToEndId": "..." }] }
-    // Também pode enviar { "evento": "teste_webhook" } no momento da configuração.
     if (body?.evento === 'teste_webhook') {
       this.logger.log('[EFI] Webhook de teste recebido ✅');
       return { received: true };
     }
-
     const pixList: Array<{ txid?: string }> = body?.pix ?? [];
     for (const pix of pixList) {
       if (!pix.txid || pix.txid.length !== 32) continue;
-
-      // Reconstrói UUID a partir do txid (32 hex → 8-4-4-4-12)
       const raw = pix.txid;
       const tenantId = `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
-
       const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
       if (!tenant) {
         this.logger.warn(`[EFI] Tenant não encontrado para txid=${raw}`);
         continue;
       }
-
-      if (tenant.planStatus === 'pending') {
-        // Ativação inicial: gera nova senha, ativa conta, envia credenciais
-        tenant.isActive = true;
-        tenant.planStatus = 'active';
-        await this.configRepo.save(tenant);
-
-        const users = await this.usersService.findByTenant(tenantId);
-        const user = users[0];
-        if (user) {
-          const password = this._generatePassword();
-          await this.usersService.resetPassword(user.id, password);
-          if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
-        }
-        this.logger.log(`[EFI] Pagamento inicial confirmado → tenant ${tenantId} ativado`);
-      } else {
-        // Renovação mensal
-        tenant.planStatus = 'active';
-        tenant.lastPixSentAt = new Date();
-        await this.configRepo.save(tenant);
-        this.logger.log(`[EFI] PIX mensal confirmado → tenant ${tenantId}`);
-      }
+      await this._activatePaidTenant(tenant);
     }
-
     return { received: true };
   }
 
-  // ───────────────────────── PIX mensal (chamado pelo cron) ─────────────────────────
+  // ───────────────────────── PIX mensal (chamado pelo BillingReminderService) ─────────────────────────
 
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
     if (!tenant.billingPhone) return;
 
-    let pixCode = '';
-    let qrCode = '';
-
     try {
       const txid = tenant.id.replace(/-/g, '');
       const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`);
-      qrCode = pix.qrCode;
-      pixCode = pix.pixCode;
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id}`);
+
+      const intro =
+        `Olá! 👋 Seu plano *Convert Hair* vence em breve.\n\n` +
+        `💰 Valor: *R$ 310,00*\n\n` +
+        `📋 *PIX copia e cola:*`;
+      await this._sendText(tenant.billingPhone, intro);
+      await this._sendText(tenant.billingPhone, pix.pixCode);
+      await this._sendImage(tenant.billingPhone, pix.qrCode, 'Ou escaneie o QR code 📲');
     } catch (err) {
-      this.logger.error(`[EFI] Falha ao gerar QR mensal: ${err.message}`);
-    }
-
-    const msg =
-      `Olá! 👋 Seu plano *Convert Hair* vence em breve.\n\n` +
-      `💰 Valor: *R$ 310,00*\n\n` +
-      (pixCode ? `📋 PIX copia e cola:\n${pixCode}` : `Entre em contato para renovar.`);
-
-    await this._sendText(tenant.billingPhone, msg);
-
-    // Envia imagem do QR code se disponível
-    if (qrCode) {
-      await this._sendText(tenant.billingPhone, qrCode); // TODO: enviar como imagem via sendMediaByUrl quando tiver upload de base64
+      this.logger.error(`[EFI] Falha ao gerar QR mensal (tenant ${tenant.id}): ${err.message}`);
+      await this._sendText(tenant.billingPhone, `Olá! Seu plano *Convert Hair* vence em breve. Entre em contato para renovar.`);
     }
 
     tenant.lastPixSentAt = new Date();
@@ -415,6 +484,23 @@ export class PaymentsService {
       await firstValueFrom(this.http.post(`${baseUrl}/send/text`, { number: phone, text }, { headers: { token } }));
     } catch (err) {
       this.logger.error(`[PAYMENTS] Falha ao enviar texto para ${phone} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
+    }
+  }
+
+  // Envia imagem via uazapi. `image` pode ser URL ou base64 (data:image/png;base64,...).
+  private async _sendImage(phone: string, image: string, caption: string): Promise<void> {
+    const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+    const token = await this._resolveSenderToken();
+    try {
+      await firstValueFrom(
+        this.http.post(
+          `${baseUrl}/send/media`,
+          { number: phone, type: 'image', file: image, text: caption },
+          { headers: { token } },
+        ),
+      );
+    } catch (err) {
+      this.logger.error(`[PAYMENTS] Falha ao enviar imagem para ${phone} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
     }
   }
 

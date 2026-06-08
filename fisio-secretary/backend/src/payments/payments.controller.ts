@@ -8,7 +8,7 @@ import { PaymentsService } from './payments.service';
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
-  // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank — em breve)
+  // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank enviado no WhatsApp)
   @Post('payments/checkout')
   async checkout(@Body() body: { name: string; email: string; phone: string; method: 'card' | 'pix' }) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
@@ -40,13 +40,8 @@ export class PaymentsController {
     return this.payments.listOverdue();
   }
 
-  // Validação de endpoint exigida pela Efí Bank ao registrar o webhook
-  @Get('webhooks/efi')
-  async efiWebhookValidation() {
-    return;
-  }
-
-  // Público: recebe confirmações de pagamento da Efí Bank
+  // Público: recebe confirmações de pagamento da Efí Bank (fallback — exige mTLS).
+  // A confirmação principal é por polling (PaymentsService.pollPendingPix).
   @Post('webhooks/efi')
   async efiWebhook(@Body() body: any) {
     return this.payments.handleEfiWebhook(body);

@@ -1,27 +1,47 @@
 import { useState } from 'react'
-import { CreditCard, QrCode, Loader2, User, Mail, Phone, Copy, Check, Clock } from 'lucide-react'
+import { CreditCard, QrCode, Loader2, User, Mail, Phone, CheckCircle2, MessageCircle } from 'lucide-react'
 import { createCheckout } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
 const PLAN_PRICE = 'R$ 310,00/mês'
+
+// Formata só dígitos em algo legível: 27996972230 → (27) 99697-2230
+function formatPhone(digits) {
+  const d = digits.replace(/\D/g, '')
+  if (d.length <= 2) return d
+  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
+}
 
 export default function CheckoutPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
   const [method, setMethod] = useState('card')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [pix, setPix] = useState(null) // { qrCode, pixCode, expiresAt }
-  const [copied, setCopied] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false) // modal de confirmação do número (PIX)
+  const [done, setDone] = useState(false)               // tela de sucesso (PIX enviado)
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault()
-    setError(''); setLoading(true)
+    setError('')
+    // PIX: confirma o número antes de enviar. Cartão: vai direto pro Stripe.
+    if (method === 'pix') {
+      setConfirmOpen(true)
+    } else {
+      submit()
+    }
+  }
+
+  async function submit() {
+    setConfirmOpen(false)
+    setLoading(true)
     try {
       const res = await createCheckout({ ...form, method })
       if (res.url) {
-        window.location.href = res.url
-      } else if (res.qrCode) {
-        setPix(res)
+        window.location.href = res.url          // cartão → Stripe
+      } else if (res.ok) {
+        setDone(true)                            // PIX → tela de sucesso
       } else {
         throw new Error('Não foi possível iniciar o checkout.')
       }
@@ -32,54 +52,32 @@ export default function CheckoutPage() {
     }
   }
 
-  function copyPixCode() {
-    navigator.clipboard.writeText(pix.pixCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  // Tela de QR code PIX após geração
-  if (pix) {
-    const expiresAt = new Date(pix.expiresAt)
+  // Tela de sucesso após PIX disparado
+  if (done) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-4">
             <img src={logo} alt="Convert Hair" className="h-16 mx-auto object-contain" />
           </div>
-
           <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 text-center">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <QrCode className="w-5 h-5 text-green-600" />
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-7 h-7 text-green-600" />
             </div>
-            <h2 className="text-lg font-bold text-gray-800 mb-1">PIX gerado!</h2>
-            <p className="text-sm text-gray-500 mb-5">Escaneie o QR code ou copie o código abaixo</p>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Tudo certo! 🎉</h2>
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Seu código PIX está sendo gerado e chegará no seu WhatsApp em até <strong>2 minutos</strong>.
+            </p>
 
-            {/* QR code */}
-            <div className="flex justify-center mb-5">
-              <img src={pix.qrCode} alt="QR Code PIX" className="w-52 h-52 border border-gray-200 rounded-xl p-2" />
-            </div>
-
-            {/* Código copia-e-cola */}
-            <div className="bg-gray-50 rounded-xl p-3 mb-4">
-              <p className="text-xs text-gray-400 mb-1">PIX copia e cola</p>
-              <p className="text-xs text-gray-600 break-all font-mono leading-relaxed">{pix.pixCode}</p>
+            <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-3 text-left">
+              <MessageCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <p className="text-sm text-gray-700">
+                Enviaremos para <strong>{formatPhone(form.phone)}</strong>
+              </p>
             </div>
 
-            <button onClick={copyPixCode}
-              className={`w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition ${
-                copied ? 'bg-green-500 text-white' : 'bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:opacity-90'
-              }`}>
-              {copied ? <><Check className="w-4 h-4" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar código PIX</>}
-            </button>
-
-            <div className="flex items-center justify-center gap-1 mt-4 text-xs text-gray-400">
-              <Clock className="w-3 h-3" />
-              <span>Válido até {expiresAt.toLocaleString('pt-BR')}</span>
-            </div>
-
-            <p className="text-xs text-gray-400 mt-4">
-              Após o pagamento, você receberá suas credenciais de acesso no WhatsApp informado.
+            <p className="text-xs text-gray-400 mt-6 leading-relaxed">
+              Após o pagamento ser confirmado, você recebe o login e a senha de acesso no mesmo WhatsApp. ✅
             </p>
           </div>
         </div>
@@ -129,6 +127,9 @@ export default function CheckoutPage() {
                   placeholder="ex: 27996972230"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500" />
               </div>
+              {method === 'pix' && (
+                <p className="text-xs text-gray-400 mt-1">O código PIX será enviado para este número.</p>
+              )}
             </div>
 
             {/* Método de pagamento */}
@@ -149,7 +150,7 @@ export default function CheckoutPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                {method === 'card' ? 'Cobrança recorrente automática todo mês.' : 'QR code gerado na hora. Pague com qualquer app bancário.'}
+                {method === 'card' ? 'Cobrança recorrente automática todo mês.' : 'Enviamos o código PIX no seu WhatsApp.'}
               </p>
             </div>
 
@@ -159,13 +160,44 @@ export default function CheckoutPage() {
 
             <button type="submit" disabled={loading}
               className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</> : 'Assinar agora'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processando...</> : 'Assinar agora'}
             </button>
           </form>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">Pagamento seguro · Stripe & Efí Bank</p>
       </div>
+
+      {/* Modal: confirmar número do WhatsApp antes de enviar o PIX */}
+      {confirmOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 text-center mb-2">Confirme seu WhatsApp</h3>
+            <p className="text-sm text-gray-600 text-center mb-1">
+              Enviaremos o código PIX para:
+            </p>
+            <p className="text-lg font-semibold text-gray-800 text-center mb-5">
+              {formatPhone(form.phone)}
+            </p>
+            <p className="text-xs text-gray-400 text-center mb-5">
+              O número está correto? Não dá pra receber o PIX em outro número depois.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmOpen(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+                Corrigir número
+              </button>
+              <button onClick={submit}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white text-sm font-semibold hover:opacity-90 transition">
+                Sim, enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
