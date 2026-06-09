@@ -94,4 +94,8 @@ export class UsersService implements OnApplicationBootstrap {
   countByTenant(tenantId: string): Promise<number> {
     return this.repo.count({ where: { tenantId } });
   }
+
+  async deleteByTenant(tenantId: string): Promise<void> {
+    await this.repo.delete({ tenantId });
+  }
 }
