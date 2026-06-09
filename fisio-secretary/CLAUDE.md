@@ -1038,6 +1038,32 @@ Renovação mensal:
 
 ---
 
+### 0a. Stripe Live — Configurar Dados de Produção
+**Status:** ⏳ Pendente  
+**Objetivo:** Trocar credenciais de teste do Stripe por dados de produção (live).
+
+**O que fazer:**
+1. **Painel Stripe:** Developers → API keys
+   - Copiar `Secret key` (sk_live_...)
+   - Copiar `Publishable key` (pk_live_...)
+2. **Painel Stripe:** Products → criar/atualizar o price
+   - Produto: "Plano Convert Hair"
+   - Preço: R$ 310/mês (recorrente)
+   - Copiar ID do price: `price_...`
+3. **Painel Stripe:** Developers → Webhooks
+   - Adicionar endpoint: `https://seu-backend.railway.app/webhooks/stripe`
+   - Eventos: `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`
+   - Copiar signing secret: `whsec_...`
+4. **Railway variables:**
+   - `STRIPE_SECRET_KEY=sk_live_...`
+   - `STRIPE_PRICE_ID_MONTHLY=price_...`
+   - `STRIPE_WEBHOOK_SECRET=whsec_...`
+5. **Testar:** `/checkout` → escolher "Cartão" → Stripe Session → pagar com cartão real ou teste (4242 4242 4242 4242)
+
+**Código pronto:** `PaymentsService.createCardCheckout()` + `handleWebhook()` já implementados, aguardando dados live.
+
+---
+
 ### 0b. Envio de Vídeo na Conversa com a IA
 **Status:** ✅ Implementado (14/05/2026)  
 Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
