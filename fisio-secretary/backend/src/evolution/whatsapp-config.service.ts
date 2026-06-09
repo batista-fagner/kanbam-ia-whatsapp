@@ -190,4 +190,8 @@ export class WhatsappConfigService {
       await this.repo.save(record);
     }
   }
+
+  async deleteTenant(tenantId: string): Promise<void> {
+    await this.repo.delete({ id: tenantId });
+  }
 }

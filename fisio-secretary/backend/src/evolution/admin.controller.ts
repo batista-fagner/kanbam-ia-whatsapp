@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, BadRequestException, ConflictException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -85,6 +85,16 @@ export class AdminController {
     return result;
   }
 
+  // Remove um cliente (tenant + usuários). Recusa se houver leads cadastrados.
+  @Delete('clients/:id')
+  async deleteClient(@Param('id') id: string) {
+    const leadsCount = await this.leadsService.countByTenant(id);
+    if (leadsCount > 0) throw new BadRequestException(`Cliente tem ${leadsCount} leads — remova os leads antes ou suspenda ao invés de deletar.`);
+    await this.usersService.deleteByTenant(id);
+    await this.whatsappConfigService.deleteTenant(id);
+    return { ok: true };
+  }
+
   // Ativa/suspende um cliente (controle manual de inadimplência)
   @Patch('clients/:id/active')
   async setActive(@Param('id') id: string, @Body() body: { isActive: boolean }) {
@@ -112,11 +122,11 @@ export class AdminController {
     return { ok: true };
   }
 
-  // Retorna uso de tokens por tenant por dia (últimos 30 dias por padrão).
-  // Query param: ?days=7 para filtrar. Retorna ordenado por data desc.
+  // Retorna uso de tokens por tenant por dia dentro de um range (from..to).
+  // Sem params: usa o dia de hoje (fuso de Brasília). Ordenado por data desc.
   @Get('usage')
   async getUsage(@Query('from') from?: string, @Query('to') to?: string) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
     const dateFrom = from ?? today;
     const dateTo = to ?? today;
     const rows = await this.tokenUsageRepo.query(`

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2 } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage } from '../services/api'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2 } from 'lucide-react'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -8,6 +8,9 @@ function daysUntil(dateStr) {
   const d = new Date(dateStr); d.setHours(0, 0, 0, 0)
   return Math.round((d - today) / 86400000)
 }
+
+// Data de hoje no fuso de Brasília ('YYYY-MM-DD'). toISOString() usa UTC e adianta o dia à noite.
+const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 
 export default function AdminPage() {
   const [clients, setClients] = useState([])
@@ -20,9 +23,11 @@ export default function AdminPage() {
   const [resetModal, setResetModal] = useState(null) // { id, name }
   const [newPassword, setNewPassword] = useState('')
   const [resetting, setResetting] = useState(false)
+  const [deleteModal, setDeleteModal] = useState(null) // { id, name }
+  const [deleting, setDeleting] = useState(false)
   const [activeTab, setActiveTab] = useState('clients') // 'clients' | 'usage'
   const [usage, setUsage] = useState([])
-  const today = new Date().toISOString().slice(0, 10)
+  const today = brToday()
   const [usageFrom, setUsageFrom] = useState(today)
   const [usageTo, setUsageTo] = useState(today)
   const [loadingUsage, setLoadingUsage] = useState(false)
@@ -45,10 +50,11 @@ export default function AdminPage() {
   }
 
   const setShortcut = (days) => {
-    const t = new Date()
-    const f = new Date(t); f.setDate(f.getDate() - (days - 1))
-    const fmt = d => d.toISOString().slice(0, 10)
-    setUsageFrom(fmt(f)); setUsageTo(fmt(t))
+    // Ancora ao meio-dia da data de Brasília p/ evitar deslocamento de fuso ao subtrair dias.
+    const anchor = new Date(brToday() + 'T12:00:00')
+    const f = new Date(anchor); f.setDate(f.getDate() - (days - 1))
+    const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    setUsageFrom(fmt(f)); setUsageTo(brToday())
   }
 
   useEffect(() => { if (activeTab === 'usage') loadUsage(usageFrom, usageTo) }, [activeTab, usageFrom, usageTo])
@@ -66,6 +72,20 @@ export default function AdminPage() {
       setError(e.message)
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteClient(deleteModal.id)
+      setDeleteModal(null)
+      await load()
+    } catch (e) {
+      setError(e.message)
+      setDeleteModal(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -302,6 +322,13 @@ export default function AdminPage() {
                 >
                   {c.isActive ? <><PowerOff className="w-3.5 h-3.5" /> Suspender</> : <><Power className="w-3.5 h-3.5" /> Reativar</>}
                 </button>
+                <button
+                  onClick={() => setDeleteModal({ id: c.id, name: c.displayName })}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                  title="Remover cliente"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )
@@ -334,6 +361,32 @@ export default function AdminPage() {
                 {resetting ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><Check className="w-4 h-4" /> Salvar nova senha</>}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmar exclusão */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 text-center mb-2">Remover cliente?</h2>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              <span className="font-medium text-gray-700">{deleteModal.name}</span> será removido permanentemente.<br />
+              Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteModal(null)} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+                Cancelar
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
+                {deleting ? <><Loader2 className="w-4 h-4 animate-spin" /> Removendo...</> : 'Sim, remover'}
+              </button>
+            </div>
           </div>
         </div>
       )}

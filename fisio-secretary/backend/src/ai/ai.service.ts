@@ -359,7 +359,8 @@ Escreva a mensagem de follow-up:`;
 
   private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number): Promise<void> {
     try {
-      const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      // Data no fuso de Brasília (en-CA → 'YYYY-MM-DD'). UTC adiantaria o dia à noite.
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
       // Custo: input não-cacheado $0.30/1M, cacheado $0.03/1M, output $2.50/1M
       const cost = (inputTokens - cachedTokens) * 0.0000003 + cachedTokens * 0.00000003 + outputTokens * 0.0000025;
       await this.tokenUsageRepo.query(`
