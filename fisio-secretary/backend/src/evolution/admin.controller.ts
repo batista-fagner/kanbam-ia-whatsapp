@@ -85,11 +85,14 @@ export class AdminController {
     return result;
   }
 
-  // Remove um cliente (tenant + usuários). Recusa se houver leads cadastrados.
+  // Remove um cliente (tenant + usuários). Recusa se houver leads cadastrados ou prompt configurado.
   @Delete('clients/:id')
   async deleteClient(@Param('id') id: string) {
     const leadsCount = await this.leadsService.countByTenant(id);
     if (leadsCount > 0) throw new BadRequestException(`Cliente tem ${leadsCount} leads — remova os leads antes ou suspenda ao invés de deletar.`);
+    const tenant = await this.whatsappConfigService.getByTenant(id);
+    const hasPrompt = tenant?.customPromptMegaHair?.trim();
+    if (hasPrompt) throw new BadRequestException('Cliente tem prompt configurado — limpe o prompt antes de deletar.');
     await this.usersService.deleteByTenant(id);
     await this.whatsappConfigService.deleteTenant(id);
     return { ok: true };

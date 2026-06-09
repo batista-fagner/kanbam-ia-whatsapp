@@ -213,6 +213,15 @@ export class EvolutionController {
     const instanceConfig = await this.whatsappConfigService.getByTenant(tenantId);
     const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
+    // Sem prompt configurado → IA não responde (cada cliente tem seu próprio prompt)
+    if (instanceConfig?.agentType === 'megahair' && !instanceConfig?.customPromptMegaHair?.trim()) {
+      this.logger.warn(`[MEGAHAIR] Prompt não configurado para tenant ${tenantId} — mensagem ignorada`);
+      await this.leadsService.saveMessage(conversation.id, 'inbound', 'user', combinedText);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
 

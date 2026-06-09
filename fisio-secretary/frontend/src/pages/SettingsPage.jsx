@@ -554,19 +554,18 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3 mt-3">
             <button
               onClick={async () => {
-                if (!customPromptMegaHair?.trim()) return
                 setSavingPrompt(true)
                 try {
                   await authFetch(`${API_URL}/instance/config`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ customPromptMegaHair }),
+                    body: JSON.stringify({ customPromptMegaHair: customPromptMegaHair.trim() || null }),
                   })
                 } finally {
                   setSavingPrompt(false)
                 }
               }}
-              disabled={savingPrompt || !customPromptMegaHair?.trim()}
+              disabled={savingPrompt}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
             >
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
