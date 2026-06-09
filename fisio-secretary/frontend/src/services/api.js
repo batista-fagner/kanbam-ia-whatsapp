@@ -194,8 +194,12 @@ export const updateClientBilling = (id, payload) => // payload: { nextPaymentDat
     body: JSON.stringify(payload),
   }).then(json)
 
-export const getTokenUsage = (days = 30) =>
-  authFetch(`${BASE}/admin/usage?days=${days}`).then(json)
+export const getTokenUsage = (from, to) => {
+  const params = new URLSearchParams()
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  return authFetch(`${BASE}/admin/usage?${params}`).then(json)
+}
 
 // --- Checkout público (Stripe) — sem auth ---
 export const createCheckout = (payload) => // { name, email, phone, method: 'card'|'pix' }

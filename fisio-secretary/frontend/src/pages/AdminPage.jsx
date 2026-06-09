@@ -22,7 +22,9 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false)
   const [activeTab, setActiveTab] = useState('clients') // 'clients' | 'usage'
   const [usage, setUsage] = useState([])
-  const [usageDays, setUsageDays] = useState(30)
+  const today = new Date().toISOString().slice(0, 10)
+  const [usageFrom, setUsageFrom] = useState(today)
+  const [usageTo, setUsageTo] = useState(today)
   const [loadingUsage, setLoadingUsage] = useState(false)
 
   const load = async () => {
@@ -37,12 +39,19 @@ export default function AdminPage() {
 
   useEffect(() => { load() }, [])
 
-  const loadUsage = async (days) => {
+  const loadUsage = async (from, to) => {
     setLoadingUsage(true)
-    try { setUsage(await getTokenUsage(days)) } catch (e) { setError(e.message) } finally { setLoadingUsage(false) }
+    try { setUsage(await getTokenUsage(from, to)) } catch (e) { setError(e.message) } finally { setLoadingUsage(false) }
   }
 
-  useEffect(() => { if (activeTab === 'usage') loadUsage(usageDays) }, [activeTab, usageDays])
+  const setShortcut = (days) => {
+    const t = new Date()
+    const f = new Date(t); f.setDate(f.getDate() - (days - 1))
+    const fmt = d => d.toISOString().slice(0, 10)
+    setUsageFrom(fmt(f)); setUsageTo(fmt(t))
+  }
+
+  useEffect(() => { if (activeTab === 'usage') loadUsage(usageFrom, usageTo) }, [activeTab, usageFrom, usageTo])
 
   async function handleCreate(e) {
     e.preventDefault()
@@ -133,14 +142,25 @@ export default function AdminPage() {
       {/* Aba: Uso de Tokens */}
       {activeTab === 'usage' && (
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            {[7, 30, 90].map(d => (
-              <button key={d} onClick={() => setUsageDays(d)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${usageDays === d ? 'bg-teal-700 text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-                {d} dias
-              </button>
-            ))}
-            {loadingUsage && <Loader2 className="w-4 h-4 animate-spin text-gray-400 ml-2" />}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <button onClick={() => setShortcut(7)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+              7 dias
+            </button>
+            <button onClick={() => setShortcut(30)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+              30 dias
+            </button>
+            <div className="flex items-center gap-2 ml-2">
+              <input type="date" value={usageFrom} max={usageTo}
+                onChange={e => setUsageFrom(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              <span className="text-gray-400 text-sm">até</span>
+              <input type="date" value={usageTo} min={usageFrom} max={today}
+                onChange={e => setUsageTo(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+            {loadingUsage && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
           </div>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
@@ -156,7 +176,7 @@ export default function AdminPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {usage.length === 0 && !loadingUsage && (
-                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nenhum dado ainda.</td></tr>
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nenhum dado para o período.</td></tr>
                 )}
                 {usage.map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50">
@@ -172,7 +192,7 @@ export default function AdminPage() {
               {usage.length > 0 && (
                 <tfoot className="bg-gray-50 text-xs font-semibold text-gray-700">
                   <tr>
-                    <td colSpan={5} className="px-4 py-3 text-right">Total ({usageDays}d)</td>
+                    <td colSpan={5} className="px-4 py-3 text-right">Total — {usageFrom === usageTo ? usageFrom : `${usageFrom} → ${usageTo}`}</td>
                     <td className="px-4 py-3 text-right font-mono">${usage.reduce((s, r) => s + Number(r.cost_usd), 0).toFixed(5)}</td>
                   </tr>
                 </tfoot>

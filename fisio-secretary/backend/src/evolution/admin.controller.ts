@@ -115,12 +115,14 @@ export class AdminController {
   // Retorna uso de tokens por tenant por dia (últimos 30 dias por padrão).
   // Query param: ?days=7 para filtrar. Retorna ordenado por data desc.
   @Get('usage')
-  async getUsage(@Query('days') days?: string) {
-    const limit = parseInt(days ?? '30', 10) || 30;
+  async getUsage(@Query('from') from?: string, @Query('to') to?: string) {
+    const today = new Date().toISOString().slice(0, 10);
+    const dateFrom = from ?? today;
+    const dateTo = to ?? today;
     const rows = await this.tokenUsageRepo.query(`
       SELECT
         tu.tenant_id,
-        wc.display_name AS tenant_name,
+        COALESCE(wc.display_name, wc.profile_name, tu.tenant_id::text) AS tenant_name,
         tu.date,
         tu.input_tokens,
         tu.cached_tokens,
@@ -128,9 +130,9 @@ export class AdminController {
         tu.cost_usd
       FROM token_usage tu
       LEFT JOIN whatsapp_config wc ON wc.id = tu.tenant_id
-      WHERE tu.date >= CURRENT_DATE - INTERVAL '1 day' * $1
+      WHERE tu.date BETWEEN $1 AND $2
       ORDER BY tu.date DESC, tu.cost_usd DESC
-    `, [limit]);
+    `, [dateFrom, dateTo]);
     return rows;
   }
 
