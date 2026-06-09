@@ -194,6 +194,9 @@ export const updateClientBilling = (id, payload) => // payload: { nextPaymentDat
     body: JSON.stringify(payload),
   }).then(json)
 
+export const deleteClient = (id) =>
+  authFetch(`${BASE}/admin/clients/${id}`, { method: 'DELETE' }).then(json)
+
 export const getTokenUsage = (from, to) => {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
