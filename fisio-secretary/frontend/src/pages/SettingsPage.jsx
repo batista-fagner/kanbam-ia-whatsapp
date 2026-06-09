@@ -49,7 +49,6 @@ export default function SettingsPage() {
   const [instanceName, setInstanceName] = useState('')
   const [creatingInstance, setCreatingInstance] = useState(false)
   const [customPromptMegaHair, setCustomPromptMegaHair] = useState('')
-  const [defaultPromptMegaHair, setDefaultPromptMegaHair] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
   const pollingRef = useRef(null)
 
@@ -72,7 +71,7 @@ export default function SettingsPage() {
       const data = await res.json()
       setInstanceConfig(data)
       setWebhookConfigured(data?.webhookConfigured ?? false)
-      if (data?.customPromptMegaHair != null) setCustomPromptMegaHair(data.customPromptMegaHair)
+      setCustomPromptMegaHair(data?.customPromptMegaHair ?? '')
       return data
     } catch {
       setInstanceConfig(null)
@@ -80,14 +79,6 @@ export default function SettingsPage() {
     }
   }
 
-  const fetchDefaultPrompts = async () => {
-    try {
-      const res = await authFetch(`${API_URL}/instance/default-prompts`)
-      const data = await res.json()
-      setDefaultPromptMegaHair(data.megahair ?? '')
-      setCustomPromptMegaHair(prev => prev || data.megahair)
-    } catch { /* silencioso */ }
-  }
 
   const startPolling = () => {
     if (pollingRef.current) return
@@ -129,9 +120,6 @@ export default function SettingsPage() {
     }
   }
 
-  useEffect(() => {
-    fetchDefaultPrompts()
-  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -570,12 +558,6 @@ export default function SettingsPage() {
             >
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {savingPrompt ? 'Salvando...' : 'Salvar prompt'}
-            </button>
-            <button
-              onClick={() => setCustomPromptMegaHair(defaultPromptMegaHair)}
-              className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-            >
-              Restaurar padrão
             </button>
           </div>
         </div>
