@@ -185,7 +185,7 @@ export class PaymentsService {
     const cobR = await firstValueFrom(
       this.http.put(
         `${this._efiBaseUrl}/v2/cob/${txid}`,
-        { calendario: { expiracao: 86400 }, valor: { original: '310.00' }, chave: pixKey, solicitacaoPagador: descricao },
+        { calendario: { expiracao: 86400 }, valor: { original: '4.00' }, chave: pixKey, solicitacaoPagador: descricao },
         { headers, httpsAgent: agent },
       ),
     );
@@ -265,7 +265,7 @@ export class PaymentsService {
       const intro =
         `Olá, ${name}! 👋\n\n` +
         `Aqui está o PIX para ativar seu plano *Convert Hair*.\n\n` +
-        `💰 Valor: *R$ 310,00*\n\n` +
+        `💰 Valor: *R$ 4,00*\n\n` +
         `📋 *PIX copia e cola:*`;
       await this._sendText(phone, intro);
       await this._sendText(phone, pix.pixCode); // mensagem separada = fácil de copiar
@@ -383,7 +383,7 @@ export class PaymentsService {
 
       const intro =
         `Olá! 👋 Seu plano *Convert Hair* vence em breve.\n\n` +
-        `💰 Valor: *R$ 310,00*\n\n` +
+        `💰 Valor: *R$ 4,00*\n\n` +
         `📋 *PIX copia e cola:*`;
       await this._sendText(tenant.billingPhone, intro);
       await this._sendText(tenant.billingPhone, pix.pixCode);
