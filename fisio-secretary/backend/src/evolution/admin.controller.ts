@@ -133,7 +133,7 @@ export class AdminController {
       SELECT
         tu.tenant_id,
         COALESCE(wc.display_name, wc.profile_name, tu.tenant_id::text) AS tenant_name,
-        tu.date,
+        TO_CHAR(tu.date, 'YYYY-MM-DD') AS date,
         tu.input_tokens,
         tu.cached_tokens,
         tu.output_tokens,
