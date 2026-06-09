@@ -1,11 +1,14 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, BadRequestException, ConflictException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { UsersService } from '../auth/users.service';
 import { LeadsService } from '../leads/leads.service';
+import { TokenUsage } from '../common/entities/token-usage.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -17,6 +20,7 @@ export class AdminController {
     private readonly usersService: UsersService,
     private readonly leadsService: LeadsService,
     private readonly config: ConfigService,
+    @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -106,6 +110,28 @@ export class AdminController {
     const updated = await this.whatsappConfigService.updateBilling(id, body);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true };
+  }
+
+  // Retorna uso de tokens por tenant por dia (últimos 30 dias por padrão).
+  // Query param: ?days=7 para filtrar. Retorna ordenado por data desc.
+  @Get('usage')
+  async getUsage(@Query('days') days?: string) {
+    const limit = parseInt(days ?? '30', 10) || 30;
+    const rows = await this.tokenUsageRepo.query(`
+      SELECT
+        tu.tenant_id,
+        wc.display_name AS tenant_name,
+        tu.date,
+        tu.input_tokens,
+        tu.cached_tokens,
+        tu.output_tokens,
+        tu.cost_usd
+      FROM token_usage tu
+      LEFT JOIN whatsapp_config wc ON wc.id = tu.tenant_id
+      WHERE tu.date >= CURRENT_DATE - INTERVAL '1 day' * $1
+      ORDER BY tu.date DESC, tu.cost_usd DESC
+    `, [limit]);
+    return rows;
   }
 
   @Get('instances')

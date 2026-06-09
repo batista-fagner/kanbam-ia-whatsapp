@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword } from '../services/api'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2 } from 'lucide-react'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -20,6 +20,10 @@ export default function AdminPage() {
   const [resetModal, setResetModal] = useState(null) // { id, name }
   const [newPassword, setNewPassword] = useState('')
   const [resetting, setResetting] = useState(false)
+  const [activeTab, setActiveTab] = useState('clients') // 'clients' | 'usage'
+  const [usage, setUsage] = useState([])
+  const [usageDays, setUsageDays] = useState(30)
+  const [loadingUsage, setLoadingUsage] = useState(false)
 
   const load = async () => {
     try {
@@ -32,6 +36,13 @@ export default function AdminPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  const loadUsage = async (days) => {
+    setLoadingUsage(true)
+    try { setUsage(await getTokenUsage(days)) } catch (e) { setError(e.message) } finally { setLoadingUsage(false) }
+  }
+
+  useEffect(() => { if (activeTab === 'usage') loadUsage(usageDays) }, [activeTab, usageDays])
 
   async function handleCreate(e) {
     e.preventDefault()
@@ -92,17 +103,25 @@ export default function AdminPage() {
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-teal-700" />
-          <h1 className="text-xl font-bold text-gray-800">Clientes</h1>
-          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{clients.length}</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setActiveTab('clients')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'clients' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <Users className="w-4 h-4" /> Clientes
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'clients' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{clients.length}</span>
+          </button>
+          <button onClick={() => setActiveTab('usage')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'usage' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <BarChart2 className="w-4 h-4" /> Uso de Tokens
+          </button>
         </div>
-        <button
-          onClick={() => { setShowCreate(true); setCreated(null) }}
-          className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-        >
-          <Plus className="w-4 h-4" /> Novo cliente
-        </button>
+        {activeTab === 'clients' && (
+          <button
+            onClick={() => { setShowCreate(true); setCreated(null) }}
+            className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+          >
+            <Plus className="w-4 h-4" /> Novo cliente
+          </button>
+        )}
       </div>
 
       {error && (
@@ -110,6 +129,61 @@ export default function AdminPage() {
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
+
+      {/* Aba: Uso de Tokens */}
+      {activeTab === 'usage' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            {[7, 30, 90].map(d => (
+              <button key={d} onClick={() => setUsageDays(d)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${usageDays === d ? 'bg-teal-700 text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                {d} dias
+              </button>
+            ))}
+            {loadingUsage && <Loader2 className="w-4 h-4 animate-spin text-gray-400 ml-2" />}
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-3 text-left">Cliente</th>
+                  <th className="px-4 py-3 text-left">Data</th>
+                  <th className="px-4 py-3 text-right">Input</th>
+                  <th className="px-4 py-3 text-right">Cache hit</th>
+                  <th className="px-4 py-3 text-right">Output</th>
+                  <th className="px-4 py-3 text-right">Custo (USD)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {usage.length === 0 && !loadingUsage && (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nenhum dado ainda.</td></tr>
+                )}
+                {usage.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-700">{row.tenant_name ?? row.tenant_id?.slice(0, 8)}</td>
+                    <td className="px-4 py-3 text-gray-500">{row.date}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{Number(row.input_tokens).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-green-600">{Number(row.cached_tokens).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{Number(row.output_tokens).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-800">${Number(row.cost_usd).toFixed(5)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {usage.length > 0 && (
+                <tfoot className="bg-gray-50 text-xs font-semibold text-gray-700">
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 text-right">Total ({usageDays}d)</td>
+                    <td className="px-4 py-3 text-right font-mono">${usage.reduce((s, r) => s + Number(r.cost_usd), 0).toFixed(5)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Aba: Clientes */}
+      {activeTab === 'clients' && <>
 
       {/* Alerta de PIX em atraso — admin decide bloquear manualmente */}
       {clients.filter(c => c.planStatus === 'past_due').length > 0 && (
@@ -284,6 +358,7 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }

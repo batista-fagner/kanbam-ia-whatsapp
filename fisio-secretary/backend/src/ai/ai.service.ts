@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
+import { TokenUsage } from '../common/entities/token-usage.entity';
 
 export interface AiResponse {
   reply: string;
@@ -215,7 +218,10 @@ export class AiService {
   private readonly liteClient: OpenAI | null = null;
   private readonly liteModel = 'gemini-2.5-flash-lite';
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
+  ) {
     // Pool de provedores: Gemini primário (com cache 75%) → gpt-4o-mini fallback.
     // OpenRouter preservado em branch feat/openrouter.
     const geminiKey = config.get('GEMINI_API_KEY');
@@ -302,7 +308,7 @@ Escreva a mensagem de follow-up:`;
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
-  private async callLLM(systemPrompt: string, messages: any[]): Promise<string> {
+  private async callLLM(systemPrompt: string, messages: any[]): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
     if (this.providers.length === 0) {
       throw new Error('Nenhum provedor LLM configurado');
     }
@@ -327,12 +333,19 @@ Escreva a mensagem de follow-up:`;
         if (i > 0) {
           this.logger.warn(`[LINDONA] ✅ Failover ativo: respondido por "${provider.name}"`);
         }
-        // Loga tokens cacheados quando disponível (Gemini cache implícito: 75% desconto)
         const usage = (response as any).usage;
-        if (usage?.prompt_tokens_details?.cached_tokens > 0) {
-          this.logger.log(`[LINDONA] 💰 Cache hit: ${usage.prompt_tokens_details.cached_tokens} tokens cacheados de ${usage.prompt_tokens} input (${Math.round(usage.prompt_tokens_details.cached_tokens / usage.prompt_tokens * 100)}% do input)`);
+        const cachedTokens: number = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+        const inputTokens: number = usage?.prompt_tokens ?? 0;
+        const outputTokens: number = usage?.completion_tokens ?? 0;
+        if (cachedTokens > 0) {
+          this.logger.log(`[LINDONA] 💰 Cache hit: ${cachedTokens} tokens cacheados de ${inputTokens} input (${Math.round(cachedTokens / inputTokens * 100)}% do input)`);
         }
-        return response.choices[0].message.content?.trim() ?? '';
+        return {
+          text: response.choices[0].message.content?.trim() ?? '',
+          inputTokens,
+          cachedTokens,
+          outputTokens,
+        };
       } catch (err) {
         lastErr = err;
         this.logger.error(`[LINDONA] Provedor "${provider.name}" falhou: ${err.message}`);
@@ -342,6 +355,25 @@ Escreva a mensagem de follow-up:`;
       }
     }
     throw lastErr ?? new Error('Todos os provedores LLM falharam');
+  }
+
+  private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number): Promise<void> {
+    try {
+      const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      // Custo: input não-cacheado $0.30/1M, cacheado $0.03/1M, output $2.50/1M
+      const cost = (inputTokens - cachedTokens) * 0.0000003 + cachedTokens * 0.00000003 + outputTokens * 0.0000025;
+      await this.tokenUsageRepo.query(`
+        INSERT INTO token_usage (tenant_id, date, input_tokens, cached_tokens, output_tokens, cost_usd)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (tenant_id, date) DO UPDATE SET
+          input_tokens  = token_usage.input_tokens  + EXCLUDED.input_tokens,
+          cached_tokens = token_usage.cached_tokens + EXCLUDED.cached_tokens,
+          output_tokens = token_usage.output_tokens + EXCLUDED.output_tokens,
+          cost_usd      = token_usage.cost_usd      + EXCLUDED.cost_usd
+      `, [tenantId, today, inputTokens, cachedTokens, outputTokens, cost]);
+    } catch (err) {
+      this.logger.error(`[USAGE] Falha ao salvar token usage: ${err.message}`);
+    }
   }
 
   getDefaultPromptMegaHair(): string {
@@ -535,7 +567,9 @@ REGRAS:
 
     try {
       // callLLM faz o failover entre provedores automaticamente.
-      let raw = await this.callLLM(systemPrompt, messages);
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
+      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
+      let raw = rawText;
       // Remove null bytes (0x00) — alguns modelos os geram e o PostgreSQL rejeita.
       raw = raw.replace(/\x00/g, '');
       this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);

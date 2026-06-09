@@ -11,6 +11,7 @@ import { WhatsappConfigService } from './whatsapp-config.service';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { MetaProvider } from './providers/meta.provider';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
+import { TokenUsage } from '../common/entities/token-usage.entity';
 import { LeadsModule } from '../leads/leads.module';
 import { AuthModule } from '../auth/auth.module';
 import { AiModule } from '../ai/ai.module';
@@ -23,7 +24,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
   imports: [
     HttpModule,
     ConfigModule,
-    TypeOrmModule.forFeature([WhatsappConfig]),
+    TypeOrmModule.forFeature([WhatsappConfig, TokenUsage]),
     LeadsModule,
     AuthModule,
     AiModule,
