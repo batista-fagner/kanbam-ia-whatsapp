@@ -217,18 +217,17 @@ Hoje o lembrete depende de:
 **⏳ FALTA NO D1 (muito pequeno):**
 1. **UI de trocar senha** pro cliente (endpoint `/auth/change-password` pronto; falta um form, ex: na SettingsPage — pode ir num card de conta/perfil)
 
-**D2) Pagamento (depois):** site de planos → checkout Kiwify/Stripe → webhook cria/libera conta + suspende quem não paga (usa o `isActive` já pronto). Ver [[project-kiwify-checkout]].
-
 ### ✅ Veredito pra 10 clientes
-**A+B+C+D1 — ✅ TUDO PRONTO E DEPLOYADO (31/05/2026):**
+**A+B+C+D1+D2 — ✅ TUDO PRONTO E DEPLOYADO (09/06/2026):**
 - ✅ Dados isolados por tenant (tenant_id FK)
 - ✅ Login JWT real (sem hardcode)
 - ✅ Admin painel: criar clientes, suspender, reset de senha, lembrete de vencimento
 - ✅ Instância uazapi por cliente + webhook próprio
 - ✅ Migrations aplicadas (synchronize=false)
 - ✅ Dev isolado funcionando (postgres_dev local)
-
-**Próximo:** D2 (pagamento via Stripe/Kiwify) automatiza a entrada de novos clientes e suspensão por inadimplência (usa isActive já pronto).
+- ✅ Checkout PIX (Efí Bank) automático — clientes se auto-cadastram e pagam
+- ✅ Polling detecta pagamentos e ativa contas automaticamente
+- ✅ Credenciais enviadas via WhatsApp após confirmação
 
 ---
 
@@ -953,71 +952,54 @@ Operador abre o lead (LeadModal) → seção "Follow-up agendado"
 
 ---
 
-## ⏳ D2) Pagamento — Stripe Cartão + Efí Bank PIX (EM DESENVOLVIMENTO — 04/06/2026)
+## ✅ D2) Pagamento — Stripe Cartão + Efí Bank PIX (CONCLUÍDO — 09/06/2026)
 
-**Objetivo:** checkout público (cartão recorrente + PIX mensal) para criar contas SaaS automaticamente.
+**Objetivo:** checkout público (cartão recorrente + PIX mensal) para criar contas SaaS automaticamente. ✅ IMPLEMENTADO E VALIDADO EM PRODUÇÃO.
 
 **Stack escolhido:**
 - **Cartão:** Stripe Checkout Sessions (subscription mode) — R$ 310/mês recorrente
-- **PIX:** Efí Bank (ex-Gerencianet) — PIX Automático + PIX pela API (QR dinâmico)
+- **PIX:** Efí Bank (ex-Gerencianet) — PIX pela API (QR dinâmico) + polling em cron
 
-**Decisão: Efí Bank escolhido como provider de PIX**
-- **Alternativas exploradas:**
-  - InfinitePay: simples, mas sem dados de cliente → descartado
-  - uazapi `/send/pix-button`: só funciona se webhook confirmar pagamento → uazapi não suporta webhook de PIX → descartado
-  - Efí Bank: **mais profissional, API completa, webhook confiável** → ESCOLHIDO
-- **Por que Efí Bank:**
-  - PIX pela API: gera QR code + código PIX via REST API (R$ 0,0119 por transação = 1,19%)
-  - PIX Automático: cobrança recorrente tokenizada (cliente autoriza UMA VEZ, Efí cobra automaticamente cada mês)
-  - Webhook robusto: confirma pagamento em tempo real
-  - Documentação excelente, muito usado por devs brasileiros
-  - Integração modular com uazapi: lembrete WhatsApp 5 dias antes (`/send/pix-button` ou link InfinitePay)
-
-**Arquitetura (quando implementar):**
+**Fluxo implementado:**
 ```
-Checkout novo cliente:
-  → formulário (nome/email/WhatsApp)
-  → escolhe cartão → Stripe Session → paga → webhook → cria conta + envia credenciais WhatsApp
-  → escolhe PIX → Efí Bank (QR) → paga → webhook → cria conta + envia credenciais WhatsApp
+Checkout PIX:
+  → GET /checkout (público, sem auth)
+  → POST /payments/checkout { name, email, phone, method:'pix' }
+  → Cria tenant com status='pending'
+  → Efí Bank gera QR code + código PIX
+  → Envia QR (imagem) + código (texto) via WhatsApp
+  → Cron pollPendingPix (a cada minuto) verifica status
+  → Quando CONCLUIDA: ativa conta (isActive=true) + gera senha + envia credenciais
 
-Renovação mensal (cliente existente):
-  → BillingReminderService cron (9h, dia -5 do vencimento)
-  → Chama Efí Bank para gerar novo PIX Automático
-  → Envia `/send/pix-button` (via uazapi) para o billingPhone
-  → Cliente clica → vê PIX → escaneia/copia → paga
-  → Efí webhook confirma → set planStatus='active'
+Renovação mensal:
+  → BillingReminderService cron (9h diário)
+  → Se vencimento é em 5 dias → gera novo PIX
+  → Envia QR + código para billingPhone
+  → Cliente paga
+  → Polling detecta → atualiza planStatus='active'
 ```
 
-**Campos no banco (`whatsapp_config`):**
-- `stripe_customer_id`, `stripe_subscription_id` (cartão)
-- `payment_method` = 'card'|'pix'|'manual'
-- `plan_status` = 'active'|'past_due'|'pending'|'canceled'
-- `last_pix_sent_at` (evita reenvio no mesmo dia)
+**Status do código (09/06/2026) — VALIDADO EM PRODUÇÃO:**
+- ✅ Checkout PIX end-to-end funcionando
+- ✅ Efí Bank gerando QR codes corretamente
+- ✅ Cron pollPendingPix detectando pagamentos (a cada minuto)
+- ✅ Contas criadas automaticamente após pagamento
+- ✅ Credenciais geradas e enviadas via WhatsApp
+- ✅ Admin mostrando clientes com `payment_method=pix` + `billingDay` correto
+- ✅ Env vars de produção configuradas no Railway (EFI_CLIENT_ID, EFI_CLIENT_SECRET, EFI_PIX_KEY, BILLING_SENDER_TOKEN)
+- ✅ Testado localmente com R$ 4 PIX, validado em produção com Efí Bank real
 
-**Credenciais Efí Bank (preencher quando tiver):**
-```
-EFI_CLIENT_ID=...
-EFI_CLIENT_SECRET=...
-EFI_CERTIFICATE_PATH=... (mTLS)
-```
+**Teste realizado (09/06/2026):**
+- Cliente pagou R$ 4 via PIX (Efí)
+- Polling detectou pagamento em <1 min
+- Conta criada automaticamente
+- Credenciais (email + senha) chegaram no WhatsApp do cliente
+- Admin mostra cliente com status `payment_method=pix`, `billingDay` correto, `planStatus=active`
 
-**Status do código (06/06/2026):**
-- ✅ Stripe cartão — checkout completo em dev
-- ✅ `PaymentsService.createEfiPixQrCode()` — scaffolding pronto (método + endpoints esperados comentados)
-- ✅ `PaymentsService.handleEfiWebhook()` — webhook pronto (recebe confirmações)
-- ✅ `PaymentsController` — rota `/webhooks/efi` adicionada
-- ✅ `generateAndSendMonthlyPix()` — adaptado para enviar PIX real (com fallback a texto)
-- ✅ `.env.development` — `EFI_CLIENT_ID` e `EFI_CLIENT_SECRET` adicionados (vazios)
-- ⏳ Credenciais Efí Bank: **em avaliação, aprovação prevista 07/06**
-
-**Próximos passos (quando aprovado amanhã):**
-1. Preencher `EFI_CLIENT_ID` e `EFI_CLIENT_SECRET` no `.env.development`
-2. Obter documentação real da API Efí Bank
-3. Adaptar endpoints em `createEfiPixQrCode()` (linha ~140) conforme doc
-4. Adaptar formato do webhook em `handleEfiWebhook()` (linha ~164) conforme doc
-5. Testar checkout PIX → geração de QR → webhook → account criada
-6. Commit da integração completa
-7. Testar renovação mensal: `-5 dias` → gera PIX → envia via WhatsApp → cliente paga
+**Checkout Stripe (cartão) — pronto mas não testado em produção:**
+- ✅ Implementado: `createCardCheckout()` com Stripe Sessions
+- ✅ Webhook pronto: `checkout.session.completed` cria conta
+- ⏳ Awaiting: Stripe live credenciais (sk_live_..., price ID, webhook secret)
 
 ---
 
@@ -1090,19 +1072,23 @@ Ver seção "Sistema de Mídias" e "Agente MegaHair" acima.
 - Aumentar temperatura (lead_quente) baseado em respostas de implicação
 - Testar com leads reais antes/depois
 
-### 2. Follow-up Automático de 7 Dias de Cadência
+### 2. Follow-up Automático por Raia (Cadência com IA)
 **Status:** ⏳ Pendente  
-**Objetivo:** Re-engajar leads que não avançaram (lead_frio) com série de 7 mensagens em cadência automática  
-**Implementação Necessária:**
-- Adicionar campo `nurtureCadenceDay` em `Conversation` (0-7, incrementa a cada dia)
-- Job/scheduler (Bull Queue ou cron) que roda diariamente e identifica leads elegíveis (`lead_frio` + `lastMessageAt` > 24h)
-- Template de 7 mensagens SPIN progressivas (escalação de interesse)
-- Mensagem 1 (dia 1): Reengagement + pergunta Situation
-- Mensagem 2-3: Problem discovery (perguntas de dor)
-- Mensagem 4-5: Implication (consequências)
-- Mensagem 6-7: Need-Payoff (benefícios da consulta)
-- Webhook de reativação: se lead responder durante cadência, reseta contador e volta para qualificação ativa
-- Métricas: taxa de reativação por dia, por template
+**Objetivo:** Re-engajar leads automaticamente com base na raia em que estão, sem o operador precisar abrir cada card.
+
+**Fluxo planejado:**
+- Operador configura por raia: "leads parados há X horas em `lead_quente` → enviar follow-up"
+- Cron verifica leads elegíveis (por raia + inatividade) e agenda follow-up automaticamente
+- Mensagem gerada pela IA com base no histórico do lead (diferencial sobre concorrentes que usam template fixo)
+- Se lead responder, cadência é cancelada e qualificação ativa retoma
+
+**Base já pronta:**
+- `scheduleFollowup` + `processDue` (cron a cada minuto) já existem em `backend/src/followup/`
+- Falta: tela de configuração de cadência por raia + gatilho automático por inatividade (sem interação do operador)
+
+**Diferencial vs. concorrentes (RD Station, Kommo, HubSpot):**
+- Concorrentes usam template fixo por cadência
+- Aqui: IA lê o histórico do lead e gera mensagem personalizada antes de enviar
 
 ---
 
