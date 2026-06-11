@@ -214,9 +214,9 @@ export class EvolutionController {
     const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
     // Sem prompt configurado → IA não responde (cada cliente tem seu próprio prompt)
+    // Mensagem já foi salva na linha acima (saveMessage inbound) — não salva de novo
     if (instanceConfig?.agentType === 'megahair' && !instanceConfig?.customPromptMegaHair?.trim()) {
       this.logger.warn(`[MEGAHAIR] Prompt não configurado para tenant ${tenantId} — mensagem ignorada`);
-      await this.leadsService.saveMessage(conversation.id, 'inbound', 'user', combinedText);
       const updatedLead = await this.leadsService.findOne(lead.id);
       this.leadsGateway.emitLeadUpdated(updatedLead);
       return;
