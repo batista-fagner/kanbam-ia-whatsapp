@@ -215,7 +215,8 @@ export class PaymentsService {
       );
       return (r.data?.status as string) ?? null;
     } catch (err) {
-      if (err?.response?.status === 404) return null;
+      // 404 = cobrança não existe; 400 = cobrança expirada/inválida → ambos tratados como "não encontrada"
+      if (err?.response?.status === 404 || err?.response?.status === 400) return null;
       throw err;
     }
   }
