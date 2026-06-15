@@ -215,8 +215,8 @@ export class PaymentsService {
       );
       return (r.data?.status as string) ?? null;
     } catch (err) {
-      // 404 = cobrança não existe; 400 = cobrança expirada/inválida → ambos tratados como "não encontrada"
-      if (err?.response?.status === 404 || err?.response?.status === 400) return null;
+      if (err?.response?.status === 404) return null;
+      if (err?.response?.status === 400) return 'EXPIRADA'; // cobrança vencida
       throw err;
     }
   }
@@ -310,13 +310,11 @@ export class PaymentsService {
         continue;
       }
 
-      // Expira cobranças pendentes (não-pagas) com mais de 25h → remove tenant fantasma
-      const ageMs = Date.now() - new Date(tenant.createdAt).getTime();
-      if (tenant.planStatus === 'pending' && ageMs > 25 * 3600_000) {
-        const users = await this.usersService.findByTenant(tenant.id);
-        for (const u of users) await this.usersService.resetPassword(u.id, '_disabled_');
-        await this.configRepo.delete(tenant.id);
-        this.logger.log(`[EFI] Checkout PIX expirado (>25h) → tenant ${tenant.id} removido`);
+      // PIX expirado na Efí (400) → marca expired e para de consultar
+      if (status === 'EXPIRADA') {
+        tenant.planStatus = 'expired';
+        await this.configRepo.save(tenant);
+        this.logger.log(`[EFI] PIX expirado → tenant ${tenant.id} marcado como expired`);
       }
     }
   }
