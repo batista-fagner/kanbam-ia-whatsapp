@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Delete, Body, Query, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Patch, Delete, Body, Query, Inject, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from './leads.service';
@@ -14,6 +14,16 @@ export class LeadsController {
     private readonly leadsGateway: LeadsGateway,
     private readonly configService: ConfigService,
   ) {}
+
+  @Post()
+  async createManual(
+    @Body() body: { phone: string; name?: string },
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    const { lead, isNew } = await this.leadsService.findOrCreate(body.phone, tenantId, body.name);
+    this.leadsGateway.emitLeadUpdated(lead);
+    return { ...lead, isNew };
+  }
 
   @Get()
   findAll(@CurrentUser('tenantId') tenantId: string) {

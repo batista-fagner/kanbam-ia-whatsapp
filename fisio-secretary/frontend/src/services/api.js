@@ -28,6 +28,13 @@ const json = async (r) => {
 export const getLeads = () =>
   authFetch(`${BASE}/leads`).then(json)
 
+export const createLead = (phone, name) =>
+  authFetch(`${BASE}/leads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, ...(name ? { name } : {}) }),
+  }).then(json)
+
 export const getConversation = (id) =>
   authFetch(`${BASE}/leads/${id}/conversation`).then(json)
 

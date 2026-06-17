@@ -7,7 +7,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X } from 'lucide-react'
+import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X, UserPlus } from 'lucide-react'
 
 import { getColumns } from '../data/mockData'
 import { useAuth } from '../context/AuthContext'
@@ -17,6 +17,7 @@ import KanbanColumn from '../components/KanbanColumn'
 import LeadCard from '../components/LeadCard'
 import LeadModal from '../components/LeadModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import AddLeadModal from '../components/AddLeadModal'
 
 export default function KanbanPage() {
   const { user } = useAuth()
@@ -26,6 +27,7 @@ export default function KanbanPage() {
   const [selectedLead, setSelectedLead] = useState(null)
   const [leadToDelete, setLeadToDelete] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [addingLead, setAddingLead] = useState(false)
   const searchRef = useRef(null)
 
   const sensors = useSensors(
@@ -44,6 +46,13 @@ export default function KanbanPage() {
     setLeads(prev => prev.filter(l => l.id !== id))
     setLeadToDelete(null)
     await deleteLead(id, reason)
+  }
+
+  function handleLeadCreated(newLead) {
+    setLeads(prev => {
+      const exists = prev.find(l => l.id === newLead.id)
+      return exists ? prev.map(l => l.id === newLead.id ? newLead : l) : [newLead, ...prev]
+    })
   }
 
   function handleLeadUpdate(updatedLead) {
@@ -106,7 +115,7 @@ export default function KanbanPage() {
             <Stat icon={<ShoppingBag className="w-3.5 h-3.5 text-green-600" />} label="Vendas" value={vendas} valueClass="text-green-700" />
           </div>
 
-          {/* Search */}
+          {/* Search + Add */}
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -136,6 +145,13 @@ export default function KanbanPage() {
                 Ver lead
               </button>
             )}
+            <button
+              onClick={() => setAddingLead(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Novo lead
+            </button>
           </div>
         </div>
       </header>
@@ -186,6 +202,13 @@ export default function KanbanPage() {
           lead={leadToDelete}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setLeadToDelete(null)}
+        />
+      )}
+
+      {addingLead && (
+        <AddLeadModal
+          onClose={() => setAddingLead(false)}
+          onCreated={handleLeadCreated}
         />
       )}
     </div>
