@@ -276,8 +276,11 @@ export class LeadsService implements OnApplicationBootstrap {
       since = new Date(now.getTime() - days * 86400000);
     }
 
-    // 1. Carrega leads do período (filtrados por createdAt se aplicável) + tenant
-    const leadsQb = this.leadsRepo.createQueryBuilder('lead');
+    // 1. Carrega leads do período (filtrados por createdAt se aplicável) + tenant.
+    // Seleciona só as colunas usadas pelo dashboard — evita trafegar ai_context (jsonb pesado).
+    const leadsQb = this.leadsRepo
+      .createQueryBuilder('lead')
+      .select(['lead.id', 'lead.stage', 'lead.labels', 'lead.createdAt']);
     if (tenantId) leadsQb.andWhere('lead.tenantId = :tenantId', { tenantId });
     if (since) leadsQb.andWhere('lead.createdAt >= :since', { since });
     const leads = await leadsQb.getMany();
@@ -307,6 +310,7 @@ export class LeadsService implements OnApplicationBootstrap {
     const leadIds = leads.map(l => l.id);
     const histories = leadIds.length > 0
       ? await this.historyRepo.createQueryBuilder('h')
+          .select(['h.leadId', 'h.toStage', 'h.createdAt'])
           .where('h.leadId IN (:...ids)', { ids: leadIds })
           .orderBy('h.leadId', 'ASC')
           .addOrderBy('h.createdAt', 'ASC')
@@ -358,12 +362,19 @@ export class LeadsService implements OnApplicationBootstrap {
       lead_quente: 1,
       lead_frio: 2,
     };
-    const activeLeads = await this.leadsRepo.find({
-      where: [
-        { stage: 'lead_quente' as LeadStage, ...(tenantId ? { tenantId } : {}) },
-        { stage: 'lead_frio' as LeadStage, ...(tenantId ? { tenantId } : {}) },
-      ],
-    });
+
+    // Query única dos leads em raias iniciais (cobre seções 5 "esfriando" e 7 "sem resposta").
+    // Só as colunas necessárias — sem ai_context.
+    const activeStages: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente'];
+    const activeQb = this.leadsRepo
+      .createQueryBuilder('lead')
+      .select([
+        'lead.id', 'lead.name', 'lead.phone', 'lead.stage',
+        'lead.lastMessageAt', 'lead.lastMessageDirection', 'lead.createdAt',
+      ])
+      .where('lead.stage IN (:...stages)', { stages: activeStages });
+    if (tenantId) activeQb.andWhere('lead.tenantId = :tenantId', { tenantId });
+    const activeLeads = await activeQb.getMany();
 
     const coolingLeads = activeLeads
       .filter((lead) => {
@@ -413,44 +424,29 @@ export class LeadsService implements OnApplicationBootstrap {
 
     // 7. Leads sem resposta — só raias iniciais. agendado, vendas e desliza_hair
     // são raias avançadas/finais e não entram na regra de "sem resposta".
+    // Usa os campos denormalizados lastMessageAt/lastMessageDirection (mantidos em saveMessage),
+    // computando em memória sobre os leads ativos já carregados — sem N+1 em messages.
     const noReplyThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000);
-    const activeStagesForNoReply: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente'];
 
-    const activeForNoReply = await this.leadsRepo.find({
-      where: activeStagesForNoReply.map((s) => ({ stage: s, ...(tenantId ? { tenantId } : {}) })),
-    });
-
-    const noReplyLeads: any[] = [];
-    if (activeForNoReply.length > 0) {
-      const conversations = await this.conversationsRepo
-        .createQueryBuilder('conv')
-        .where('conv.leadId IN (:...ids)', { ids: activeForNoReply.map((l) => l.id) })
-        .getMany();
-      const convByLead = new Map(conversations.map((c) => [c.leadId, c]));
-
-      for (const lead of activeForNoReply) {
-        const conv = convByLead.get(lead.id);
-        if (!conv) continue;
-        const lastMsg = await this.messagesRepo.findOne({
-          where: { conversationId: conv.id },
-          order: { createdAt: 'DESC' },
-        });
-        if (!lastMsg) continue;
-        if (lastMsg.direction !== 'outbound') continue;
-        if (lastMsg.createdAt >= noReplyThreshold) continue;
-
-        const hoursSince = (now.getTime() - new Date(lastMsg.createdAt).getTime()) / (1000 * 60 * 60);
-        noReplyLeads.push({
+    const noReplyLeads = activeLeads
+      .filter((lead) => {
+        if (lead.lastMessageDirection !== 'outbound') return false;
+        if (!lead.lastMessageAt) return false;
+        return new Date(lead.lastMessageAt) < noReplyThreshold;
+      })
+      .map((lead) => {
+        const lastSentAt = lead.lastMessageAt;
+        const hoursSince = (now.getTime() - new Date(lastSentAt).getTime()) / (1000 * 60 * 60);
+        return {
           id: lead.id,
           name: lead.name,
           phone: lead.phone,
           stage: lead.stage,
-          lastSentAt: lastMsg.createdAt,
+          lastSentAt,
           hoursSince: Math.floor(hoursSince),
-        });
-      }
-      noReplyLeads.sort((a, b) => b.hoursSince - a.hoursSince);
-    }
+        };
+      })
+      .sort((a, b) => b.hoursSince - a.hoursSince);
 
     return {
       period,
