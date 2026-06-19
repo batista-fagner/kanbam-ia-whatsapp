@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2 } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName } from '../services/api'
 
 const labelColor = {
   inativo:          'bg-red-100 text-red-600 border-red-200',
@@ -71,6 +71,10 @@ export default function LeadModal({ lead, onClose }) {
   const [fuDelay, setFuDelay] = useState(24) // horas: 1 | 4 | 24
   const [fuGenerating, setFuGenerating] = useState(false)
   const [fuScheduling, setFuScheduling] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameValue, setNameValue] = useState(lead?.name ?? '')
+  const [nameSaving, setNameSaving] = useState(false)
+  const nameInputRef = useRef(null)
 
   useEffect(() => {
     if (!lead) return
@@ -92,6 +96,17 @@ export default function LeadModal({ lead, onClose }) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight
     }
   }, [messages])
+
+  async function handleSaveName() {
+    const trimmed = nameValue.trim()
+    if (!trimmed || trimmed === lead.name) { setEditingName(false); return }
+    setNameSaving(true)
+    try {
+      await updateName(lead.id, trimmed)
+      lead.name = trimmed
+    } catch { setNameValue(lead.name ?? '') }
+    finally { setNameSaving(false); setEditingName(false) }
+  }
 
   async function handleRemoveLabel(label) {
     setLabels(prev => prev.filter(l => l !== label))
@@ -237,7 +252,25 @@ export default function LeadModal({ lead, onClose }) {
               {(lead.name || lead.phone).charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">{lead.name || 'Sem nome'}</h2>
+              {editingName ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={nameInputRef}
+                    autoFocus
+                    value={nameValue}
+                    onChange={e => setNameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') { setEditingName(false); setNameValue(lead.name ?? '') } }}
+                    onBlur={handleSaveName}
+                    className="font-bold text-gray-800 border-b border-teal-500 outline-none bg-transparent text-sm w-40"
+                  />
+                  {nameSaving && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 group cursor-pointer" onClick={() => { setEditingName(true); setNameValue(lead.name ?? '') }}>
+                  <h2 className="font-bold text-gray-800">{lead.name || 'Sem nome'}</h2>
+                  <Pencil className="w-3 h-3 text-gray-300 group-hover:text-teal-500 transition" />
+                </div>
+              )}
               <p className="text-xs text-gray-400">{lead.phone}</p>
             </div>
           </div>
