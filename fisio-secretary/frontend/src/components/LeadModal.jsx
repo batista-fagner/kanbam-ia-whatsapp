@@ -441,8 +441,10 @@ export default function LeadModal({ lead, onClose }) {
                   value={fuText}
                   onChange={e => setFuText(e.target.value)}
                   placeholder="Mensagem do follow-up (digite ou gere com a IA)..."
-                  rows={3}
-                  className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none text-gray-700"
+                  rows={fuText.length > 100 ? 8 : 3}
+                  onFocus={e => e.target.rows = 8}
+                  onBlur={e => e.target.rows = fuText.length > 100 ? 8 : 3}
+                  className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none text-gray-700 transition-all duration-200"
                 />
 
                 <button
