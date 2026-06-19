@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus } from 'lucide-react'
-import { authFetch } from '../services/api'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp } from 'lucide-react'
+import { authFetch, getMediaList } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -50,7 +50,15 @@ export default function SettingsPage() {
   const [creatingInstance, setCreatingInstance] = useState(false)
   const [customPromptMegaHair, setCustomPromptMegaHair] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
+  const [mediaList, setMediaList] = useState([])
+  const [promptSaved, setPromptSaved] = useState(false)
+  const [blocks, setBlocks] = useState({ identidade: '', regras: '' })
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [appliedNotice, setAppliedNotice] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchIndex, setSearchIndex] = useState(0)
   const pollingRef = useRef(null)
+  const promptRef = useRef(null)
 
   const fetchStatus = async () => {
     try {
@@ -140,8 +148,60 @@ export default function SettingsPage() {
       setBootstrapping(false)
     }
     init()
+    getMediaList().then(setMediaList).catch(() => setMediaList([]))
     return () => stopPolling()
   }, [])
+
+  // Busca e seleciona ocorrência no textarea do prompt.
+  const searchOccurrences = (term, text) => {
+    if (!term) return []
+    const lower = text.toLowerCase()
+    const key = term.toLowerCase()
+    const positions = []
+    let pos = 0
+    while ((pos = lower.indexOf(key, pos)) !== -1) {
+      positions.push(pos)
+      pos += key.length
+    }
+    return positions
+  }
+
+  const navigateSearch = (dir) => {
+    const positions = searchOccurrences(searchTerm, customPromptMegaHair)
+    if (positions.length === 0) return
+    const next = (searchIndex + dir + positions.length) % positions.length
+    setSearchIndex(next)
+    const el = promptRef.current
+    if (!el) return
+    const start = positions[next]
+    const end = start + searchTerm.length
+    el.focus()
+    el.setSelectionRange(start, end)
+    // Scroll para a seleção
+    const lineHeight = 16
+    const lines = customPromptMegaHair.slice(0, start).split('\n').length
+    el.scrollTop = (lines - 3) * lineHeight
+  }
+
+  // Insere snippet completo de envio de mídia na posição do cursor do textarea do prompt.
+  const insertMediaName = (name) => {
+    const el = promptRef.current
+    const snippet = `envie usando action=send_media com mediaName="${name}"`
+    if (!el) {
+      setCustomPromptMegaHair(prev => `${prev}${snippet}`)
+      return
+    }
+    const start = el.selectionStart ?? customPromptMegaHair.length
+    const end = el.selectionEnd ?? customPromptMegaHair.length
+    const next = customPromptMegaHair.slice(0, start) + snippet + customPromptMegaHair.slice(end)
+    setCustomPromptMegaHair(next)
+    // Reposiciona o cursor logo após o trecho inserido.
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + snippet.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
 
   const handleCreateInstance = async () => {
     setError(null)
@@ -259,7 +319,7 @@ export default function SettingsPage() {
   const phone = instanceStatus?.status?.jid?.replace('@s.whatsapp.net', '').replace(/:\d+$/, '') ?? instanceConfig?.phone
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-xl font-bold text-gray-800 mb-6">Configurações</h1>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -525,30 +585,219 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* Botão para abrir o Drawer */}
+      {!bootstrapping && instanceConfig && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setBuilderOpen(true)}
+            className="flex items-center gap-2.5 px-5 py-3 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white rounded-xl shadow-sm transition text-sm font-semibold"
+          >
+            <Wand2 className="w-4 h-4" />
+            Construtor de Prompt
+          </button>
+
+          {/* Notificação de aplicado */}
+          {appliedNotice && (
+            <div className="mt-3 flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm font-medium">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              Prompt aplicado com sucesso! Revise abaixo e clique em "Salvar prompt".
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Drawer — Construtor de Prompt */}
+      {builderOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/30 z-40"
+            onClick={() => setBuilderOpen(false)}
+          />
+
+          {/* Painel lateral */}
+          <div className="fixed top-0 right-0 h-full w-1/2 bg-white z-50 shadow-2xl flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-teal-600 to-teal-700">
+              <div className="flex items-center gap-2.5">
+                <Wand2 className="w-4 h-4 text-white" />
+                <span className="text-sm font-semibold text-white">Construtor de Prompt</span>
+              </div>
+              <button onClick={() => setBuilderOpen(false)} className="text-white/70 hover:text-white transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Conteúdo com scroll */}
+            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+
+              {/* Bloco: Identidade */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">🎭 Identidade</label>
+                <p className="text-xs text-gray-400 mb-2">Descreva quem é a IA, sua personalidade e contexto do negócio.</p>
+                <textarea
+                  value={blocks.identidade}
+                  onChange={e => setBlocks(b => ({ ...b, identidade: e.target.value }))}
+                  rows={6}
+                  placeholder="Ex: Você é a Lindona, vendedora afetiva da Cabelô em Salvador/BA. Seu tom é descontraído e carinhoso..."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Regras */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">📋 Regras</label>
+                <p className="text-xs text-gray-400 mb-2">O que a IA deve ou não deve fazer.</p>
+                <textarea
+                  value={blocks.regras}
+                  onChange={e => setBlocks(b => ({ ...b, regras: e.target.value }))}
+                  rows={6}
+                  placeholder="Ex: Nunca fale de concorrentes. Não faça promessas de resultado. Atenda apenas no horário comercial..."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+
+            {/* Footer fixo */}
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const partes = []
+                  if (blocks.identidade.trim()) partes.push(`## Identidade\n${blocks.identidade.trim()}`)
+                  if (blocks.regras.trim()) partes.push(`## Regras\n${blocks.regras.trim()}`)
+                  if (partes.length === 0) return
+                  setCustomPromptMegaHair(partes.join('\n\n'))
+                  setBuilderOpen(false)
+                  setAppliedNotice(true)
+                  setTimeout(() => setAppliedNotice(false), 3000)
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-teal-700 rounded-xl hover:bg-teal-800 transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Aplicar no prompt oficial
+              </button>
+              <button
+                type="button"
+                onClick={() => setBuilderOpen(false)}
+                className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Card de prompt customizado */}
       {!bootstrapping && instanceConfig && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
           <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da Lindona (Mega Hair)</h2>
           <p className="text-xs text-gray-500 mb-4">Personalize o comportamento da Lindona (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
 
-          <textarea
-            value={customPromptMegaHair}
-            onChange={e => setCustomPromptMegaHair(e.target.value)}
-            className="w-full h-80 text-xs font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
-            placeholder="Digite o prompt da IA aqui..."
-            spellCheck={false}
-          />
+          <div className="flex gap-4">
+            {/* Coluna esquerda: editor do prompt */}
+            <div className="flex-1 min-w-0">
+              {/* Barra de busca */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => { setSearchTerm(e.target.value); setSearchIndex(0) }}
+                    onKeyDown={e => { if (e.key === 'Enter') navigateSearch(e.shiftKey ? -1 : 1) }}
+                    placeholder="Buscar no prompt..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-gray-800 placeholder-gray-400"
+                  />
+                </div>
+                {searchTerm && (() => {
+                  const total = searchOccurrences(searchTerm, customPromptMegaHair).length
+                  return (
+                    <>
+                      <span className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                        {total === 0 ? 'Não encontrado' : `${searchIndex + 1}/${total}`}
+                      </span>
+                      <button onClick={() => navigateSearch(-1)} disabled={total === 0} className="p-1 rounded hover:bg-teal-50 disabled:opacity-30 transition">
+                        <ChevronUp className="w-3.5 h-3.5 text-teal-600" />
+                      </button>
+                      <button onClick={() => navigateSearch(1)} disabled={total === 0} className="p-1 rounded hover:bg-teal-50 disabled:opacity-30 transition">
+                        <ChevronDown className="w-3.5 h-3.5 text-teal-600" />
+                      </button>
+                      <button onClick={() => setSearchTerm('')} className="p-1 rounded hover:bg-gray-100 transition">
+                        <X className="w-3.5 h-3.5 text-gray-500" />
+                      </button>
+                    </>
+                  )
+                })()}
+              </div>
+              <textarea
+                ref={promptRef}
+                value={customPromptMegaHair}
+                onChange={e => setCustomPromptMegaHair(e.target.value)}
+                className="w-full h-80 text-xs font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                placeholder="Digite o prompt da IA aqui..."
+                spellCheck={false}
+              />
+            </div>
+
+            {/* Coluna direita: mídias disponíveis (clique para inserir o nome no prompt) */}
+            <div className="w-56 flex-shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-600">Suas mídias</p>
+                <span className="text-[10px] text-gray-400">clique p/ inserir</span>
+              </div>
+              <div className="h-80 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1 bg-gray-50">
+                {mediaList.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6 px-2">
+                    Nenhuma mídia cadastrada. Faça upload na página Mídias.
+                  </p>
+                ) : (
+                  mediaList.map(media => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() => insertMediaName(media.name)}
+                      title={`Inserir "${media.name}" no prompt`}
+                      className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-teal-50 hover:border-teal-200 border border-transparent transition text-left group"
+                    >
+                      <div className="w-9 h-9 rounded-md overflow-hidden bg-gray-200 flex-shrink-0 flex items-center justify-center">
+                        {media.mimeType?.startsWith('image/') ? (
+                          <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
+                        ) : media.mimeType?.startsWith('video/') ? (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                            <Play className="w-3.5 h-3.5 text-white" />
+                          </div>
+                        ) : (
+                          <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-700 truncate flex-1 group-hover:text-teal-700">{media.name}</span>
+                      <Plus className="w-3 h-3 text-gray-300 group-hover:text-teal-500 flex-shrink-0" />
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="flex items-center gap-3 mt-3">
             <button
               onClick={async () => {
                 setSavingPrompt(true)
+                setPromptSaved(false)
                 try {
                   await authFetch(`${API_URL}/instance/config`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ customPromptMegaHair: customPromptMegaHair.trim() || null }),
                   })
+                  setPromptSaved(true)
+                  setTimeout(() => setPromptSaved(false), 2500)
                 } finally {
                   setSavingPrompt(false)
                 }
@@ -559,6 +808,7 @@ export default function SettingsPage() {
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {savingPrompt ? 'Salvando...' : 'Salvar prompt'}
             </button>
+            {promptSaved && <span className="text-xs text-green-600 font-medium">✓ Prompt salvo</span>}
           </div>
         </div>
       )}
