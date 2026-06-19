@@ -319,33 +319,27 @@ export class PaymentsService {
     }
   }
 
-  // Ativa o tenant após pagamento confirmado. Idempotente: se já está ativo, sai.
+  // Ativa o tenant após pagamento confirmado.
+  // Usa UPDATE atômico (pending → active) para evitar duplicação em múltiplas instâncias.
   private async _activatePaidTenant(tenant: WhatsappConfig): Promise<void> {
-    if (tenant.planStatus === 'active' && tenant.isActive) return;
+    const claim = await this.configRepo
+      .createQueryBuilder()
+      .update(WhatsappConfig)
+      .set({ isActive: true, planStatus: 'active', lastPixSentAt: new Date() })
+      .where('id = :id AND plan_status = :pending', { id: tenant.id, pending: 'pending' })
+      .execute();
 
-    const wasPending = tenant.planStatus === 'pending';
-    tenant.isActive = true;
-    tenant.planStatus = 'active';
-    tenant.lastPixSentAt = new Date();
-    await this.configRepo.save(tenant);
+    if (claim.affected !== 1) return; // já ativado por outra instância
 
-    if (wasPending) {
-      // Primeira ativação: gera senha definitiva e envia credenciais
-      const users = await this.usersService.findByTenant(tenant.id);
-      const user = users[0];
-      if (user) {
-        const password = this._generatePassword();
-        await this.usersService.resetPassword(user.id, password);
-        if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
-      }
-      this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO + credenciais enviadas`);
-    } else {
-      // Renovação mensal confirmada
-      if (tenant.billingPhone) {
-        await this._sendText(tenant.billingPhone, `✅ Pagamento confirmado! Seu plano *Convert Hair* está renovado. Obrigado! 🙏`);
-      }
-      this.logger.log(`[EFI] Renovação confirmada → tenant ${tenant.id}`);
+    // Primeira ativação: gera senha definitiva e envia credenciais
+    const users = await this.usersService.findByTenant(tenant.id);
+    const user = users[0];
+    if (user) {
+      const password = this._generatePassword();
+      await this.usersService.resetPassword(user.id, password);
+      if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
     }
+    this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO + credenciais enviadas`);
   }
 
   // ───────────────────────── Efí Bank PIX — Webhook (fallback, exige mTLS) ─────────────────────────
