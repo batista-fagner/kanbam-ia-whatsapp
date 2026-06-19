@@ -31,9 +31,13 @@ export class FollowupService {
     private readonly config: ConfigService,
     private readonly http: HttpService,
   ) {
-    const redisUrl = this.config.get<string>('REDIS_URL');
+    const redisUrl = this.config.get<string>('REDIS_URL')
+      ?? this.config.get<string>('CACHE_REDIS_URI');
+    const redisPassword = this.config.get<string>('REDIS_PASSWORD');
     if (redisUrl) {
       this.redis = new Redis(redisUrl);
+    } else if (redisPassword) {
+      this.redis = new Redis({ host: 'localhost', port: 6379, password: redisPassword });
     }
   }
 

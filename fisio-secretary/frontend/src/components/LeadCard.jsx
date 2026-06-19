@@ -101,7 +101,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
       style={style}
       {...listeners}
       {...attributes}
-      className={`rounded-xl p-3 mb-2 shadow-sm border hover:shadow-md transition-all select-none ${cardBg}`}
+      className={`group rounded-xl p-3 mb-2 shadow-sm border hover:shadow-md transition-all select-none ${cardBg}`}
       onClick={onClick}
     >
       {/* Header */}
@@ -132,11 +132,11 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
           {lead.stage !== 'novo_lead' && (
             <span className="text-base leading-none">{tempBadge[lead.temperature]}</span>
           )}
-          {!isEditing && !lead.name && (
+          {!isEditing && (
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); setIsEditing(true); setTimeout(() => inputRef.current?.focus(), 0) }}
-              className="p-1 rounded hover:bg-blue-50 text-gray-300 hover:text-blue-400 transition-colors"
+              className="p-1 rounded hover:bg-blue-50 text-gray-200 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
               title="Editar nome"
             >
               <Edit2 className="w-3.5 h-3.5" />
