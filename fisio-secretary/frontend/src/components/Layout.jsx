@@ -95,8 +95,15 @@ export default function Layout({ onLogout }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
+      <main className="flex-1 overflow-auto flex flex-col">
+        {(import.meta.env.VITE_API_URL?.includes('localhost') || typeof window !== 'undefined' && window.location.hostname === 'localhost') && (
+          <div className="bg-red-600 text-white px-4 py-3 text-center font-bold text-sm z-50 border-b-2 border-red-700">
+            🔴 AMBIENTE LOCAL - Banco e dados isolados da produção
+          </div>
+        )}
+        <div className="flex-1">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

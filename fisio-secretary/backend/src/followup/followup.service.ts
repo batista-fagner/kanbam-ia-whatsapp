@@ -5,6 +5,7 @@ import { Repository, LessThanOrEqual } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import Redis from 'ioredis';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { LeadsService } from '../leads/leads.service';
@@ -17,6 +18,7 @@ const ALLOWED_DELAYS = [1, 4, 24];
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
+  private redis: Redis;
 
   constructor(
     @InjectRepository(Followup)
@@ -28,7 +30,12 @@ export class FollowupService {
     private readonly aiService: AiService,
     private readonly config: ConfigService,
     private readonly http: HttpService,
-  ) {}
+  ) {
+    const redisUrl = this.config.get<string>('REDIS_URL');
+    if (redisUrl) {
+      this.redis = new Redis(redisUrl);
+    }
+  }
 
   // ───────────────────────── API ─────────────────────────
 
@@ -89,8 +96,30 @@ export class FollowupService {
   // ───────────────────────── Cron ─────────────────────────
 
   // A cada minuto: envia os follow-ups vencidos (scheduledAt <= agora).
+  // Lock distribuído (Redis) evita processamento duplicado em múltiplas instâncias.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
+    const lockKey = 'followup:cron:lock';
+    const lockTtl = 50; // 50 segundos (cron roda a cada 60s)
+
+    if (!this.redis) {
+      this.logger.warn('[FOLLOWUP] Redis não configurado, processando sem lock (risco de duplicação)');
+      return this.processFollowups();
+    }
+
+    try {
+      const acquired = await this.redis.set(lockKey, '1', 'EX', lockTtl, 'NX');
+      if (!acquired) {
+        this.logger.debug('[FOLLOWUP] Outra instância já está processando');
+        return;
+      }
+      await this.processFollowups();
+    } catch (err) {
+      this.logger.error(`[FOLLOWUP] Erro ao adquirir lock: ${err.message}`);
+    }
+  }
+
+  private async processFollowups(): Promise<void> {
     const due = await this.followupRepo.find({
       where: { status: 'pending', scheduledAt: LessThanOrEqual(new Date()) },
       order: { scheduledAt: 'ASC' },
