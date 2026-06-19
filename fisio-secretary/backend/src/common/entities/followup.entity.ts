@@ -3,7 +3,7 @@ import {
   CreateDateColumn, Index,
 } from 'typeorm';
 
-export type FollowupStatus = 'pending' | 'sent' | 'canceled' | 'failed';
+export type FollowupStatus = 'pending' | 'sending' | 'sent' | 'canceled' | 'failed';
 
 // Follow-up agendado por lead: o operador escreve (ou a IA gera) uma mensagem
 // e define quando enviar (1h / 4h / 24h). Um cron envia quando chega a hora.

@@ -5,7 +5,6 @@ import { Repository, LessThanOrEqual } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import Redis from 'ioredis';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { LeadsService } from '../leads/leads.service';
@@ -18,7 +17,6 @@ const ALLOWED_DELAYS = [1, 4, 24];
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
-  private redis: Redis;
 
   constructor(
     @InjectRepository(Followup)
@@ -30,16 +28,7 @@ export class FollowupService {
     private readonly aiService: AiService,
     private readonly config: ConfigService,
     private readonly http: HttpService,
-  ) {
-    const redisUrl = this.config.get<string>('REDIS_URL')
-      ?? this.config.get<string>('CACHE_REDIS_URI');
-    const redisPassword = this.config.get<string>('REDIS_PASSWORD');
-    if (redisUrl) {
-      this.redis = new Redis(redisUrl);
-    } else if (redisPassword) {
-      this.redis = new Redis({ host: 'localhost', port: 6379, password: redisPassword });
-    }
-  }
+  ) {}
 
   // ───────────────────────── API ─────────────────────────
 
@@ -100,30 +89,11 @@ export class FollowupService {
   // ───────────────────────── Cron ─────────────────────────
 
   // A cada minuto: envia os follow-ups vencidos (scheduledAt <= agora).
-  // Lock distribuído (Redis) evita processamento duplicado em múltiplas instâncias.
+  // Cada follow-up é "reivindicado" com um UPDATE atômico (pending → sending).
+  // Só a instância que conseguir afetar a linha envia — evita duplicação em
+  // múltiplas instâncias sem depender de Redis.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
-    const lockKey = 'followup:cron:lock';
-    const lockTtl = 50; // 50 segundos (cron roda a cada 60s)
-
-    if (!this.redis) {
-      this.logger.warn('[FOLLOWUP] Redis não configurado, processando sem lock (risco de duplicação)');
-      return this.processFollowups();
-    }
-
-    try {
-      const acquired = await this.redis.set(lockKey, '1', 'EX', lockTtl, 'NX');
-      if (!acquired) {
-        this.logger.debug('[FOLLOWUP] Outra instância já está processando');
-        return;
-      }
-      await this.processFollowups();
-    } catch (err) {
-      this.logger.error(`[FOLLOWUP] Erro ao adquirir lock: ${err.message}`);
-    }
-  }
-
-  private async processFollowups(): Promise<void> {
     const due = await this.followupRepo.find({
       where: { status: 'pending', scheduledAt: LessThanOrEqual(new Date()) },
       order: { scheduledAt: 'ASC' },
@@ -131,8 +101,20 @@ export class FollowupService {
     });
     if (due.length === 0) return;
 
-    this.logger.log(`[FOLLOWUP] ${due.length} follow-up(s) a enviar`);
     for (const f of due) {
+      // Claim atômico: só prossegue se ESTA instância flipou pending → sending.
+      const claim = await this.followupRepo
+        .createQueryBuilder()
+        .update(Followup)
+        .set({ status: 'sending' as any })
+        .where('id = :id AND status = :pending', { id: f.id, pending: 'pending' })
+        .execute();
+
+      if (claim.affected !== 1) {
+        // Outra instância já reivindicou este follow-up.
+        continue;
+      }
+
       try {
         await this.send(f);
         f.status = 'sent';

@@ -136,7 +136,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); setIsEditing(true); setTimeout(() => inputRef.current?.focus(), 0) }}
-              className="p-1 rounded hover:bg-blue-50 text-gray-200 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+              className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors"
               title="Editar nome"
             >
               <Edit2 className="w-3.5 h-3.5" />
