@@ -29,6 +29,11 @@ export class MediaFile {
   @Column({ name: 'reel_codes', type: 'text', array: true, nullable: true, default: () => "'{}'" })
   reelCodes: string[];
 
+  // Legenda enviada junto com a mídia no WhatsApp (configurável por vídeo).
+  // Quando vazia, a IA envia sem legenda fixa.
+  @Column({ type: 'text', nullable: true })
+  caption: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

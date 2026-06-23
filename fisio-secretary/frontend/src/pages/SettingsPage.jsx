@@ -7,7 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 function StatusBadge({ status }) {
   if (status === 'connected') {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
         <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
         Conectado
       </span>
@@ -15,14 +15,14 @@ function StatusBadge({ status }) {
   }
   if (status === 'connecting') {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-700">
         <Loader2 className="w-3 h-3 animate-spin" />
         Conectando...
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-500">
       <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
       Desconectado
     </span>
@@ -55,6 +55,8 @@ export default function SettingsPage() {
   const [blocks, setBlocks] = useState({ identidade: '', regras: '' })
   const [builderOpen, setBuilderOpen] = useState(false)
   const [appliedNotice, setAppliedNotice] = useState(false)
+  const [batchTrigger, setBatchTrigger] = useState('')
+  const [batchSelected, setBatchSelected] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const pollingRef = useRef(null)
@@ -203,6 +205,42 @@ export default function SettingsPage() {
     })
   }
 
+  const toggleBatchVideo = (name) => {
+    setBatchSelected(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    )
+  }
+
+  const buildBatchSnippet = () => {
+    if (batchSelected.length === 0) return ''
+    const trigger = batchTrigger.trim() || 'quero ver todos'
+    const namesStr = batchSelected.map(n => `"${n}"`).join(', ')
+    if (batchSelected.length === 1) {
+      return `Quando a cliente disser "${trigger}":\n  action=send_media\n  mediaName: ${namesStr}\n  reply: "Aqui está! 😍"`
+    }
+    return `Quando a cliente disser "${trigger}":\n  action=send_media\n  mediaName: [${namesStr}]\n  reply: "Aqui estão todos! 😍"`
+  }
+
+  const insertBatchSnippet = () => {
+    const snippet = buildBatchSnippet()
+    if (!snippet) return
+    const el = promptRef.current
+    if (!el) {
+      setCustomPromptMegaHair(prev => `${prev}\n\n${snippet}`)
+      return
+    }
+    const start = el.selectionStart ?? customPromptMegaHair.length
+    const end = el.selectionEnd ?? customPromptMegaHair.length
+    const next = customPromptMegaHair.slice(0, start) + '\n' + snippet + customPromptMegaHair.slice(end)
+    setCustomPromptMegaHair(next)
+    setBuilderOpen(false)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + snippet.length + 1
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
   const handleCreateInstance = async () => {
     setError(null)
     setCreatingInstance(true)
@@ -330,7 +368,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-800">WhatsApp</h2>
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-500">
                 {instanceConfig?.profileName ? `Conexão: ${instanceConfig.profileName}` : 'Conexão via uazapi'}
               </p>
             </div>
@@ -351,11 +389,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-800 font-medium mb-1">Nenhuma conexão configurada</p>
-              <p className="text-xs text-blue-600">Crie uma nova conexão WhatsApp para começar. Você poderá conectar seu número logo em seguida.</p>
+              <p className="text-sm text-blue-600">Crie uma nova conexão WhatsApp para começar. Você poderá conectar seu número logo em seguida.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Nome da conexão</label>
+              <label className="block text-sm font-medium text-gray-600 mb-1.5">Nome da conexão</label>
               <input
                 type="text"
                 placeholder="Ex: Clínica Dr. Silva"
@@ -363,7 +401,7 @@ export default function SettingsPage() {
                 onChange={e => setInstanceName(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Apenas para identificação interna.</p>
+              <p className="text-sm text-gray-400 mt-1">Apenas para identificação interna.</p>
             </div>
 
             <button
@@ -394,22 +432,22 @@ export default function SettingsPage() {
               )}
               <div>
                 {profileName && <p className="text-sm font-medium text-gray-800">{profileName}</p>}
-                {phone && <p className="text-xs text-gray-500">{phone}</p>}
+                {phone && <p className="text-sm text-gray-500">{phone}</p>}
                 <div className="flex items-center gap-1.5 mt-1">
                   {settingUpWebhook ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin text-yellow-500" />
-                      <span className="text-xs text-yellow-600">Configurando...</span>
+                      <span className="text-sm text-yellow-600">Configurando...</span>
                     </>
                   ) : webhookConfigured ? (
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                      <span className="text-xs text-green-600">Conectado e configurado</span>
+                      <span className="text-sm text-green-600">Conectado e configurado</span>
                     </>
                   ) : (
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-                      <span className="text-xs text-yellow-600">Conectado — webhook pendente</span>
+                      <span className="text-sm text-yellow-600">Conectado — webhook pendente</span>
                     </>
                   )}
                 </div>
@@ -445,7 +483,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Zona de perigo</p>
+              <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Zona de perigo</p>
               <button
                 onClick={() => setShowConfirmDelete(true)}
                 disabled={deleting}
@@ -454,7 +492,7 @@ export default function SettingsPage() {
                 {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Remover conexão
               </button>
-              <p className="text-xs text-gray-400 mt-2">Remove permanentemente esta conexão. Será necessário criar uma nova do zero.</p>
+              <p className="text-sm text-gray-400 mt-2">Remove permanentemente esta conexão. Será necessário criar uma nova do zero.</p>
             </div>
           </div>
         )}
@@ -463,13 +501,13 @@ export default function SettingsPage() {
         {!bootstrapping && instanceConfig?.instanceToken && currentStatus === 'disconnected' && !connecting && (
           <div className="space-y-4">
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <p className="text-xs text-gray-600">Conexão <span className="font-medium">{instanceConfig.profileName}</span> pronta. Escolha como quer conectar:</p>
+              <p className="text-sm text-gray-600">Conexão <span className="font-medium">{instanceConfig.profileName}</span> pronta. Escolha como quer conectar:</p>
             </div>
 
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               <button
                 onClick={() => setConnectMode('qrcode')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
                   connectMode === 'qrcode'
                     ? 'bg-white text-gray-800 shadow-sm'
                     : 'text-gray-500 hover:text-gray-700'
@@ -479,7 +517,7 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={() => setConnectMode('paircode')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
                   connectMode === 'paircode'
                     ? 'bg-white text-gray-800 shadow-sm'
                     : 'text-gray-500 hover:text-gray-700'
@@ -510,7 +548,7 @@ export default function SettingsPage() {
             <div className="pt-3 border-t border-gray-100">
               <button
                 onClick={() => setShowConfirmDelete(true)}
-                className="text-xs text-gray-400 hover:text-red-600 transition flex items-center gap-1"
+                className="text-sm text-gray-400 hover:text-red-600 transition flex items-center gap-1"
               >
                 <Trash2 className="w-3 h-3" />
                 Remover esta conexão
@@ -526,7 +564,7 @@ export default function SettingsPage() {
               <div className="flex flex-col items-center gap-3">
                 <p className="text-sm text-gray-600">Escaneie o QR code com seu WhatsApp</p>
                 <img src={qrCode} alt="QR Code" className="w-56 h-56 rounded-lg border border-gray-200" />
-                <p className="text-xs text-gray-400">Expira em 2 minutos</p>
+                <p className="text-sm text-gray-400">Expira em 2 minutos</p>
               </div>
             )}
 
@@ -538,8 +576,8 @@ export default function SettingsPage() {
                     {pairCode}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400">WhatsApp → Aparelhos Conectados → Conectar com número de telefone</p>
-                <p className="text-xs text-gray-400">Expira em 5 minutos</p>
+                <p className="text-sm text-gray-400">WhatsApp → Aparelhos Conectados → Conectar com número de telefone</p>
+                <p className="text-sm text-gray-400">Expira em 5 minutos</p>
               </div>
             )}
 
@@ -550,7 +588,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
               <Loader2 className="w-3 h-3 animate-spin" />
               Aguardando confirmação...
             </div>
@@ -566,7 +604,7 @@ export default function SettingsPage() {
                   await fetchStatus()
                 } catch { /* ignora erro silencioso ao cancelar */ }
               }}
-              className="flex items-center gap-2 mx-auto text-xs text-gray-400 hover:text-gray-600 transition"
+              className="flex items-center gap-2 mx-auto text-sm text-gray-400 hover:text-gray-600 transition"
             >
               <RotateCcw className="w-3 h-3" />
               Cancelar
@@ -635,8 +673,8 @@ export default function SettingsPage() {
 
               {/* Bloco: Identidade */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">🎭 Identidade</label>
-                <p className="text-xs text-gray-400 mb-2">Descreva quem é a IA, sua personalidade e contexto do negócio.</p>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🎭 Identidade</label>
+                <p className="text-sm text-gray-400 mb-2">Descreva quem é a IA, sua personalidade e contexto do negócio.</p>
                 <textarea
                   value={blocks.identidade}
                   onChange={e => setBlocks(b => ({ ...b, identidade: e.target.value }))}
@@ -649,8 +687,8 @@ export default function SettingsPage() {
 
               {/* Bloco: Regras */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">📋 Regras</label>
-                <p className="text-xs text-gray-400 mb-2">O que a IA deve ou não deve fazer.</p>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">📋 Regras</label>
+                <p className="text-sm text-gray-400 mb-2">O que a IA deve ou não deve fazer.</p>
                 <textarea
                   value={blocks.regras}
                   onChange={e => setBlocks(b => ({ ...b, regras: e.target.value }))}
@@ -659,6 +697,75 @@ export default function SettingsPage() {
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
                   spellCheck={false}
                 />
+              </div>
+
+              {/* Bloco: Envio em Lote */}
+              <div className="border border-teal-100 rounded-xl p-4 bg-teal-50/40">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">🎬 Envio em Lote</label>
+                <p className="text-sm text-gray-500 mb-4">Selecione os vídeos, defina o gatilho (o que a cliente vai falar) e insira pronto no prompt. A IA reconhece e envia todos automaticamente.</p>
+
+                {/* Trigger */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-600 mb-2">📝 Quando a cliente disser:</label>
+                  <input
+                    type="text"
+                    value={batchTrigger}
+                    onChange={e => setBatchTrigger(e.target.value)}
+                    placeholder='Ex: "quero todos os lisos", "me manda os ondulados"'
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                  />
+                </div>
+
+                {/* Lista de mídias com checkbox */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-600 mb-2">📹 Selecione os vídeos:</label>
+                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-50">
+                    {mediaList.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-6">Nenhuma mídia cadastrada.</p>
+                    ) : mediaList.map(media => (
+                      <label key={media.id} className="flex items-center gap-2.5 px-3 py-3 hover:bg-teal-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={batchSelected.includes(media.name)}
+                          onChange={() => toggleBatchVideo(media.name)}
+                          className="accent-teal-600 w-4 h-4 flex-shrink-0"
+                        />
+                        <div className="w-8 h-8 rounded overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                          {media.mimeType?.startsWith('image/') ? (
+                            <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 text-gray-500" />
+                          )}
+                        </div>
+                        <span className="text-sm text-gray-700 truncate">{media.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {batchSelected.length > 0 && (
+                    <p className="text-sm text-teal-700 font-medium mt-2">✓ {batchSelected.length} vídeo{batchSelected.length > 1 ? 's' : ''} selecionado{batchSelected.length > 1 ? 's' : ''}</p>
+                  )}
+                </div>
+
+                {/* Preview do snippet */}
+                {batchSelected.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-600 mb-2">💬 O que será inserido:</label>
+                    <pre className="text-sm bg-gray-900 text-green-300 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed font-mono">{buildBatchSnippet()}</pre>
+                    <p className="text-sm text-gray-500 mt-2">
+                      <strong>reply:</strong> é a mensagem que a IA vai responder. Você pode customizar (ex: "Aqui estão os lisos mais lindos! 💁‍♀️").
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={batchSelected.length === 0}
+                  onClick={insertBatchSnippet}
+                  className="w-full flex items-center justify-center gap-2 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Inserir no prompt
+                </button>
               </div>
             </div>
 
@@ -697,7 +804,7 @@ export default function SettingsPage() {
       {!bootstrapping && instanceConfig && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
           <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da Lindona (Mega Hair)</h2>
-          <p className="text-xs text-gray-500 mb-4">Personalize o comportamento da Lindona (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
+          <p className="text-sm text-gray-500 mb-4">Personalize o comportamento da Lindona (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
 
           <div className="flex gap-4">
             {/* Coluna esquerda: editor do prompt */}
@@ -712,14 +819,14 @@ export default function SettingsPage() {
                     onChange={e => { setSearchTerm(e.target.value); setSearchIndex(0) }}
                     onKeyDown={e => { if (e.key === 'Enter') navigateSearch(e.shiftKey ? -1 : 1) }}
                     placeholder="Buscar no prompt..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-gray-800 placeholder-gray-400"
+                    className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-gray-800 placeholder-gray-400"
                   />
                 </div>
                 {searchTerm && (() => {
                   const total = searchOccurrences(searchTerm, customPromptMegaHair).length
                   return (
                     <>
-                      <span className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                      <span className="text-sm text-gray-600 font-medium whitespace-nowrap">
                         {total === 0 ? 'Não encontrado' : `${searchIndex + 1}/${total}`}
                       </span>
                       <button onClick={() => navigateSearch(-1)} disabled={total === 0} className="p-1 rounded hover:bg-teal-50 disabled:opacity-30 transition">
@@ -739,7 +846,7 @@ export default function SettingsPage() {
                 ref={promptRef}
                 value={customPromptMegaHair}
                 onChange={e => setCustomPromptMegaHair(e.target.value)}
-                className="w-full h-80 text-xs font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                className="w-full h-80 text-sm font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
                 placeholder="Digite o prompt da IA aqui..."
                 spellCheck={false}
               />
@@ -748,12 +855,12 @@ export default function SettingsPage() {
             {/* Coluna direita: mídias disponíveis (clique para inserir o nome no prompt) */}
             <div className="w-56 flex-shrink-0">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-gray-600">Suas mídias</p>
-                <span className="text-[10px] text-gray-400">clique p/ inserir</span>
+                <p className="text-sm font-semibold text-gray-600">Suas mídias</p>
+                <span className="text-sm text-gray-400">clique p/ inserir</span>
               </div>
               <div className="h-80 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1 bg-gray-50">
                 {mediaList.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-6 px-2">
+                  <p className="text-sm text-gray-400 text-center py-6 px-2">
                     Nenhuma mídia cadastrada. Faça upload na página Mídias.
                   </p>
                 ) : (
@@ -776,7 +883,7 @@ export default function SettingsPage() {
                           <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
                         )}
                       </div>
-                      <span className="text-xs text-gray-700 truncate flex-1 group-hover:text-teal-700">{media.name}</span>
+                      <span className="text-sm text-gray-700 truncate flex-1 group-hover:text-teal-700">{media.name}</span>
                       <Plus className="w-3 h-3 text-gray-300 group-hover:text-teal-500 flex-shrink-0" />
                     </button>
                   ))
@@ -808,7 +915,7 @@ export default function SettingsPage() {
               {savingPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {savingPrompt ? 'Salvando...' : 'Salvar prompt'}
             </button>
-            {promptSaved && <span className="text-xs text-green-600 font-medium">✓ Prompt salvo</span>}
+            {promptSaved && <span className="text-sm text-green-600 font-medium">✓ Prompt salvo</span>}
           </div>
         </div>
       )}
@@ -822,7 +929,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">Remover conexão?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Esta ação não pode ser desfeita. Você precisará criar uma nova conexão do zero.</p>
+                <p className="text-sm text-gray-500 mt-0.5">Esta ação não pode ser desfeita. Você precisará criar uma nova conexão do zero.</p>
               </div>
             </div>
             <div className="flex gap-2 pt-1">
@@ -852,7 +959,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">Desconectar WhatsApp?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Será necessário escanear o QR code novamente para reconectar.</p>
+                <p className="text-sm text-gray-500 mt-0.5">Será necessário escanear o QR code novamente para reconectar.</p>
               </div>
             </div>
             <div className="flex gap-2 pt-1">

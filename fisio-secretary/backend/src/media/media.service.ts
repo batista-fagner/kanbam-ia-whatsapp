@@ -138,6 +138,14 @@ export class MediaService {
     return this.repo.save(record);
   }
 
+  async setCaption(id: string, caption: string, tenantId?: string): Promise<MediaFile> {
+    const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
+    if (!record) throw new NotFoundException('Mídia não encontrada');
+    const trimmed = (caption ?? '').trim();
+    record.caption = trimmed || null;
+    return this.repo.save(record);
+  }
+
   async delete(id: string, tenantId?: string): Promise<void> {
     const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');

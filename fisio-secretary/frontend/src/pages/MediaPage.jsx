@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2 } from 'lucide-react'
+import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2, MessageSquare } from 'lucide-react'
 import { authFetch } from '../services/api'
 
 // Extrai code de um link de Instagram (reel/post) ou valida code direto
@@ -39,6 +39,9 @@ export default function MediaPage() {
   const [reelEditingId, setReelEditingId] = useState(null)
   const [reelInput, setReelInput] = useState('')
   const [reelSaving, setReelSaving] = useState(false)
+  const [captionEditingId, setCaptionEditingId] = useState(null)
+  const [captionValue, setCaptionValue] = useState('')
+  const [captionSaving, setCaptionSaving] = useState(false)
   const fileInputRef = useRef(null)
   const renameInputRef = useRef(null)
 
@@ -176,6 +179,38 @@ export default function MediaPage() {
     await saveReelCodes(file.id, next)
   }
 
+  const startCaption = (file) => {
+    setCaptionEditingId(file.id)
+    setCaptionValue(file.caption ?? '')
+  }
+
+  const cancelCaption = () => {
+    setCaptionEditingId(null)
+    setCaptionValue('')
+  }
+
+  const saveCaption = async (id) => {
+    setCaptionSaving(true)
+    try {
+      const res = await authFetch(`${API_URL}/media/${id}/caption`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption: captionValue }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.message ?? 'Erro ao salvar legenda.')
+        return
+      }
+      setFiles(prev => prev.map(f => f.id === id ? { ...f, caption: data.caption } : f))
+      cancelCaption()
+    } catch {
+      setError('Não foi possível salvar a legenda.')
+    } finally {
+      setCaptionSaving(false)
+    }
+  }
+
   const handleDelete = async (id) => {
     setShowConfirmDelete(null)
     setDeletingId(id)
@@ -224,20 +259,20 @@ export default function MediaPage() {
                   <Check className="w-5 h-5" />
                   <span className="text-sm font-medium">{selectedFile.name}</span>
                 </div>
-                <p className="text-xs text-gray-400">{formatSize(selectedFile.size)} — clique para trocar</p>
+                <p className="text-sm text-gray-400">{formatSize(selectedFile.size)} — clique para trocar</p>
               </div>
             ) : (
               <div className="space-y-2">
                 <Upload className="w-8 h-8 text-gray-300 mx-auto" />
                 <p className="text-sm text-gray-500">Arraste um arquivo aqui ou <span className="text-teal-600 font-medium">clique para selecionar</span></p>
-                <p className="text-xs text-gray-400">Imagens e vídeos — máx. 50 MB</p>
+                <p className="text-sm text-gray-400">Imagens e vídeos — máx. 50 MB</p>
               </div>
             )}
           </div>
 
           {/* Nome */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">
+            <label className="block text-sm font-medium text-gray-600 mb-1.5">
               Nome da mídia <span className="text-gray-400">(a IA usa este nome para identificar)</span>
             </label>
             <input
@@ -247,7 +282,7 @@ export default function MediaPage() {
               onChange={e => setName(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
-            <p className="text-xs text-gray-400 mt-1">Sem espaços ou caracteres especiais. Use traço para separar palavras.</p>
+            <p className="text-sm text-gray-400 mt-1">Sem espaços ou caracteres especiais. Use traço para separar palavras.</p>
           </div>
 
           <button
@@ -353,7 +388,7 @@ export default function MediaPage() {
                       </button>
                     </div>
                   )}
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-sm text-gray-400 mt-0.5">
                     {file.mimeType} {file.size ? `· ${formatSize(file.size)}` : ''}
                   </p>
 
@@ -363,7 +398,7 @@ export default function MediaPage() {
                       {(file.reelCodes ?? []).map(code => (
                         <span
                           key={code}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-md text-xs font-mono"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-md text-sm font-mono"
                           title={`https://instagram.com/reel/${code}`}
                         >
                           <Link2 className="w-3 h-3" />
@@ -389,7 +424,7 @@ export default function MediaPage() {
                               if (e.key === 'Enter') addReelCode(file)
                               if (e.key === 'Escape') { setReelEditingId(null); setReelInput('') }
                             }}
-                            className="px-2 py-0.5 text-xs border border-teal-400 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 w-48"
+                            className="px-2 py-0.5 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 w-48"
                           />
                           <button
                             onClick={() => addReelCode(file)}
@@ -408,7 +443,7 @@ export default function MediaPage() {
                       ) : (
                         <button
                           onClick={() => { setReelEditingId(file.id); setReelInput('') }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-teal-700 hover:bg-teal-50 border border-dashed border-gray-300 hover:border-teal-300 rounded-md transition"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-sm text-gray-500 hover:text-teal-700 hover:bg-teal-50 border border-dashed border-gray-300 hover:border-teal-300 rounded-md transition"
                         >
                           <Link2 className="w-3 h-3" />
                           + reel
@@ -416,9 +451,64 @@ export default function MediaPage() {
                       )}
                     </div>
                     {(file.reelCodes ?? []).length === 0 && reelEditingId !== file.id && (
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-sm text-gray-400 mt-1">
                         Opcional: vincule reels do Instagram para a IA reconhecer quando a cliente enviar o link.
                       </p>
+                    )}
+                  </div>
+
+                  {/* Legenda do vídeo (enviada junto da mídia no WhatsApp) */}
+                  <div className="mt-2">
+                    {captionEditingId === file.id ? (
+                      <div className="flex flex-col gap-1.5">
+                        <textarea
+                          value={captionValue}
+                          onChange={e => setCaptionValue(e.target.value)}
+                          placeholder="Ex: Olha que perfeição esses fios! Repare na ponta cheia 😍"
+                          rows={2}
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveCaption(file.id)
+                            if (e.key === 'Escape') cancelCaption()
+                          }}
+                          className="w-full px-2 py-1.5 text-sm border border-teal-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => saveCaption(file.id)}
+                            disabled={captionSaving}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-sm text-white bg-teal-600 hover:bg-teal-700 rounded-md transition disabled:opacity-60"
+                          >
+                            {captionSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            Salvar
+                          </button>
+                          <button
+                            onClick={cancelCaption}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-sm text-gray-500 hover:bg-gray-50 rounded-md transition"
+                          >
+                            <X className="w-3 h-3" /> Cancelar
+                          </button>
+                          <span className="text-sm text-gray-400 ml-auto">⌘/Ctrl + Enter salva</span>
+                        </div>
+                      </div>
+                    ) : file.caption ? (
+                      <button
+                        onClick={() => startCaption(file)}
+                        className="flex items-start gap-1.5 text-left w-full group/cap"
+                        title="Editar legenda"
+                      >
+                        <MessageSquare className="w-3 h-3 text-teal-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-gray-600 italic">"{file.caption}"</span>
+                        <Pencil className="w-3 h-3 text-gray-300 group-hover/cap:text-teal-600 flex-shrink-0 mt-0.5 ml-auto" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => startCaption(file)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-sm text-gray-500 hover:text-teal-700 hover:bg-teal-50 border border-dashed border-gray-300 hover:border-teal-300 rounded-md transition"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        + legenda
+                      </button>
                     )}
                   </div>
                 </div>
@@ -482,7 +572,7 @@ export default function MediaPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">Remover mídia?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">"{showConfirmDelete.name}" será removida permanentemente.</p>
+                <p className="text-sm text-gray-500 mt-0.5">"{showConfirmDelete.name}" será removida permanentemente.</p>
               </div>
             </div>
             <div className="flex gap-2 pt-1">

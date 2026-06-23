@@ -43,6 +43,11 @@ export class MediaController {
     return this.mediaService.updateReelCodes(id, reelCodes, tenantId);
   }
 
+  @Patch(':id/caption')
+  async updateCaption(@Param('id') id: string, @Body('caption') caption: string, @CurrentUser('tenantId') tenantId: string) {
+    return this.mediaService.setCaption(id, caption ?? '', tenantId);
+  }
+
   @Delete(':id')
   async delete(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
     await this.mediaService.delete(id, tenantId);

@@ -22,6 +22,7 @@ import { AddStripePaymentFields1780210000000 } from './migrations/1780210000000-
 import { CreateFollowups1780300000000 } from './migrations/1780300000000-CreateFollowups';
 import { CreateTokenUsage1780400000000 } from './migrations/1780400000000-CreateTokenUsage';
 import { CreateImplantacaoPayments1780500000000 } from './migrations/1780500000000-CreateImplantacaoPayments';
+import { AddMediaCaption1780600000000 } from './migrations/1780600000000-AddMediaCaption';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -49,7 +50,7 @@ import { FollowupModule } from './followup/followup.module';
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000],
         migrationsRun: true,
         logging: false,
       }),

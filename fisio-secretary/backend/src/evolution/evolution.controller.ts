@@ -413,21 +413,46 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
-    // Envio de mídia (imagem/vídeo cadastrada no sistema)
+    // Envio de mídia (imagem/vídeo cadastrada no sistema).
+    // mediaName pode ser string (1 vídeo) ou array (vários — ex: "todos os lisos").
     if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
-      const mediaFile = await this.mediaService.findByName(aiResponse.mediaName, tenantId);
-      if (mediaFile) {
+      const DEFAULT_CAPTION = 'repare na ponta como ele é todo inteiro, o que acha?';
+      const MAX_MEDIA = 12; // teto de segurança para evitar flood
+      const names = (Array.isArray(aiResponse.mediaName) ? aiResponse.mediaName : [aiResponse.mediaName])
+        .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+        .slice(0, MAX_MEDIA);
+
+      let sentCount = 0;
+      for (let i = 0; i < names.length; i++) {
+        const mediaFile = await this.mediaService.findByName(names[i], tenantId);
+        if (!mediaFile) {
+          this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
+          continue;
+        }
         const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
-        // Legenda fixa para mídia — não usa o reply da IA. Padroniza a apresentação do vídeo.
-        const mediaCaption = 'repare na ponta como ele é todo inteiro, o que acha?';
-        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, mediaCaption, tenantToken);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${mediaCaption}`);
+        // Legenda configurável por vídeo (MediaPage). Sem legenda cadastrada → usa padrão.
+        const caption = mediaFile.caption?.trim() || DEFAULT_CAPTION;
+        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`);
+        sentCount++;
+        // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.
+        if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
+      }
+
+      if (sentCount > 0) {
+        // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
+        if (aiResponse.reply?.trim()) {
+          await new Promise(r => setTimeout(r, 500));
+          this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
+          await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
+          this.logger.log(`✅ [TEXT REPLY] Resposta enviada para ${phone}`);
+        }
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
-      } else {
-        this.logger.warn(`Mídia "${aiResponse.mediaName}" não encontrada no banco`);
       }
+      // Nenhuma mídia encontrada → cai pro envio de texto normal (reply da IA).
     }
 
     this.lastMessageWasAudio.delete(`${tenantId}:${phone}`);

@@ -13,7 +13,7 @@ export interface AiResponse {
   stage?: string;
   temperature?: string;
   action?: 'schedule' | 'cancel' | 'reschedule' | 'send_media' | 'none';
-  mediaName?: string; // nome da mídia cadastrada no sistema (quando action='send_media')
+  mediaName?: string | string[]; // nome(s) da mídia cadastrada (quando action='send_media'). Array = enviar vários vídeos.
   appointmentDateTime?: string; // ISO 8601: "2026-03-28T09:00:00"
   appointmentService?: 'mega_hair' | 'manutencao' | null; // MegaHair: tipo do serviço
   appointmentValue?: number | null; // MegaHair: valor em reais
@@ -110,7 +110,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
   "temperature": "quente|morno|frio",
   "action": "schedule|send_media|none",
-  "mediaName": "id-exato-ou-null",
+  "mediaName": "id-exato-ou-null (ou um array de ids quando enviar vários vídeos)",
   "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS ou null",
   "appointmentService": "mega_hair|manutencao|null",
   "appointmentValue": null,
@@ -477,9 +477,39 @@ PASSO 2 — ENVIAR (action=send_media): Quando ela confirmar:
 
 PASSO 3 — PÓS-ENVIO (action=none): Pergunte se quer ver outro ou combinar a aplicação.
 
+ENVIO DE VÁRIOS VÍDEOS DE UMA VEZ:
+Quando a cliente pedir uma CATEGORIA (ex: "quero ver todos os lisos", "me manda os ondulados", "todos de 70cm", "aqueles de 65"), PROCURE no catálogo acima e retorne um ARRAY com TODOS os nomes que batem:
+
+ESTRATÉGIA DE BUSCA:
+1. Identifique a PALAVRA-CHAVE na pergunta da cliente: "liso" → procure vídeos com "liso" no nome.
+2. PROCURE NOS NOMES acima — se tem "video-liso-60cm" e "video-liso-70cm", retorne AMBOS.
+3. Ordenação: prefira crescente por tamanho/cm quando disponível (60cm antes de 70cm).
+4. Cada vídeo envia com sua legenda própria — no reply da IA, resumir a seleção em 1 frase (ex: "Aqui estão todos os lisos 😍").
+
+EXEMPLOS:
+- Cliente: "quero ver todos os lisos"
+  → Procure no catálogo por "liso"
+  → "mediaName": ["video-liso-60cm", "video-liso-65cm", "video-liso-70cm"]
+  → reply: "Olha só que perfeição! Aqui estão todos os cabelos lisos 😍"
+
+- Cliente: "me manda os ondulados de 70"
+  → Procure por "ondulado" E "70"
+  → "mediaName": ["video-ondulado-70cm"] (se existir) OU todos os "ondulado" se 70cm não existir.
+  → reply: "Lindona, esses ondulados de 70cm são de derreter! Vê aí 🔥"
+
+- Cliente: "show, envia aquele de 65"
+  → Procure por "65" nos nomes
+  → "mediaName": ["video-liso-65cm", "video-ondulado-65cm"] (se ambos existirem)
+  → Se houver múltiplas categorias, priorize a que foi discutida na conversa. Senão, envie todas.
+
+REGRA DE SEGURANÇA:
+- Inclua no array APENAS nomes que existem no catálogo acima, copiados letra por letra.
+- NUNCA invente nomes fora da lista.
+- Se a cliente pedir algo fora do catálogo, ofereça o mais próximo: "Não temos de 75cm, mas temos de 70cm. Quer ver?"
+
 OUTRAS REGRAS:
 - 1 mídia disponível e cliente demonstrou interesse → vá direto ao PASSO 2.
-- Várias mídias → liste os nomes e pergunte qual quer ver (PASSO 1), depois envie (PASSO 2).
+- Várias mídias e a cliente não especificou categoria → liste os nomes e pergunte qual quer ver (PASSO 1), depois envie (PASSO 2).
 - Nunca use um nome fora da lista acima.`
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
 
