@@ -8,6 +8,16 @@ import { PaymentsService } from './payments.service';
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
+  // Público: taxa de implantação (R$400 único, apenas PIX, sem criar conta)
+  @Post('payments/implantacao')
+  async implantacao(@Body() body: { name: string; phone: string }) {
+    if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
+    if (!body?.phone?.trim()) throw new BadRequestException('WhatsApp é obrigatório');
+    const name = body.name.trim();
+    const phone = body.phone.replace(/\D/g, '');
+    return this.payments.createImplantacaoCheckout(name, phone);
+  }
+
   // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank enviado no WhatsApp)
   @Post('payments/checkout')
   async checkout(@Body() body: { name: string; email: string; phone: string; method: 'card' | 'pix' }) {

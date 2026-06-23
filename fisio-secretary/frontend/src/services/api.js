@@ -219,6 +219,14 @@ export const createCheckout = (payload) => // { name, email, phone, method: 'car
     body: JSON.stringify(payload),
   }).then(json)
 
+// --- Implantação (R$400, PIX único, sem conta) ---
+export const createImplantacaoCheckout = (payload) => // { name, phone }
+  fetch(`${BASE}/payments/implantacao`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)

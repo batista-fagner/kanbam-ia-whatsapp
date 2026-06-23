@@ -11,6 +11,7 @@ import Stripe from 'stripe';
 // que não expõem o namespace rico (Stripe.Checkout, etc). Os objetos de evento do webhook
 // são tipados como `any` aqui — o runtime não é afetado.
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
+import { ImplantacaoPayment } from '../common/entities/implantacao-payment.entity';
 import { UsersService } from '../auth/users.service';
 
 const CURRENCY = 'brl';
@@ -28,6 +29,8 @@ export class PaymentsService {
   constructor(
     @InjectRepository(WhatsappConfig)
     private readonly configRepo: Repository<WhatsappConfig>,
+    @InjectRepository(ImplantacaoPayment)
+    private readonly implantacaoRepo: Repository<ImplantacaoPayment>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly usersService: UsersService,
@@ -174,7 +177,7 @@ export class PaymentsService {
 
   // Gera cobrança PIX e retorna imagem QR (base64) + código copia-e-cola.
   // txid = UUID sem hífens (32 chars, dentro do limite 26-35 da Efí).
-  private async _efiCreateCob(txid: string, descricao: string): Promise<{ qrCode: string; pixCode: string }> {
+  private async _efiCreateCob(txid: string, descricao: string, amount = '310.00'): Promise<{ qrCode: string; pixCode: string }> {
     const pixKey = this.config.get<string>('EFI_PIX_KEY');
     if (!pixKey) throw new BadRequestException('EFI_PIX_KEY não configurada');
 
@@ -185,7 +188,7 @@ export class PaymentsService {
     const cobR = await firstValueFrom(
       this.http.put(
         `${this._efiBaseUrl}/v2/cob/${txid}`,
-        { calendario: { expiracao: 86400 }, valor: { original: '310.00' }, chave: pixKey, solicitacaoPagador: descricao },
+        { calendario: { expiracao: 86400 }, valor: { original: amount }, chave: pixKey, solicitacaoPagador: descricao },
         { headers, httpsAgent: agent },
       ),
     );
@@ -282,6 +285,57 @@ export class PaymentsService {
     }
   }
 
+  // ───────────────────────── Implantação (taxa única R$400, sem conta) ─────────────────────────
+
+  async createImplantacaoCheckout(name: string, phone: string): Promise<{ ok: true; phone: string }> {
+    if (!phone) throw new BadRequestException('WhatsApp é obrigatório');
+
+    const payment = await this.implantacaoRepo.save(this.implantacaoRepo.create({ name, phone, status: 'pending' }));
+    void this._sendImplantacaoPix(payment.id, name, phone);
+    return { ok: true, phone };
+  }
+
+  private async _sendImplantacaoPix(paymentId: string, name: string, phone: string): Promise<void> {
+    const txid = paymentId.replace(/-/g, '');
+    try {
+      const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, '400.00');
+      this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
+
+      const intro =
+        `Bem-vindo(a) à *Convert Hair*, ${name}! 🎉\n\n` +
+        `Que privilégio ter você conosco! 🙌\n\n` +
+        `Para dar início ao seu sistema de inteligência artificial de conversão, precisamos confirmar a taxa de implantação.\n\n` +
+        `💰 Valor: *R$ 400,00* (pagamento único)\n\n` +
+        `📋 *PIX copia e cola:*`;
+      await this._sendText(phone, intro);
+      await this._sendText(phone, pix.pixCode);
+      await this._sendImage(phone, pix.qrCode, 'Ou escaneie o QR code acima 📲');
+      await this._sendText(phone, `Após a confirmação do pagamento, nossa equipe entrará em contato para dar início ao seu sistema. ✅`);
+    } catch (err) {
+      this.logger.error(`[EFI] Falha ao gerar/enviar QR implantação (payment ${paymentId}): ${err.message}`);
+      await this.implantacaoRepo.update(paymentId, { status: 'expired' });
+      await this._sendText(phone, `Ops! Tivemos um problema ao gerar seu PIX. 😕 Por favor, tente novamente em instantes.`);
+    }
+  }
+
+  private async _activatePaidImplantacao(payment: ImplantacaoPayment): Promise<void> {
+    const claim = await this.implantacaoRepo
+      .createQueryBuilder()
+      .update(ImplantacaoPayment)
+      .set({ status: 'paid' })
+      .where('id = :id AND status = :pending', { id: payment.id, pending: 'pending' })
+      .execute();
+
+    if (claim.affected !== 1) return;
+
+    const msg =
+      `🎉 Pagamento de implantação confirmado, ${payment.name}!\n\n` +
+      `Em breve nossa equipe entrará em contato para configurar seu sistema *Convert Hair*. 🚀\n\n` +
+      `Obrigado pela confiança! 🙏`;
+    await this._sendText(payment.phone, msg);
+    this.logger.log(`[EFI] Implantação paga → payment ${payment.id} CONFIRMADO`);
+  }
+
   // ───────────────────────── Polling de pagamentos PIX (substitui o webhook) ─────────────────────────
 
   // A cada minuto, consulta a Efí Bank pelo status das cobranças pendentes.
@@ -290,11 +344,10 @@ export class PaymentsService {
   async pollPendingPix(): Promise<void> {
     if (!this.config.get<string>('EFI_CLIENT_ID')) return; // Efí não configurada
 
+    // Polling plano mensal (tenants pendentes)
     const pendings = await this.configRepo.find({
       where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
     });
-    if (pendings.length === 0) return;
-
     for (const tenant of pendings) {
       const txid = tenant.id.replace(/-/g, '');
       let status: string | null;
@@ -304,17 +357,31 @@ export class PaymentsService {
         this.logger.error(`[EFI] Polling falhou para tenant ${tenant.id}: ${err.message}`);
         continue;
       }
-
       if (status === 'CONCLUIDA') {
         await this._activatePaidTenant(tenant);
-        continue;
-      }
-
-      // PIX expirado na Efí (400) → marca expired e para de consultar
-      if (status === 'EXPIRADA') {
+      } else if (status === 'EXPIRADA') {
         tenant.planStatus = 'expired';
         await this.configRepo.save(tenant);
         this.logger.log(`[EFI] PIX expirado → tenant ${tenant.id} marcado como expired`);
+      }
+    }
+
+    // Polling implantações pendentes
+    const implantacoes = await this.implantacaoRepo.find({ where: { status: 'pending' } });
+    for (const payment of implantacoes) {
+      const txid = payment.id.replace(/-/g, '');
+      let status: string | null;
+      try {
+        status = await this._efiGetCobStatus(txid);
+      } catch (err) {
+        this.logger.error(`[EFI] Polling implantação falhou para ${payment.id}: ${err.message}`);
+        continue;
+      }
+      if (status === 'CONCLUIDA') {
+        await this._activatePaidImplantacao(payment);
+      } else if (status === 'EXPIRADA') {
+        await this.implantacaoRepo.update(payment.id, { status: 'expired' });
+        this.logger.log(`[EFI] PIX implantação expirado → payment ${payment.id}`);
       }
     }
   }
