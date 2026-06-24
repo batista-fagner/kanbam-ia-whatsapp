@@ -187,7 +187,6 @@ export default function AdminPage() {
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
                   <th className="px-4 py-3 text-left">Cliente</th>
-                  <th className="px-4 py-3 text-left">Data</th>
                   <th className="px-4 py-3 text-right">Input</th>
                   <th className="px-4 py-3 text-right">Cache hit</th>
                   <th className="px-4 py-3 text-right">Output</th>
@@ -196,23 +195,32 @@ export default function AdminPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {usage.length === 0 && !loadingUsage && (
-                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nenhum dado para o período.</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-gray-400">Nenhum dado para o período.</td></tr>
                 )}
-                {usage.map((row, i) => (
+                {Object.values(
+                  usage.reduce((acc, row) => {
+                    const key = row.tenant_id
+                    if (!acc[key]) acc[key] = { tenant_name: row.tenant_name ?? row.tenant_id?.slice(0, 8), input: 0, cached: 0, output: 0, cost: 0 }
+                    acc[key].input += Number(row.input_tokens)
+                    acc[key].cached += Number(row.cached_tokens)
+                    acc[key].output += Number(row.output_tokens)
+                    acc[key].cost += Number(row.cost_usd)
+                    return acc
+                  }, {})
+                ).sort((a, b) => b.cost - a.cost).map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-700">{row.tenant_name ?? row.tenant_id?.slice(0, 8)}</td>
-                    <td className="px-4 py-3 text-gray-500">{row.date}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{Number(row.input_tokens).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{Number(row.cached_tokens).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{Number(row.output_tokens).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-800">${Number(row.cost_usd).toFixed(5)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-700">{row.tenant_name}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{row.input.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-green-600">{row.cached.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{row.output.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-800">${row.cost.toFixed(5)}</td>
                   </tr>
                 ))}
               </tbody>
               {usage.length > 0 && (
                 <tfoot className="bg-gray-50 text-xs font-semibold text-gray-700">
                   <tr>
-                    <td colSpan={5} className="px-4 py-3 text-right">Total — {usageFrom === usageTo ? usageFrom : `${usageFrom} → ${usageTo}`}</td>
+                    <td colSpan={4} className="px-4 py-3 text-right">Total — {usageFrom === usageTo ? usageFrom : `${usageFrom} → ${usageTo}`}</td>
                     <td className="px-4 py-3 text-right font-mono">${usage.reduce((s, r) => s + Number(r.cost_usd), 0).toFixed(5)}</td>
                   </tr>
                 </tfoot>
