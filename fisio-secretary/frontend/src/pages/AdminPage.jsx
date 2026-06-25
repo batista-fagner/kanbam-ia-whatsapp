@@ -200,7 +200,7 @@ export default function AdminPage() {
                 {Object.values(
                   usage.reduce((acc, row) => {
                     const key = row.tenant_id
-                    if (!acc[key]) acc[key] = { tenant_name: row.tenant_name ?? row.tenant_id?.slice(0, 8), input: 0, cached: 0, output: 0, cost: 0 }
+                    if (!acc[key]) acc[key] = { tenant_name: row.tenant_name?.trim() || row.tenant_id?.slice(0, 8), input: 0, cached: 0, output: 0, cost: 0 }
                     acc[key].input += Number(row.input_tokens)
                     acc[key].cached += Number(row.cached_tokens)
                     acc[key].output += Number(row.output_tokens)
