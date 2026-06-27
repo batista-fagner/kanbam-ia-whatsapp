@@ -70,7 +70,13 @@ export class InstanceController {
   }
 
   @Patch('config')
-  async updateConfig(@Body() body: { customPromptMegaHair?: string | null }, @CurrentUser('tenantId') tenantId: string) {
+  async updateConfig(
+    @Body() body: {
+      customPromptMegaHair?: string | null;
+      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+    },
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
     return this.whatsappConfigService.updateConfig(body, tenantId);
   }
 

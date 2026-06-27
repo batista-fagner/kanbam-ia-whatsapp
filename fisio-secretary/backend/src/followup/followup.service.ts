@@ -131,6 +131,58 @@ export class FollowupService {
     }
   }
 
+  // A cada 10 min: detecta leads ociosos por raia e agenda follow-up automático.
+  // Não envia direto — cria linhas Followup (status pending) que o processDue() envia.
+  // O claim atômico da raia garante "1x por raia, para sempre".
+  @Cron('*/10 * * * *')
+  async processAutoFollowups(): Promise<void> {
+    const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'] as const;
+    const configs = await this.configRepo.find();
+
+    for (const cfg of configs) {
+      const fu = cfg.autoFollowupConfig;
+      if (!fu || typeof fu !== 'object') continue;
+
+      for (const stage of STAGES) {
+        const rule = fu[stage];
+        if (!rule?.enabled || !rule.message?.trim() || !(rule.idleMinutes > 0)) continue;
+
+        try {
+          const leads = await this.leadsService.findIdleLeadsForAutoFollowup(cfg.id, stage, rule.idleMinutes);
+          for (const lead of leads) {
+            // Claim atômico: só agenda se ESTA execução marcou a raia.
+            const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
+            if (!claimed) continue;
+
+            const message = this.interpolateName(rule.message, lead.name);
+            await this.followupRepo.save(this.followupRepo.create({
+              tenantId: cfg.id,
+              leadId: lead.id,
+              phone: lead.phone,
+              message,
+              scheduledAt: new Date(),
+              status: 'pending',
+            }));
+            this.logger.log(`[AUTO-FOLLOWUP] Agendado [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
+          }
+        } catch (err) {
+          this.logger.error(`[AUTO-FOLLOWUP] Falha no tenant ${cfg.id} raia ${stage}: ${err?.message ?? err}`);
+        }
+      }
+    }
+  }
+
+  // Substitui {nome} pelo primeiro nome do lead. Sem nome: remove o placeholder
+  // e limpa vírgula/espaços órfãos ("Oi {nome}, tudo bem" → "Oi tudo bem").
+  private interpolateName(template: string, name: string | null): string {
+    const nome = (name?.trim().split(/\s+/)[0]) || '';
+    let msg = template.replace(/\{nome\}/gi, nome);
+    if (!nome) {
+      msg = msg.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim();
+    }
+    return msg;
+  }
+
   // ───────────────────────── Helpers ─────────────────────────
 
   private async send(f: Followup): Promise<void> {

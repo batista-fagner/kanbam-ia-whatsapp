@@ -168,11 +168,35 @@ export class WhatsappConfigService {
     }
   }
 
-  async updateConfig(fields: { customPromptMegaHair?: string | null }, tenantId?: string): Promise<WhatsappConfig> {
+  async updateConfig(
+    fields: {
+      customPromptMegaHair?: string | null;
+      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+    },
+    tenantId?: string,
+  ): Promise<WhatsappConfig> {
     let record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
+    if ('autoFollowupConfig' in fields) record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig);
     return this.repo.save(record);
+  }
+
+  // Aceita apenas as 3 raias conhecidas; força tipos e limites seguros.
+  private sanitizeAutoFollowup(
+    raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null | undefined,
+  ): WhatsappConfig['autoFollowupConfig'] {
+    if (!raw || typeof raw !== 'object') return null;
+    const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'];
+    const clean: Record<string, { enabled: boolean; idleMinutes: number; message: string }> = {};
+    for (const stage of STAGES) {
+      const cfg = raw[stage];
+      if (!cfg || typeof cfg !== 'object') continue;
+      const idleMinutes = Math.max(1, Math.floor(Number(cfg.idleMinutes) || 0));
+      const message = String(cfg.message ?? '').slice(0, 1000);
+      clean[stage] = { enabled: !!cfg.enabled, idleMinutes, message };
+    }
+    return Object.keys(clean).length > 0 ? clean : null;
   }
 
   async deleteRecord(tenantId?: string): Promise<void> {
