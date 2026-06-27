@@ -39,6 +39,10 @@ export class WhatsappConfig {
   @Column({ name: 'auto_followup_config', type: 'jsonb', nullable: true })
   autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string }> | null;
 
+  // Lembrete de agendamento: enviado ~24h antes. Ex: { enabled, message }
+  @Column({ name: 'appointment_reminder', type: 'jsonb', nullable: true })
+  appointmentReminder: { enabled: boolean; message: string } | null;
+
   // --- Gestão do cliente (D1) ---
   // Nome do cliente/negócio para exibir no painel admin
   @Column({ name: 'display_name', type: 'varchar', nullable: true })

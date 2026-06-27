@@ -172,6 +172,7 @@ export class WhatsappConfigService {
     fields: {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+      appointmentReminder?: { enabled?: boolean; message?: string } | null;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -179,7 +180,13 @@ export class WhatsappConfigService {
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     if ('autoFollowupConfig' in fields) record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig);
+    if ('appointmentReminder' in fields) record.appointmentReminder = this.sanitizeAppointmentReminder(fields.appointmentReminder);
     return this.repo.save(record);
+  }
+
+  private sanitizeAppointmentReminder(raw: { enabled?: boolean; message?: string } | null | undefined): WhatsappConfig['appointmentReminder'] {
+    if (!raw || typeof raw !== 'object') return null;
+    return { enabled: !!raw.enabled, message: String(raw.message ?? '').slice(0, 1000) };
   }
 
   // Aceita apenas as 3 raias conhecidas; força tipos e limites seguros.

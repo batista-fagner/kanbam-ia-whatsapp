@@ -82,4 +82,25 @@ export class AppointmentsService {
     const result = await this.repo.update({ leadId, status: 'agendado' }, { status: 'cancelado' });
     return result.affected ?? 0;
   }
+
+  // Busca agendamentos que devem receber lembrete ~24h antes.
+  // Janela de [now+22h, now+26h] garante tolerância para variação do cron horário.
+  async findDueReminders(tenantId: string): Promise<Appointment[]> {
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 22 * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+    return this.repo
+      .createQueryBuilder('a')
+      .where('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...statuses)', { statuses: ['agendado', 'confirmado'] })
+      .andWhere('a.start_date_time >= :windowStart', { windowStart })
+      .andWhere('a.start_date_time <= :windowEnd', { windowEnd })
+      .andWhere('a.reminder_sent_at IS NULL')
+      .andWhere('a.client_phone IS NOT NULL')
+      .getMany();
+  }
+
+  async markReminderSent(id: string): Promise<void> {
+    await this.repo.update({ id }, { reminderSentAt: new Date() });
+  }
 }

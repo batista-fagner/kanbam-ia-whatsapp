@@ -44,6 +44,9 @@ export class Appointment {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ name: 'reminder_sent_at', type: 'timestamp', nullable: true })
+  reminderSentAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -10,6 +10,7 @@ import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { LeadsService } from '../leads/leads.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
+import { AppointmentsService } from '../appointments/appointments.service';
 
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
 const ALLOWED_DELAYS = [1, 4, 24];
@@ -28,6 +29,7 @@ export class FollowupService {
     private readonly aiService: AiService,
     private readonly config: ConfigService,
     private readonly http: HttpService,
+    private readonly appointmentsService: AppointmentsService,
   ) {}
 
   // ───────────────────────── API ─────────────────────────
@@ -173,11 +175,58 @@ export class FollowupService {
     }
   }
 
+  // A cada hora: envia lembrete ~24h antes do agendamento (janela 22h–26h).
+  // reminder_sent_at impede reenvio mesmo que o cron rode múltiplas vezes na janela.
+  @Cron('0 * * * *')
+  async processAppointmentReminders(): Promise<void> {
+    const configs = await this.configRepo.find();
+
+    for (const cfg of configs) {
+      const reminder = cfg.appointmentReminder;
+      if (!reminder?.enabled || !reminder.message?.trim()) continue;
+
+      try {
+        const appointments = await this.appointmentsService.findDueReminders(cfg.id);
+        for (const appt of appointments) {
+          // Claim atômico: marca reminder_sent_at antes de enviar para evitar duplo envio.
+          await this.appointmentsService.markReminderSent(appt.id);
+
+          const hora = appt.startDateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+          const data = appt.startDateTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+          const message = this.interpolateAppointment(reminder.message, appt.clientName, hora, data);
+
+          const token = await this.resolveTenantToken(cfg.id);
+          if (!token) continue;
+
+          const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+          await firstValueFrom(
+            this.http.post(`${baseUrl}/send/text`, { number: appt.clientPhone, text: message }, { headers: { token } }),
+          );
+          this.logger.log(`[REMINDER] Enviado → ${appt.clientPhone} (appt ${appt.id}, ${data} ${hora})`);
+        }
+      } catch (err) {
+        this.logger.error(`[REMINDER] Falha no tenant ${cfg.id}: ${err?.message ?? err}`);
+      }
+    }
+  }
+
   // Substitui {nome} pelo primeiro nome do lead. Sem nome: remove o placeholder
   // e limpa vírgula/espaços órfãos ("Oi {nome}, tudo bem" → "Oi tudo bem").
   private interpolateName(template: string, name: string | null): string {
     const nome = (name?.trim().split(/\s+/)[0]) || '';
     let msg = template.replace(/\{nome\}/gi, nome);
+    if (!nome) {
+      msg = msg.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim();
+    }
+    return msg;
+  }
+
+  private interpolateAppointment(template: string, clientName: string, hora: string, data: string): string {
+    const nome = (clientName?.trim().split(/\s+/)[0]) || '';
+    let msg = template
+      .replace(/\{nome\}/gi, nome)
+      .replace(/\{hora\}/gi, hora)
+      .replace(/\{data\}/gi, data);
     if (!nome) {
       msg = msg.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim();
     }

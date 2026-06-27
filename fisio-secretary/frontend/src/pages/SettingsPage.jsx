@@ -92,6 +92,9 @@ export default function SettingsPage() {
   const [autoFollowup, setAutoFollowup] = useState(emptyFollowup())
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved] = useState(false)
+  const [apptReminder, setApptReminder] = useState({ enabled: false, message: '' })
+  const [savingReminder, setSavingReminder] = useState(false)
+  const [reminderSaved, setReminderSaved] = useState(false)
   const pollingRef = useRef(null)
   const promptRef = useRef(null)
 
@@ -127,6 +130,10 @@ export default function SettingsPage() {
           }
         }
         setAutoFollowup(next)
+      }
+      const ar = data?.appointmentReminder
+      if (ar && typeof ar === 'object') {
+        setApptReminder({ enabled: !!ar.enabled, message: ar.message ?? '' })
       }
       return data
     } catch {
@@ -1049,6 +1056,71 @@ export default function SettingsPage() {
               {savingFollowup ? 'Salvando...' : 'Salvar follow-up'}
             </button>
             {followupSaved && <span className="text-sm text-green-600 font-medium">✓ Follow-up salvo</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Card de lembrete de agendamento — distinto do follow-up de leads ociosos */}
+      {!bootstrapping && instanceConfig && (
+        <div className="bg-white rounded-xl border border-blue-100 p-6 mt-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">📅</span>
+            <h2 className="text-sm font-semibold text-gray-800">Lembrete de agendamento</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-1">
+            Envia uma mensagem automática <strong>~24h antes</strong> do horário agendado no calendário.
+            Diferente do follow-up de leads ociosos — aqui o cliente <em>já tem hora marcada</em>.
+          </p>
+          <p className="text-xs text-gray-400 mb-4">
+            Use <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{nome}'}</code> para o primeiro nome,{' '}
+            <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{hora}'}</code> para o horário (ex: 14:00) e{' '}
+            <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{data}'}</code> para a data (ex: 28/06).
+          </p>
+
+          <div className={`border rounded-lg p-4 transition ${apptReminder.enabled ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200'}`}>
+            <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
+              <input
+                type="checkbox"
+                checked={apptReminder.enabled}
+                onChange={e => setApptReminder(prev => ({ ...prev, enabled: e.target.checked }))}
+                className="w-4 h-4 accent-blue-600"
+              />
+              <span className="text-sm font-medium text-gray-800">Ativar lembrete de agendamento</span>
+            </label>
+            <textarea
+              value={apptReminder.message}
+              disabled={!apptReminder.enabled}
+              onChange={e => setApptReminder(prev => ({ ...prev, message: e.target.value }))}
+              placeholder="Ex: Olá {nome}! Lembrando do seu agendamento amanhã às {hora}. Confirma? 😊"
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={async () => {
+                setSavingReminder(true)
+                setReminderSaved(false)
+                try {
+                  await authFetch(`${API_URL}/instance/config`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appointmentReminder: apptReminder }),
+                  })
+                  setReminderSaved(true)
+                  setTimeout(() => setReminderSaved(false), 2500)
+                } finally {
+                  setSavingReminder(false)
+                }
+              }}
+              disabled={savingReminder}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+            >
+              {savingReminder ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {savingReminder ? 'Salvando...' : 'Salvar lembrete'}
+            </button>
+            {reminderSaved && <span className="text-sm text-green-600 font-medium">✓ Lembrete salvo</span>}
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@ import { FollowupController } from './followup.controller';
 import { LeadsModule } from '../leads/leads.module';
 import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
+import { AppointmentsModule } from '../appointments/appointments.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AuthModule } from '../auth/auth.module';
     LeadsModule,
     AiModule,
     AuthModule,
+    AppointmentsModule,
   ],
   providers: [FollowupService],
   controllers: [FollowupController],
