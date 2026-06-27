@@ -9,6 +9,9 @@ import { AdminGuard } from '../auth/admin.guard';
 import { UsersService } from '../auth/users.service';
 import { LeadsService } from '../leads/leads.service';
 import { TokenUsage } from '../common/entities/token-usage.entity';
+import { Lead } from '../common/entities/lead.entity';
+import { Message } from '../common/entities/message.entity';
+import { Conversation } from '../common/entities/conversation.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -21,6 +24,9 @@ export class AdminController {
     private readonly leadsService: LeadsService,
     private readonly config: ConfigService,
     @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
+    @InjectRepository(Lead) private readonly leadRepo: Repository<Lead>,
+    @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
+    @InjectRepository(Conversation) private readonly conversationRepo: Repository<Conversation>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -148,6 +154,128 @@ export class AdminController {
     `, [dateFrom, dateTo]);
     return rows;
   }
+
+  // ─── Monitoring endpoints ────────────────────────────────────────────────
+
+  @Get('monitoring/overview')
+  async monitoringOverview() {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    const rows = await this.tokenUsageRepo.query(`
+      SELECT
+        COALESCE(SUM(input_tokens), 0)::int  AS total_input,
+        COALESCE(SUM(cached_tokens), 0)::int AS total_cached,
+        COALESCE(SUM(output_tokens), 0)::int AS total_output,
+        COALESCE(SUM(cost_usd), 0)           AS total_cost,
+        COUNT(DISTINCT tenant_id)::int        AS active_tenants
+      FROM token_usage WHERE date = $1
+    `, [today]);
+
+    // Leads com >100 msgs hoje (possíveis loops)
+    const anomalies = await this.messageRepo.query(`
+      SELECT l.id, l.name, l.phone, wc.display_name AS tenant_name, COUNT(m.id)::int AS msg_count
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      JOIN leads l ON c.lead_id = l.id
+      JOIN whatsapp_config wc ON l.tenant_id = wc.id
+      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+        AND m.direction = 'inbound'
+      GROUP BY l.id, l.name, l.phone, wc.display_name
+      HAVING COUNT(m.id) >= 100
+      ORDER BY msg_count DESC
+    `);
+
+    return { ...rows[0], anomaly_count: anomalies.length, anomalies };
+  }
+
+  @Get('monitoring/tenants')
+  async monitoringTenants() {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+
+    const tenantStats = await this.tokenUsageRepo.query(`
+      SELECT
+        wc.id AS tenant_id,
+        COALESCE(wc.display_name, wc.profile_name, wc.id::text) AS tenant_name,
+        COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.input_tokens  ELSE 0 END), 0)::int AS input_today,
+        COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.cached_tokens ELSE 0 END), 0)::int AS cached_today,
+        COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.output_tokens ELSE 0 END), 0)::int AS output_today,
+        COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.cost_usd      ELSE 0 END), 0)      AS cost_today,
+        COALESCE(SUM(CASE WHEN tu.date >= ($1::date - 6) AND tu.date <= $1 THEN tu.cost_usd ELSE 0 END), 0) AS cost_7d,
+        COUNT(DISTINCT tu.date) FILTER (WHERE tu.date >= ($1::date - 6)) AS active_days_7d
+      FROM whatsapp_config wc
+      LEFT JOIN token_usage tu ON tu.tenant_id = wc.id
+      GROUP BY wc.id, wc.display_name, wc.profile_name
+      ORDER BY cost_today DESC
+    `, [today]);
+
+    // Top lead por msgs hoje por tenant
+    const topLeads = await this.messageRepo.query(`
+      SELECT l.tenant_id, l.name AS lead_name, COUNT(m.id)::int AS msg_count
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      JOIN leads l ON c.lead_id = l.id
+      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+        AND m.direction = 'inbound'
+      GROUP BY l.tenant_id, l.name
+      ORDER BY msg_count DESC
+    `);
+
+    const topLeadByTenant: Record<string, any> = {};
+    for (const row of topLeads) {
+      if (!topLeadByTenant[row.tenant_id]) topLeadByTenant[row.tenant_id] = row;
+    }
+
+    return tenantStats.map(t => {
+      const cacheRate = t.input_today > 0 ? Math.round(t.cached_today / t.input_today * 100) : null;
+      const projectedMonthly = t.active_days_7d > 0 ? (t.cost_7d / t.active_days_7d) * 30 : 0;
+      return {
+        ...t,
+        cache_pct: cacheRate,
+        projected_monthly: projectedMonthly,
+        top_lead: topLeadByTenant[t.tenant_id] ?? null,
+      };
+    });
+  }
+
+  @Get('monitoring/top-leads')
+  async monitoringTopLeads() {
+    return this.messageRepo.query(`
+      SELECT
+        l.id, l.name, l.phone, l.stage,
+        wc.display_name AS tenant_name,
+        COUNT(m.id)::int AS msg_count,
+        COUNT(m.id) FILTER (WHERE m.direction = 'inbound')::int  AS inbound_count,
+        COUNT(m.id) FILTER (WHERE m.direction = 'outbound')::int AS outbound_count,
+        MIN(m.created_at) AS first_msg_today,
+        MAX(m.created_at) AS last_msg_today,
+        (COUNT(m.id) >= 100) AS is_anomaly
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      JOIN leads l ON c.lead_id = l.id
+      JOIN whatsapp_config wc ON l.tenant_id = wc.id
+      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY l.id, l.name, l.phone, l.stage, wc.display_name
+      ORDER BY msg_count DESC
+      LIMIT 20
+    `);
+  }
+
+  @Get('monitoring/token-history')
+  async monitoringTokenHistory() {
+    return this.tokenUsageRepo.query(`
+      SELECT
+        TO_CHAR(date, 'YYYY-MM-DD') AS date,
+        SUM(input_tokens)::int  AS total_input,
+        SUM(cached_tokens)::int AS total_cached,
+        SUM(output_tokens)::int AS total_output,
+        SUM(cost_usd)           AS total_cost
+      FROM token_usage
+      WHERE date >= CURRENT_DATE - INTERVAL '14 days'
+      GROUP BY date
+      ORDER BY date ASC
+    `);
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
 
   @Get('instances')
   async listInstances() {

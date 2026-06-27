@@ -172,6 +172,12 @@ export class LeadsService implements OnApplicationBootstrap {
     return this.leadsRepo.count({ where: { tenantId } });
   }
 
+  async countInboundMessages(conversationId: string): Promise<number> {
+    return this.messagesRepo.count({
+      where: { conversationId, direction: 'inbound' },
+    });
+  }
+
   // tenantId opcional: quando informado, garante que o lead pertence ao tenant (bloqueia acesso cruzado).
   async findOne(id: string, tenantId?: string): Promise<Lead | null> {
     const where: any = { id };

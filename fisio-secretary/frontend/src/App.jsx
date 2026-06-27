@@ -10,6 +10,7 @@ import DeletedLeadsPage from './pages/DeletedLeadsPage'
 import DashboardPage from './pages/DashboardPage'
 import AlertRulesPage from './pages/AlertRulesPage'
 import AdminPage from './pages/AdminPage'
+import MonitoringPage from './pages/MonitoringPage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
 import Layout from './components/Layout'
@@ -46,6 +47,7 @@ function Routing() {
         <Route path="/media" element={<MediaPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/alert-rules" element={<AlertRulesPage />} />
       </Route>
     </Routes>

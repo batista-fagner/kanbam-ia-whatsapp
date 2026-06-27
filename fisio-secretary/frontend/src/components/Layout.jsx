@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -17,8 +17,11 @@ export default function Layout({ onLogout }) {
     { icon: Image, label: 'Mídias', path: '/media' },
     { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
-    // Painel de clientes — só para o admin da plataforma
-    ...(user?.role === 'admin' ? [{ icon: Users, label: 'Clientes', path: '/admin' }] : []),
+    // Painel admin — só para o admin da plataforma
+    ...(user?.role === 'admin' ? [
+      { icon: Users, label: 'Clientes', path: '/admin' },
+      { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
+    ] : []),
   ]
 
   const isActive = (path) => location.pathname === path
