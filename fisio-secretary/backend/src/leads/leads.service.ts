@@ -40,6 +40,40 @@ export class LeadsService implements OnApplicationBootstrap {
     `);
   }
 
+  // Follow-up automático: leads ociosos elegíveis numa raia.
+  // Critérios: nós falamos por último (outbound), passou o tempo de ociosidade,
+  // a IA está ligada na conversa e a raia ainda não recebeu follow-up automático.
+  async findIdleLeadsForAutoFollowup(tenantId: string, stage: LeadStage, idleMinutes: number): Promise<Lead[]> {
+    return this.leadsRepo
+      .createQueryBuilder('l')
+      .innerJoin(Conversation, 'c', 'c.lead_id = l.id')
+      .where('l.tenant_id = :tenantId', { tenantId })
+      .andWhere('l.stage = :stage', { stage })
+      .andWhere("l.last_message_direction = 'outbound'")
+      .andWhere('l.last_message_at IS NOT NULL')
+      .andWhere(`l.last_message_at <= (now() - (:idleMinutes || ' minutes')::interval)`, { idleMinutes })
+      .andWhere('c.ai_enabled = true')
+      .andWhere('NOT (l.auto_followup_sent_stages @> to_jsonb(:stage::text))', { stage })
+      .andWhere("l.phone <> ''")
+      .take(100)
+      .getMany();
+  }
+
+  // Reivindica a raia atomicamente: só retorna true se ESTA chamada marcou a raia
+  // como enviada (evita duplicação entre execuções do cron / instâncias).
+  async claimAutoFollowupStage(leadId: string, stage: string): Promise<boolean> {
+    const result = await this.leadsRepo
+      .createQueryBuilder()
+      .update(Lead)
+      .set({
+        autoFollowupSentStages: () => `auto_followup_sent_stages || to_jsonb('${stage}'::text)`,
+      })
+      .where('id = :leadId', { leadId })
+      .andWhere('NOT (auto_followup_sent_stages @> to_jsonb(:stage::text))', { stage })
+      .execute();
+    return result.affected === 1;
+  }
+
   async findOrCreate(phone: string, tenantId: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
     // INSERT ... ON CONFLICT DO NOTHING — preserva o stage atual do lead existente
     const insertResult = await this.leadsRepo

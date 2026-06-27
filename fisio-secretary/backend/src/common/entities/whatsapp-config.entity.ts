@@ -35,6 +35,10 @@ export class WhatsappConfig {
   @Column({ name: 'custom_prompt_megahair', nullable: true, type: 'text' })
   customPromptMegaHair: string | null;
 
+  // Follow-up automático por raia. Ex: { novo_lead: { enabled, idleMinutes, message }, ... }
+  @Column({ name: 'auto_followup_config', type: 'jsonb', nullable: true })
+  autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string }> | null;
+
   // --- Gestão do cliente (D1) ---
   // Nome do cliente/negócio para exibir no painel admin
   @Column({ name: 'display_name', type: 'varchar', nullable: true })

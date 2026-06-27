@@ -86,6 +86,10 @@ export class Lead {
   @Column({ type: 'jsonb', default: [] })
   labels: string[];
 
+  // Raias para as quais este lead já recebeu follow-up automático (1x por raia, para sempre).
+  @Column({ name: 'auto_followup_sent_stages', type: 'jsonb', default: [] })
+  autoFollowupSentStages: string[];
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
