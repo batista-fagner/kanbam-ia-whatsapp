@@ -4,35 +4,6 @@ import { authFetch, getMediaList } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
-// Follow-up automático por raia
-const FOLLOWUP_STAGES = [
-  { key: 'novo_lead', label: 'Novo Lead', defaultValue: 1 },
-  { key: 'lead_frio', label: 'Lead Frio', defaultValue: 4 },
-  { key: 'lead_quente', label: 'Lead Quente', defaultValue: 1 },
-]
-
-const emptyFollowup = () => ({
-  novo_lead: { enabled: false, value: 1, unit: 'horas', message: '' },
-  lead_frio: { enabled: false, value: 4, unit: 'horas', message: '' },
-  lead_quente: { enabled: false, value: 1, unit: 'horas', message: '' },
-})
-
-// idleMinutes (banco) → { value, unit } (UI)
-const minutesToVU = (min) => {
-  if (min && min % 60 === 0) return { value: min / 60, unit: 'horas' }
-  return { value: min || 1, unit: 'minutos' }
-}
-
-// objeto da UI → objeto do banco { stage: { enabled, idleMinutes, message } }
-const followupToConfig = (state) => {
-  const out = {}
-  for (const { key } of FOLLOWUP_STAGES) {
-    const s = state[key]
-    const idleMinutes = s.unit === 'horas' ? Math.round(s.value * 60) : Math.round(s.value)
-    out[key] = { enabled: !!s.enabled, idleMinutes: Math.max(1, idleMinutes || 1), message: (s.message ?? '').trim() }
-  }
-  return out
-}
 
 function StatusBadge({ status }) {
   if (status === 'connected') {
@@ -89,12 +60,6 @@ export default function SettingsPage() {
   const [batchSelected, setBatchSelected] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
-  const [autoFollowup, setAutoFollowup] = useState(emptyFollowup())
-  const [savingFollowup, setSavingFollowup] = useState(false)
-  const [followupSaved, setFollowupSaved] = useState(false)
-  const [apptReminder, setApptReminder] = useState({ enabled: false, message: '' })
-  const [savingReminder, setSavingReminder] = useState(false)
-  const [reminderSaved, setReminderSaved] = useState(false)
   const pollingRef = useRef(null)
   const promptRef = useRef(null)
 
@@ -119,22 +84,6 @@ export default function SettingsPage() {
       setWebhookConfigured(data?.webhookConfigured ?? false)
       setCustomPromptMegaHair(data?.customPromptMegaHair ?? '')
       // Carrega config de follow-up automático (converte idleMinutes → value/unit)
-      const fu = data?.autoFollowupConfig
-      if (fu && typeof fu === 'object') {
-        const next = emptyFollowup()
-        for (const { key } of FOLLOWUP_STAGES) {
-          const r = fu[key]
-          if (r && typeof r === 'object') {
-            const { value, unit } = minutesToVU(r.idleMinutes)
-            next[key] = { enabled: !!r.enabled, value, unit, message: r.message ?? '' }
-          }
-        }
-        setAutoFollowup(next)
-      }
-      const ar = data?.appointmentReminder
-      if (ar && typeof ar === 'object') {
-        setApptReminder({ enabled: !!ar.enabled, message: ar.message ?? '' })
-      }
       return data
     } catch {
       setInstanceConfig(null)
@@ -973,157 +922,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Card de follow-up automático por raia */}
-      {!bootstrapping && instanceConfig && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
-          <h2 className="text-sm font-semibold text-gray-800 mb-1">Follow-up automático</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Leads que pararam de responder recebem <strong>uma única</strong> mensagem por raia. Use <code className="px-1 py-0.5 bg-gray-100 rounded text-teal-700">{'{nome}'}</code> para inserir o primeiro nome do lead. A verificação roda a cada 10 minutos.
-          </p>
-
-          <div className="space-y-3">
-            {FOLLOWUP_STAGES.map(({ key, label }) => {
-              const s = autoFollowup[key]
-              const set = (patch) => setAutoFollowup(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
-              return (
-                <div key={key} className={`border rounded-lg p-4 transition ${s.enabled ? 'border-teal-200 bg-teal-50/30' : 'border-gray-200'}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={s.enabled}
-                        onChange={e => set({ enabled: e.target.checked })}
-                        className="w-4 h-4 accent-teal-600"
-                      />
-                      <span className="text-sm font-medium text-gray-800">{label}</span>
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500">Após</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={s.value}
-                        disabled={!s.enabled}
-                        onChange={e => set({ value: Math.max(1, parseInt(e.target.value) || 1) })}
-                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 text-gray-800"
-                      />
-                      <select
-                        value={s.unit}
-                        disabled={!s.enabled}
-                        onChange={e => set({ unit: e.target.value })}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 text-gray-800 bg-white"
-                      >
-                        <option value="minutos">minutos</option>
-                        <option value="horas">horas</option>
-                      </select>
-                      <span className="text-sm text-gray-500">sem resposta</span>
-                    </div>
-                  </div>
-                  <textarea
-                    value={s.message}
-                    disabled={!s.enabled}
-                    onChange={e => set({ message: e.target.value })}
-                    placeholder={`Ex: Oi {nome}, tudo bem? Vi que você ficou com alguma dúvida...`}
-                    rows={2}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
-                  />
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="flex items-center gap-3 mt-4">
-            <button
-              onClick={async () => {
-                setSavingFollowup(true)
-                setFollowupSaved(false)
-                try {
-                  await authFetch(`${API_URL}/instance/config`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ autoFollowupConfig: followupToConfig(autoFollowup) }),
-                  })
-                  setFollowupSaved(true)
-                  setTimeout(() => setFollowupSaved(false), 2500)
-                } finally {
-                  setSavingFollowup(false)
-                }
-              }}
-              disabled={savingFollowup}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition disabled:opacity-50"
-            >
-              {savingFollowup ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {savingFollowup ? 'Salvando...' : 'Salvar follow-up'}
-            </button>
-            {followupSaved && <span className="text-sm text-green-600 font-medium">✓ Follow-up salvo</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Card de lembrete de agendamento — distinto do follow-up de leads ociosos */}
-      {!bootstrapping && instanceConfig && (
-        <div className="bg-white rounded-xl border border-blue-100 p-6 mt-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg">📅</span>
-            <h2 className="text-sm font-semibold text-gray-800">Lembrete de agendamento</h2>
-          </div>
-          <p className="text-sm text-gray-500 mb-1">
-            Envia uma mensagem automática <strong>~24h antes</strong> do horário agendado no calendário.
-            Diferente do follow-up de leads ociosos — aqui o cliente <em>já tem hora marcada</em>.
-          </p>
-          <p className="text-xs text-gray-400 mb-4">
-            Use <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{nome}'}</code> para o primeiro nome,{' '}
-            <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{hora}'}</code> para o horário (ex: 14:00) e{' '}
-            <code className="px-1 py-0.5 bg-gray-100 rounded text-blue-700">{'{data}'}</code> para a data (ex: 28/06).
-          </p>
-
-          <div className={`border rounded-lg p-4 transition ${apptReminder.enabled ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200'}`}>
-            <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
-              <input
-                type="checkbox"
-                checked={apptReminder.enabled}
-                onChange={e => setApptReminder(prev => ({ ...prev, enabled: e.target.checked }))}
-                className="w-4 h-4 accent-blue-600"
-              />
-              <span className="text-sm font-medium text-gray-800">Ativar lembrete de agendamento</span>
-            </label>
-            <textarea
-              value={apptReminder.message}
-              disabled={!apptReminder.enabled}
-              onChange={e => setApptReminder(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Ex: Olá {nome}! Lembrando do seu agendamento amanhã às {hora}. Confirma? 😊"
-              rows={3}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
-            />
-          </div>
-
-          <div className="flex items-center gap-3 mt-4">
-            <button
-              onClick={async () => {
-                setSavingReminder(true)
-                setReminderSaved(false)
-                try {
-                  await authFetch(`${API_URL}/instance/config`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ appointmentReminder: apptReminder }),
-                  })
-                  setReminderSaved(true)
-                  setTimeout(() => setReminderSaved(false), 2500)
-                } finally {
-                  setSavingReminder(false)
-                }
-              }}
-              disabled={savingReminder}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-            >
-              {savingReminder ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {savingReminder ? 'Salvando...' : 'Salvar lembrete'}
-            </button>
-            {reminderSaved && <span className="text-sm text-green-600 font-medium">✓ Lembrete salvo</span>}
-          </div>
-        </div>
-      )}
 
       {showConfirmDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
