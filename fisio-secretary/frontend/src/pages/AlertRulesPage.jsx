@@ -37,6 +37,37 @@ const followupToConfig = (state) => {
 
 const rules = [
   {
+    icon: <RefreshCw className="w-5 h-5 text-teal-600" />,
+    title: 'Follow-up Automático por Raia',
+    bg: 'bg-teal-50 border-teal-200',
+    headerBg: 'bg-teal-100',
+    description: 'Leads que pararam de responder recebem uma única mensagem de reengajamento por raia. Configurável por raia com texto e tempo de ociosidade personalizados.',
+    items: [
+      { label: 'Gatilho',       color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: 'Última mensagem foi nossa (IA ou operador) + lead sem responder pelo tempo configurado', reason: 'Não cobra leads que estão esperando nossa resposta.' },
+      { label: 'Frequência',    color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Verificação a cada minuto',                                                             reason: 'Cron detecta leads ociosos e agenda o envio automaticamente.' },
+      { label: 'Limite',        color: 'bg-amber-50 text-amber-700 border-amber-200', rule: '1 mensagem por raia, para sempre',                                                       reason: 'Mesmo que o lead volte à raia, não recebe novamente.' },
+      { label: 'Raias cobertas', color: 'bg-purple-50 text-purple-700 border-purple-200', rule: 'Novo Lead · Lead Frio · Lead Quente',                                               reason: 'Cada raia tem sua própria mensagem e tempo configurados.' },
+      { label: 'Pré-requisitos', color: 'bg-rose-50 text-rose-700 border-rose-200',   rule: 'IA ligada no lead + telefone preenchido',                                               reason: 'Leads com IA desativada (atendimento manual) não recebem.' },
+      { label: 'Variável',      color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: '{nome} → primeiro nome do lead',                                                        reason: 'Se o lead não tiver nome, o placeholder é removido automaticamente.' },
+    ],
+    extra: 'O envio é feito pelo mesmo mecanismo do follow-up manual. A mensagem aparece na conversa do lead e atualiza o Kanban em tempo real.',
+  },
+  {
+    icon: <Calendar className="w-5 h-5 text-blue-600" />,
+    title: 'Lembrete de Agendamento',
+    bg: 'bg-blue-50 border-blue-200',
+    headerBg: 'bg-blue-100',
+    description: 'Clientes com agendamento no calendário interno recebem uma mensagem automática ~24h antes do horário marcado. Diferente do follow-up — aqui o cliente já tem hora confirmada.',
+    items: [
+      { label: 'Antecedência',   color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: '~24h antes (janela 22h–26h)',                                         reason: 'Janela de 4h garante o envio mesmo se o cron atrasar 1 ciclo.' },
+      { label: 'Frequência',     color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Verificação a cada hora',                                              reason: 'Suficiente para um lembrete — tolerância de horas é aceitável.' },
+      { label: 'Limite',         color: 'bg-amber-50 text-amber-700 border-amber-200', rule: '1 lembrete por agendamento',                                           reason: 'reminder_sent_at impede reenvio mesmo dentro da janela.' },
+      { label: 'Status válidos', color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: 'agendado · confirmado',                                                reason: 'Cancelados e realizados são ignorados automaticamente.' },
+      { label: 'Variáveis',      color: 'bg-purple-50 text-purple-700 border-purple-200', rule: '{nome} · {hora} (ex: 14:00) · {data} (ex: 28/06)',                  reason: 'Interpolados com os dados reais do agendamento.' },
+    ],
+    extra: 'Se a data já passou, o agendamento nunca entra na janela de busca — o lembrete só sai para eventos futuros.',
+  },
+  {
     icon: <Flame className="w-5 h-5 text-orange-500" />,
     title: 'Leads Esfriando',
     bg: 'bg-orange-50 border-orange-200',
