@@ -133,11 +133,10 @@ export class FollowupService {
     }
   }
 
-  // A cada minuto (TEMPORÁRIO p/ teste — voltar p/ '*/10 * * * *'): detecta leads
-  // ociosos por raia e agenda follow-up automático. Não envia direto — cria linhas
-  // Followup (status pending) que o processDue() envia. O claim atômico da raia
-  // garante "1x por raia, para sempre".
-  @Cron(CronExpression.EVERY_MINUTE)
+  // A cada 10 min: detecta leads ociosos por raia e agenda follow-up automático.
+  // Não envia direto — cria linhas Followup (status pending) que o processDue() envia.
+  // O claim atômico da raia garante "1x por raia, para sempre".
+  @Cron('*/10 * * * *')
   async processAutoFollowups(): Promise<void> {
     const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'] as const;
     const configs = await this.configRepo.find();
