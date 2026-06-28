@@ -157,9 +157,18 @@ export class AdminController {
 
   // ─── Monitoring endpoints ────────────────────────────────────────────────
 
+  // Data de hoje no fuso de Brasília ('YYYY-MM-DD').
+  private brToday(): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  }
+
+  // created_at é UTC (timestamp sem tz) → converte para BRT e compara a data.
+  // Usado para filtrar mensagens pelo "dia de Brasília" (não janela rolante de 24h).
+  private readonly MSG_DATE_BRT = `(m.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = $1`;
+
   @Get('monitoring/overview')
-  async monitoringOverview() {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  async monitoringOverview(@Query('date') date?: string) {
+    const day = date ?? this.brToday();
     const rows = await this.tokenUsageRepo.query(`
       SELECT
         COALESCE(SUM(input_tokens), 0)::int  AS total_input,
@@ -168,28 +177,28 @@ export class AdminController {
         COALESCE(SUM(cost_usd), 0)           AS total_cost,
         COUNT(DISTINCT tenant_id)::int        AS active_tenants
       FROM token_usage WHERE date = $1
-    `, [today]);
+    `, [day]);
 
-    // Leads com >100 msgs hoje (possíveis loops)
+    // Leads com >=100 msgs inbound no dia (possíveis loops)
     const anomalies = await this.messageRepo.query(`
       SELECT l.id, l.name, l.phone, wc.display_name AS tenant_name, COUNT(m.id)::int AS msg_count
       FROM messages m
       JOIN conversations c ON m.conversation_id = c.id
       JOIN leads l ON c.lead_id = l.id
       JOIN whatsapp_config wc ON l.tenant_id = wc.id
-      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+      WHERE ${this.MSG_DATE_BRT}
         AND m.direction = 'inbound'
       GROUP BY l.id, l.name, l.phone, wc.display_name
       HAVING COUNT(m.id) >= 100
       ORDER BY msg_count DESC
-    `);
+    `, [day]);
 
-    return { ...rows[0], anomaly_count: anomalies.length, anomalies };
+    return { ...rows[0], date: day, anomaly_count: anomalies.length, anomalies };
   }
 
   @Get('monitoring/tenants')
-  async monitoringTenants() {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  async monitoringTenants(@Query('date') date?: string) {
+    const day = date ?? this.brToday();
 
     const tenantStats = await this.tokenUsageRepo.query(`
       SELECT
@@ -200,24 +209,24 @@ export class AdminController {
         COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.output_tokens ELSE 0 END), 0)::int AS output_today,
         COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.cost_usd      ELSE 0 END), 0)      AS cost_today,
         COALESCE(SUM(CASE WHEN tu.date >= ($1::date - 6) AND tu.date <= $1 THEN tu.cost_usd ELSE 0 END), 0) AS cost_7d,
-        COUNT(DISTINCT tu.date) FILTER (WHERE tu.date >= ($1::date - 6)) AS active_days_7d
+        COUNT(DISTINCT tu.date) FILTER (WHERE tu.date >= ($1::date - 6) AND tu.date <= $1) AS active_days_7d
       FROM whatsapp_config wc
       LEFT JOIN token_usage tu ON tu.tenant_id = wc.id
       GROUP BY wc.id, wc.display_name, wc.profile_name
       ORDER BY cost_today DESC
-    `, [today]);
+    `, [day]);
 
-    // Top lead por msgs hoje por tenant
+    // Top lead por msgs inbound no dia, por tenant
     const topLeads = await this.messageRepo.query(`
       SELECT l.tenant_id, l.name AS lead_name, COUNT(m.id)::int AS msg_count
       FROM messages m
       JOIN conversations c ON m.conversation_id = c.id
       JOIN leads l ON c.lead_id = l.id
-      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+      WHERE ${this.MSG_DATE_BRT}
         AND m.direction = 'inbound'
       GROUP BY l.tenant_id, l.name
       ORDER BY msg_count DESC
-    `);
+    `, [day]);
 
     const topLeadByTenant: Record<string, any> = {};
     for (const row of topLeads) {
@@ -237,7 +246,8 @@ export class AdminController {
   }
 
   @Get('monitoring/top-leads')
-  async monitoringTopLeads() {
+  async monitoringTopLeads(@Query('date') date?: string) {
+    const day = date ?? this.brToday();
     return this.messageRepo.query(`
       SELECT
         l.id, l.name, l.phone, l.stage,
@@ -252,11 +262,11 @@ export class AdminController {
       JOIN conversations c ON m.conversation_id = c.id
       JOIN leads l ON c.lead_id = l.id
       JOIN whatsapp_config wc ON l.tenant_id = wc.id
-      WHERE m.created_at >= NOW() - INTERVAL '24 hours'
+      WHERE ${this.MSG_DATE_BRT}
       GROUP BY l.id, l.name, l.phone, l.stage, wc.display_name
       ORDER BY msg_count DESC
       LIMIT 20
-    `);
+    `, [day]);
   }
 
   @Get('monitoring/token-history')

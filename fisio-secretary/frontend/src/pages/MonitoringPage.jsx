@@ -12,6 +12,9 @@ const fmt = (n) => Number(n ?? 0).toLocaleString('pt-BR')
 const fmtUsd = (n) => `$${Number(n ?? 0).toFixed(4)}`
 const fmtUsdShort = (n) => `$${Number(n ?? 0).toFixed(2)}`
 
+// Data de hoje no fuso de Brasília ('YYYY-MM-DD').
+const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+
 function CacheIndicator({ pct }) {
   if (pct === null || pct === undefined) return <span className="text-gray-400 text-xs">—</span>
   const color = pct >= 90 ? 'text-green-600 bg-green-50' : pct >= 50 ? 'text-yellow-700 bg-yellow-50' : 'text-red-600 bg-red-50'
@@ -41,14 +44,16 @@ export default function MonitoringPage() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [date, setDate] = useState(brToday())
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      const q = `?date=${date}`
       const [ov, tn, tl, hi] = await Promise.all([
-        authFetch(`${API_URL}/admin/monitoring/overview`).then(r => r.json()),
-        authFetch(`${API_URL}/admin/monitoring/tenants`).then(r => r.json()),
-        authFetch(`${API_URL}/admin/monitoring/top-leads`).then(r => r.json()),
+        authFetch(`${API_URL}/admin/monitoring/overview${q}`).then(r => r.json()),
+        authFetch(`${API_URL}/admin/monitoring/tenants${q}`).then(r => r.json()),
+        authFetch(`${API_URL}/admin/monitoring/top-leads${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/token-history`).then(r => r.json()),
       ])
       setOverview(ov)
@@ -65,11 +70,14 @@ export default function MonitoringPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [date])
 
   useEffect(() => { load() }, [load])
 
+  const isToday = date === brToday()
+
   const anomalies = overview?.anomalies ?? []
+  const periodLabel = isToday ? 'hoje' : new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')
 
   return (
     <div className="p-6 max-w-6xl space-y-6">
@@ -86,28 +94,45 @@ export default function MonitoringPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={date}
+            max={brToday()}
+            onChange={e => setDate(e.target.value || brToday())}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+          {!isToday && (
+            <button
+              onClick={() => setDate(brToday())}
+              className="px-3 py-2 text-sm text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition"
+            >
+              Hoje
+            </button>
+          )}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       {/* Overview cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <OverviewCard
           icon={Zap}
-          label="Tokens hoje"
+          label={`Tokens ${periodLabel}`}
           value={fmt(overview?.total_input)}
           sub={`${fmt(overview?.total_cached)} cacheados`}
           color="bg-violet-500"
         />
         <OverviewCard
           icon={DollarSign}
-          label="Custo hoje"
+          label={`Custo ${periodLabel}`}
           value={fmtUsdShort(overview?.total_cost)}
           sub="USD"
           color="bg-emerald-500"
@@ -116,14 +141,14 @@ export default function MonitoringPage() {
           icon={Users}
           label="Tenants ativos"
           value={overview?.active_tenants ?? '—'}
-          sub="com consumo hoje"
+          sub={`com consumo ${periodLabel}`}
           color="bg-blue-500"
         />
         <OverviewCard
           icon={AlertTriangle}
           label="Alertas de loop"
           value={overview?.anomaly_count ?? 0}
-          sub="leads >100 msgs/24h"
+          sub="leads ≥100 msgs no dia"
           color={overview?.anomaly_count > 0 ? 'bg-red-500' : 'bg-gray-400'}
         />
       </div>
@@ -133,7 +158,7 @@ export default function MonitoringPage() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 text-red-500" />
-            <h2 className="text-sm font-bold text-red-700">Anomalias detectadas (últimas 24h)</h2>
+            <h2 className="text-sm font-bold text-red-700">Anomalias detectadas ({periodLabel})</h2>
           </div>
           <div className="space-y-2">
             {anomalies.map(a => (
@@ -178,7 +203,7 @@ export default function MonitoringPage() {
                 <th className="text-center px-4 py-3">Cache</th>
                 <th className="text-right px-4 py-3">Custo hoje</th>
                 <th className="text-right px-4 py-3">Projeção/mês</th>
-                <th className="text-left px-4 py-3">Top lead (24h)</th>
+                <th className="text-left px-4 py-3">Top lead</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -215,7 +240,7 @@ export default function MonitoringPage() {
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-gray-500" />
-            <h2 className="text-sm font-semibold text-gray-800">Top leads por mensagens (últimas 24h)</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Top leads por mensagens ({periodLabel})</h2>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -254,7 +279,7 @@ export default function MonitoringPage() {
                 </tr>
               ))}
               {topLeads.length === 0 && (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Sem atividade nas últimas 24h</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Sem atividade neste dia</td></tr>
               )}
             </tbody>
           </table>
