@@ -8,7 +8,7 @@ export class PromptTemplate {
   @Column({ length: 200 })
   name: string;
 
-  @Column({ length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   description: string | null;
 
   @Column({ type: 'text', default: '' })
