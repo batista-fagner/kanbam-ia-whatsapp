@@ -178,6 +178,22 @@ export class LeadsService implements OnApplicationBootstrap {
     });
   }
 
+  async countTodayOutboundMedia(tenantId: string): Promise<number> {
+    const result = await this.messagesRepo.query(
+      `SELECT COUNT(*) AS cnt
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       JOIN leads l ON l.id = c.lead_id
+       WHERE l.tenant_id = $1
+         AND m.direction = 'outbound'
+         AND m.content LIKE '[mídia:%'
+         AND (m.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date
+             = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,
+      [tenantId],
+    );
+    return parseInt(result[0]?.cnt ?? '0', 10);
+  }
+
   // tenantId opcional: quando informado, garante que o lead pertence ao tenant (bloqueia acesso cruzado).
   async findOne(id: string, tenantId?: string): Promise<Lead | null> {
     const where: any = { id };

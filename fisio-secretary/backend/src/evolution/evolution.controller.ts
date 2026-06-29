@@ -22,6 +22,8 @@ export class EvolutionController {
   private readonly processedIds = new Set<string>();
   // Rastreia se a última mensagem recebida de um phone foi áudio (para responder em áudio)
   private readonly lastMessageWasAudio = new Map<string, boolean>();
+  // Rastreia qual tenant já recebeu notificação de limite de vídeo hoje (chave: tenantId, valor: data BRT)
+  private readonly mediaLimitNotifiedDate = new Map<string, string>();
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -446,8 +448,37 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
         .slice(0, MAX_MEDIA);
 
+      // Limite diário de vídeos por tenant (BRT). Padrão: 41.
+      const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 41;
+      const alreadySentToday = await this.leadsService.countTodayOutboundMedia(tenantId);
+      const remainingQuota = Math.max(0, dailyLimit - alreadySentToday);
+
+      // Notifica o cliente via WhatsApp UMA VEZ por dia ao atingir o limite
+      if (remainingQuota === 0) {
+        const todayBRT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+        const lastNotified = this.mediaLimitNotifiedDate.get(tenantId);
+        if (lastNotified !== todayBRT && instanceConfig?.billingPhone) {
+          this.mediaLimitNotifiedDate.set(tenantId, todayBRT);
+          // Usa BILLING_SENDER_TOKEN se configurado, senão cai no token do próprio tenant
+          const billingToken = this.configService.get<string>('BILLING_SENDER_TOKEN') || tenantToken;
+          const baseUrl = this.configService.get<string>('UAZAPI_BASE_URL') ?? '';
+          const tenantName = instanceConfig.displayName ?? 'seu negócio';
+          const alertMsg = `⚠️ *Limite diário de vídeos atingido!*\n\nOlá! O assistente virtual de *${tenantName}* atingiu o limite de *${dailyLimit} vídeos* enviados hoje.\n\nOs próximos pedidos de vídeo receberão apenas a descrição em texto. O envio volta automaticamente amanhã. 🎬\n\nEm caso de dúvidas, entre em contato com o suporte.`;
+          try {
+            await axios.post(`${baseUrl}/send/text`, { number: instanceConfig.billingPhone, text: alertMsg }, { headers: { token: billingToken } });
+            this.logger.warn(`[MEDIA-LIMIT] Notificação enviada para ${instanceConfig.billingPhone} (tenant ${tenantId})`);
+          } catch (err) {
+            this.logger.error(`[MEDIA-LIMIT] Falha ao notificar ${instanceConfig.billingPhone}: ${err.message}`);
+          }
+        }
+      }
+
       let sentCount = 0;
       for (let i = 0; i < names.length; i++) {
+        if (sentCount >= remainingQuota) {
+          this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
+          break;
+        }
         const mediaFile = await this.mediaService.findByName(names[i], tenantId);
         if (!mediaFile) {
           this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);

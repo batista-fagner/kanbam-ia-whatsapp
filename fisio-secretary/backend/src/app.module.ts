@@ -25,6 +25,7 @@ import { CreateImplantacaoPayments1780500000000 } from './migrations/17805000000
 import { AddMediaCaption1780600000000 } from './migrations/1780600000000-AddMediaCaption';
 import { AddAutoFollowup1780700000000 } from './migrations/1780700000000-AddAutoFollowup';
 import { AddAppointmentReminder1780800000000 } from './migrations/1780800000000-AddAppointmentReminder';
+import { AddMediaLimitPerDay1780900000000 } from './migrations/1780900000000-AddMediaLimitPerDay';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -52,7 +53,7 @@ import { FollowupModule } from './followup/followup.module';
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000],
         migrationsRun: true,
         logging: false,
       }),
