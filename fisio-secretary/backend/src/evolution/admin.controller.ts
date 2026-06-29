@@ -285,6 +285,46 @@ export class AdminController {
     `);
   }
 
+  @Get('monitoring/media')
+  async monitoringMedia(@Query('date') date?: string) {
+    const day = date ?? this.brToday();
+
+    // Vídeos enviados por tenant no dia
+    const byTenant = await this.messageRepo.query(`
+      SELECT
+        l.tenant_id,
+        COALESCE(wc.display_name, wc.profile_name, l.tenant_id::text) AS tenant_name,
+        wc.media_limit_per_day AS daily_limit,
+        COUNT(m.id)::int AS videos_sent
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      JOIN leads l ON c.lead_id = l.id
+      JOIN whatsapp_config wc ON l.tenant_id = wc.id
+      WHERE ${this.MSG_DATE_BRT}
+        AND m.direction = 'outbound'
+        AND m.content LIKE '[mídia:%'
+      GROUP BY l.tenant_id, wc.display_name, wc.profile_name, wc.media_limit_per_day
+      ORDER BY videos_sent DESC
+    `, [day]);
+
+    // Histórico de vídeos 14 dias (total por dia)
+    const history = await this.messageRepo.query(`
+      SELECT
+        TO_CHAR((m.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date, 'YYYY-MM-DD') AS date,
+        COUNT(m.id)::int AS total_videos
+      FROM messages m
+      WHERE m.direction = 'outbound'
+        AND m.content LIKE '[mídia:%'
+        AND m.created_at >= NOW() - INTERVAL '14 days'
+      GROUP BY (m.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date
+      ORDER BY date ASC
+    `);
+
+    const totalToday = byTenant.reduce((sum: number, t: any) => sum + Number(t.videos_sent), 0);
+
+    return { date: day, total_today: totalToday, by_tenant: byTenant, history };
+  }
+
   // ────────────────────────────────────────────────────────────────────────
 
   @Get('instances')

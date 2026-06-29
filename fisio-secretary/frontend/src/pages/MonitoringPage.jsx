@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Activity, AlertTriangle, DollarSign, Users, RefreshCw, TrendingUp, Zap, MessageSquare } from 'lucide-react'
+import { Activity, AlertTriangle, DollarSign, Users, RefreshCw, TrendingUp, Zap, MessageSquare, Video } from 'lucide-react'
 import { authFetch } from '../services/api'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -42,6 +42,7 @@ export default function MonitoringPage() {
   const [tenants, setTenants] = useState([])
   const [topLeads, setTopLeads] = useState([])
   const [history, setHistory] = useState([])
+  const [media, setMedia] = useState(null)
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [date, setDate] = useState(brToday())
@@ -50,15 +51,17 @@ export default function MonitoringPage() {
     setLoading(true)
     try {
       const q = `?date=${date}`
-      const [ov, tn, tl, hi] = await Promise.all([
+      const [ov, tn, tl, hi, md] = await Promise.all([
         authFetch(`${API_URL}/admin/monitoring/overview${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/tenants${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/top-leads${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/token-history`).then(r => r.json()),
+        authFetch(`${API_URL}/admin/monitoring/media${q}`).then(r => r.json()),
       ])
       setOverview(ov)
       setTenants(tn)
       setTopLeads(tl)
+      setMedia(md)
       setHistory(hi.map(h => ({
         ...h,
         date: h.date.slice(5), // MM-DD
@@ -122,7 +125,7 @@ export default function MonitoringPage() {
       </div>
 
       {/* Overview cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <OverviewCard
           icon={Zap}
           label={`Tokens ${periodLabel}`}
@@ -150,6 +153,13 @@ export default function MonitoringPage() {
           value={overview?.anomaly_count ?? 0}
           sub="leads ≥100 msgs no dia"
           color={overview?.anomaly_count > 0 ? 'bg-red-500' : 'bg-gray-400'}
+        />
+        <OverviewCard
+          icon={Video}
+          label={`Vídeos ${periodLabel}`}
+          value={media?.total_today ?? '—'}
+          sub="enviados pela IA"
+          color="bg-orange-500"
         />
       </div>
 
@@ -229,6 +239,70 @@ export default function MonitoringPage() {
               ))}
               {tenants.length === 0 && (
                 <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">Sem dados hoje</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mídias por cliente */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Video className="w-4 h-4 text-orange-500" />
+            <h2 className="text-sm font-semibold text-gray-800">Vídeos enviados por cliente ({periodLabel})</h2>
+          </div>
+          <span className="text-xs text-gray-400">Limite: 41/dia</span>
+        </div>
+
+        {/* Gráfico histórico 14 dias de vídeos */}
+        {media?.history?.length > 0 && (
+          <div className="px-5 pt-4 pb-2">
+            <p className="text-xs text-gray-500 mb-2">Histórico — últimos 14 dias</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={media.history.map(h => ({ ...h, date: h.date.slice(5) }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(v) => [v, 'Vídeos']} />
+                <Bar dataKey="total_videos" fill="#f97316" radius={[3, 3, 0, 0]} name="Vídeos" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-5 py-3">Cliente</th>
+                <th className="text-right px-4 py-3">Enviados</th>
+                <th className="text-right px-4 py-3">Limite/dia</th>
+                <th className="text-left px-4 py-3 w-48">Uso</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {(media?.by_tenant ?? []).map(t => {
+                const pct = Math.min(100, Math.round((t.videos_sent / (t.daily_limit ?? 41)) * 100))
+                const barColor = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-orange-400' : 'bg-orange-300'
+                return (
+                  <tr key={t.tenant_id} className={`hover:bg-gray-50 ${pct >= 100 ? 'bg-red-50' : ''}`}>
+                    <td className="px-5 py-3 font-medium text-gray-800">{t.tenant_name}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-800">{t.videos_sent}</td>
+                    <td className="px-4 py-3 text-right text-gray-500">{t.daily_limit ?? 41}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-gray-100 rounded-full h-2">
+                          <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className={`text-xs font-medium w-8 text-right ${pct >= 100 ? 'text-red-600' : 'text-gray-500'}`}>{pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {(media?.by_tenant ?? []).length === 0 && (
+                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Nenhum vídeo enviado neste dia</td></tr>
               )}
             </tbody>
           </table>

@@ -170,8 +170,10 @@ export default function CheckoutPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" disabled
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-gray-300 text-sm font-medium cursor-not-allowed opacity-50">
+                  <button type="button" onClick={() => setMethod('card')}
+                    className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition ${
+                      method === 'card' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}>
                     <CreditCard className="w-4 h-4" /> Cartão
                   </button>
                   <button type="button" onClick={() => setMethod('pix')}
