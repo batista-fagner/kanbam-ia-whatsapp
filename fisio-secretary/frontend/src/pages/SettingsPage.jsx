@@ -125,7 +125,7 @@ export default function SettingsPage() {
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [mediaList, setMediaList] = useState([])
   const [promptSaved, setPromptSaved] = useState(false)
-  const [blocks, setBlocks] = useState({ identidade: '', regras: '' })
+  const [blocks, setBlocks] = useState({ identidade: '', regras: '', fluxo: '', objeccoes: '', exemplos: '', produtos: '', horario: '', tom: '', escalar: '' })
   const [builderOpen, setBuilderOpen] = useState(false)
   const [appliedNotice, setAppliedNotice] = useState(false)
   const [batchTrigger, setBatchTrigger] = useState('')
@@ -773,6 +773,104 @@ export default function SettingsPage() {
                 />
               </div>
 
+              {/* Bloco: Fluxo de Atendimento */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🗺️ Fluxo de Atendimento</label>
+                <p className="text-sm text-gray-400 mb-2">O passo a passo da conversa: boas-vindas → qualificação → proposta → fechamento.</p>
+                <textarea
+                  value={blocks.fluxo}
+                  onChange={e => setBlocks(b => ({ ...b, fluxo: e.target.value }))}
+                  rows={6}
+                  placeholder="Ex: 1. Cumprimente pelo nome. 2. Pergunte se já usa mega hair. 3. Se sim, envie os vídeos. 4. Combine a aplicação..."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Objeções */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">💬 Objeções Comuns</label>
+                <p className="text-sm text-gray-400 mb-2">Como responder "tá caro", "vou pensar", "já tenho" etc.</p>
+                <textarea
+                  value={blocks.objeccoes}
+                  onChange={e => setBlocks(b => ({ ...b, objeccoes: e.target.value }))}
+                  rows={6}
+                  placeholder={'Ex:\n- "Tá caro": explique o custo-benefício e durabilidade.\n- "Vou pensar": pergunte o que está impedindo a decisão.\n- "Já tenho": pergunte quando foi a última aplicação.'}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Exemplos de Conversa */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🎯 Exemplos de Conversa</label>
+                <p className="text-sm text-gray-400 mb-2">2-3 diálogos modelo (few-shot). O maior impacto na qualidade das respostas.</p>
+                <textarea
+                  value={blocks.exemplos}
+                  onChange={e => setBlocks(b => ({ ...b, exemplos: e.target.value }))}
+                  rows={8}
+                  placeholder={'Ex:\nCliente: "Oi, vi o anúncio de vocês"\nIA: "Oi linda! Que bom que chegou até nós 🥰 Você já usa mega hair?"\nCliente: "Nunca usei"\nIA: "Ah então vou te mostrar como fica maravilhoso! Olha esses resultados..."'}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Produtos / Serviços */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🛍️ Produtos / Serviços</label>
+                <p className="text-sm text-gray-400 mb-2">Catálogo com nome, preço e descrição. Evita que a IA invente valores.</p>
+                <textarea
+                  value={blocks.produtos}
+                  onChange={e => setBlocks(b => ({ ...b, produtos: e.target.value }))}
+                  rows={5}
+                  placeholder={'Ex:\n- Mega Hair Liso 60cm: R$ 250 (dura 3-4 meses)\n- Mega Hair Ondulado 50cm: R$ 220\n- Aplicação: R$ 80\n- Manutenção: R$ 60'}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Horário */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🕐 Horário de Atendimento</label>
+                <p className="text-sm text-gray-400 mb-2">Quando responde e o que diz fora do horário.</p>
+                <textarea
+                  value={blocks.horario}
+                  onChange={e => setBlocks(b => ({ ...b, horario: e.target.value }))}
+                  rows={3}
+                  placeholder="Ex: Atendemos de segunda a sábado, das 9h às 18h. Fora desse horário, informe que retornaremos assim que possível."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Tom e Linguagem */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">✍️ Tom e Linguagem</label>
+                <p className="text-sm text-gray-400 mb-2">Formal ou informal, uso de emojis, tamanho das mensagens.</p>
+                <textarea
+                  value={blocks.tom}
+                  onChange={e => setBlocks(b => ({ ...b, tom: e.target.value }))}
+                  rows={3}
+                  placeholder="Ex: Tom descontraído e afetivo. Use emojis com moderação. Mensagens curtas (máximo 3 linhas). Nunca use linguagem formal."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Quando Escalar */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🚨 Quando Passar para Humano</label>
+                <p className="text-sm text-gray-400 mb-2">Gatilhos para desligar a IA e transferir para atendente.</p>
+                <textarea
+                  value={blocks.escalar}
+                  onChange={e => setBlocks(b => ({ ...b, escalar: e.target.value }))}
+                  rows={3}
+                  placeholder="Ex: Reclamação grave, pedido explícito de falar com pessoa, dúvida sobre alergia ou saúde, cliente muito confuso após 3 tentativas."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
               {/* Bloco: Envio em Lote */}
               <div className="border border-teal-100 rounded-xl p-4 bg-teal-50/40">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">🎬 Envio em Lote</label>
@@ -850,7 +948,14 @@ export default function SettingsPage() {
                 onClick={() => {
                   const partes = []
                   if (blocks.identidade.trim()) partes.push(`## Identidade\n${blocks.identidade.trim()}`)
+                  if (blocks.fluxo.trim()) partes.push(`## Fluxo de Atendimento\n${blocks.fluxo.trim()}`)
                   if (blocks.regras.trim()) partes.push(`## Regras\n${blocks.regras.trim()}`)
+                  if (blocks.objeccoes.trim()) partes.push(`## Objeções Comuns\n${blocks.objeccoes.trim()}`)
+                  if (blocks.exemplos.trim()) partes.push(`## Exemplos de Conversa\n${blocks.exemplos.trim()}`)
+                  if (blocks.produtos.trim()) partes.push(`## Produtos e Serviços\n${blocks.produtos.trim()}`)
+                  if (blocks.horario.trim()) partes.push(`## Horário de Atendimento\n${blocks.horario.trim()}`)
+                  if (blocks.tom.trim()) partes.push(`## Tom e Linguagem\n${blocks.tom.trim()}`)
+                  if (blocks.escalar.trim()) partes.push(`## Quando Passar para Humano\n${blocks.escalar.trim()}`)
                   if (partes.length === 0) return
                   setCustomPromptMegaHair(partes.join('\n\n'))
                   setBuilderOpen(false)
