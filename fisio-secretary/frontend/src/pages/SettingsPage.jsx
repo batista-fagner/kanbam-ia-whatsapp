@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+
+const PROMPT_TEMPLATES = [
+  {
+    id: 'megahair-basico',
+    name: 'Mega Hair — Exemplo base',
+    description: 'Template completo para salões de mega hair com fluxo de qualificação e envio de vídeos.',
+    content: `Cole aqui o prompt de exemplo do cliente...`,
+  },
+]
 
 
 function StatusBadge({ status }) {
@@ -27,6 +36,69 @@ function StatusBadge({ status }) {
       <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
       Desconectado
     </span>
+  )
+}
+
+function PromptTemplatesCard({ onCopy }) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(null)
+
+  function handleCopy(template) {
+    navigator.clipboard.writeText(template.content).catch(() => {})
+    onCopy(template.content)
+    setCopied(template.id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-6 py-4 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-teal-600" />
+          <span className="text-sm font-semibold text-gray-800">Templates de Prompt</span>
+          <span className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">{PROMPT_TEMPLATES.length} exemplo{PROMPT_TEMPLATES.length !== 1 ? 's' : ''}</span>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="px-6 pb-6 space-y-4 border-t border-gray-100 pt-4">
+          <p className="text-sm text-gray-500">Exemplos de prompt prontos. Clique em <strong>Usar este template</strong> para copiar direto no campo de edição acima — ajuste conforme necessário antes de salvar.</p>
+          {PROMPT_TEMPLATES.map(t => (
+            <div key={t.id} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{t.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(t)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                    copied === t.id
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-teal-700 text-white hover:bg-teal-800'
+                  }`}
+                >
+                  {copied === t.id ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" /> Copiado!</>
+                  ) : (
+                    <><Copy className="w-3.5 h-3.5" /> Usar este template</>
+                  )}
+                </button>
+              </div>
+              <pre className="text-xs text-gray-600 font-mono p-4 bg-white overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
+                {t.content}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -922,6 +994,11 @@ export default function SettingsPage() {
         </div>
       )}
 
+
+      {/* Card de templates de prompt */}
+      {!bootstrapping && instanceConfig && (
+        <PromptTemplatesCard onCopy={text => setCustomPromptMegaHair(text)} />
+      )}
 
       {showConfirmDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
