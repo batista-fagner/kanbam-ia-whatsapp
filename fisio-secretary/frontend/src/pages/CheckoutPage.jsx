@@ -18,7 +18,7 @@ function formatPhone(digits) {
 }
 
 export default function CheckoutPage() {
-  const [checkoutType, setCheckoutType] = useState('implantacao') // 'implantacao' | 'plano'
+  const [checkoutType, setCheckoutType] = useState('plano') // 'implantacao' | 'plano'
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
   const [method, setMethod] = useState('pix')
   const [loading, setLoading] = useState(false)
