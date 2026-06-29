@@ -20,7 +20,7 @@ function formatPhone(digits) {
 export default function CheckoutPage() {
   const [checkoutType, setCheckoutType] = useState('plano') // 'implantacao' | 'plano'
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
-  const [method, setMethod] = useState('pix')
+  const [method, setMethod] = useState('card')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false) // modal de confirmação do número (PIX)
