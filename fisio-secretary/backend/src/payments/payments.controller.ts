@@ -37,8 +37,15 @@ export class PaymentsController {
   }
 
   // Público: recebe eventos do Stripe (assinatura verificada via raw body)
+  // Duas rotas para compatibilidade — /webhooks/stripe (correto) e /payments/webhooks/stripe (legado)
   @Post('webhooks/stripe')
   async stripeWebhook(@Req() req: Request & { rawBody?: Buffer }, @Headers('stripe-signature') signature: string) {
+    if (!req.rawBody) throw new BadRequestException('rawBody ausente');
+    return this.payments.handleWebhook(req.rawBody, signature);
+  }
+
+  @Post('payments/webhooks/stripe')
+  async stripeWebhookAlias(@Req() req: Request & { rawBody?: Buffer }, @Headers('stripe-signature') signature: string) {
     if (!req.rawBody) throw new BadRequestException('rawBody ausente');
     return this.payments.handleWebhook(req.rawBody, signature);
   }

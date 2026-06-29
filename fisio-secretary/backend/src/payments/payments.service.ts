@@ -78,6 +78,9 @@ export class PaymentsService {
       case 'checkout.session.completed':
         await this._onCardCheckoutCompleted(event.data.object);
         break;
+      case 'customer.subscription.created':
+        await this._onSubscriptionCreated(event.data.object);
+        break;
       case 'invoice.payment_failed':
         await this._onInvoiceFailed(event.data.object);
         break;
@@ -107,6 +110,35 @@ export class PaymentsService {
     await this._createClientFromPayment(meta.name ?? 'Cliente', email, meta.phone ?? '', 'card', {
       stripeCustomerId: customerId ?? null,
       stripeSubscriptionId: subscriptionId ?? null,
+    });
+  }
+
+  // Cria a conta quando a subscription é criada (dispara junto com ou antes do checkout.session.completed).
+  // Idempotente: se a subscription já está no banco (criada pelo checkout.session.completed), ignora.
+  private async _onSubscriptionCreated(sub: any): Promise<void> {
+    const subscriptionId = sub.id as string;
+    if (!subscriptionId) return;
+
+    const existing = await this.configRepo.findOne({ where: { stripeSubscriptionId: subscriptionId } });
+    if (existing) {
+      this.logger.log(`[STRIPE] Subscription ${subscriptionId} já processada — ignorando`);
+      return;
+    }
+
+    const meta = sub.metadata ?? {};
+    const email = meta.email ?? '';
+    const name = meta.name ?? 'Cliente';
+    const phone = meta.phone ?? '';
+    const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+
+    if (!email) {
+      this.logger.warn(`[STRIPE] customer.subscription.created sem email no metadata — sub ${subscriptionId}`);
+      return;
+    }
+
+    await this._createClientFromPayment(name, email, phone, 'card', {
+      stripeCustomerId: customerId ?? null,
+      stripeSubscriptionId: subscriptionId,
     });
   }
 
