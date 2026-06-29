@@ -5,7 +5,7 @@ export class PromptTemplate {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 200 })
+  @Column({ type: 'varchar', length: 200 })
   name: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
@@ -14,7 +14,7 @@ export class PromptTemplate {
   @Column({ type: 'text', default: '' })
   content: string;
 
-  @Column({ name: 'agent_type', length: 50, nullable: true })
+  @Column({ type: 'varchar', name: 'agent_type', length: 50, nullable: true })
   agentType: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
