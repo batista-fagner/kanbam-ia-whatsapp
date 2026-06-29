@@ -995,11 +995,6 @@ export default function SettingsPage() {
       )}
 
 
-      {/* Card de templates de prompt */}
-      {!bootstrapping && instanceConfig && (
-        <PromptTemplatesCard onCopy={text => setCustomPromptMegaHair(text)} />
-      )}
-
       {showConfirmDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 w-80 space-y-4">
