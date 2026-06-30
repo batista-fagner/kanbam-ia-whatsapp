@@ -874,12 +874,12 @@ export default function SettingsPage() {
               {/* Bloco: Informações Gerais */}
               <div>
                 <label className="block text-sm font-semibold text-gray-600 mb-1.5">ℹ️ Informações Gerais</label>
-                <p className="text-sm text-gray-400 mb-2">Dados da empresa: nome, localização, horário, site, contato.</p>
+                <p className="text-sm text-gray-400 mb-2">Informações especiais da sua loja que a IA deve conhecer e mencionar quando relevante. Dados únicos que diferenciam o seu negócio.</p>
                 <textarea
                   value={blocks.informacoes_gerais}
                   onChange={e => setBlocks(b => ({ ...b, informacoes_gerais: e.target.value }))}
                   rows={4}
-                  placeholder="Ex: Cabelô Mega Hair, localizada em Salvador/BA, funcionamos seg-sab 9h-18h, site: www.cabelomegahair.com.br, WhatsApp (71) 99999-9999"
+                  placeholder="Cole aqui informações únicas da sua loja..."
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
                   spellCheck={false}
                 />
