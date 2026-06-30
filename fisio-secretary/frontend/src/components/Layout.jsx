@@ -17,7 +17,7 @@ export default function Layout({ onLogout }) {
     { icon: Image, label: 'Mídias', path: '/media' },
     { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
-    { icon: BookOpen, label: 'Templates', path: '/templates' },
+    // { icon: BookOpen, label: 'Templates', path: '/templates' }, // TODO: ativar depois
     // Painel admin — só para o admin da plataforma
     ...(user?.role === 'admin' ? [
       { icon: Users, label: 'Clientes', path: '/admin' },
