@@ -125,7 +125,7 @@ export default function SettingsPage() {
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [mediaList, setMediaList] = useState([])
   const [promptSaved, setPromptSaved] = useState(false)
-  const [blocks, setBlocks] = useState({ identidade: '', regras: '', fluxo: '', objeccoes: '', exemplos: '', produtos: '', horario: '', tom: '', escalar: '' })
+  const [blocks, setBlocks] = useState({ identidade: '', regras: '', fluxo: '', objeccoes: '', exemplos: '', produtos: '', horario: '', tom: '', escalar: '', guardrails: '' })
   const [builderOpen, setBuilderOpen] = useState(false)
   const [appliedNotice, setAppliedNotice] = useState(false)
   const [batchTrigger, setBatchTrigger] = useState('')
@@ -871,6 +871,21 @@ export default function SettingsPage() {
                 />
               </div>
 
+              {/* Bloco: Guardrails */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🛡️ Guardrails</label>
+                <p className="text-sm text-gray-400 mb-1">São as <strong className="text-gray-600">barreiras de segurança absolutas</strong> da IA — limites que ela nunca pode cruzar, independente do que o cliente peça. Diferente das Regras (boas práticas), os Guardrails protegem contra manipulação, informações falsas e situações de risco.</p>
+                <p className="text-xs text-teal-700 bg-teal-50 rounded-lg px-3 py-2 mb-2">Exemplos: nunca revelar que é uma IA, nunca inventar preços, nunca aceitar pedidos fora do escopo do negócio, nunca continuar se o cliente estiver em situação de emergência.</p>
+                <textarea
+                  value={blocks.guardrails}
+                  onChange={e => setBlocks(b => ({ ...b, guardrails: e.target.value }))}
+                  rows={5}
+                  placeholder={'Ex:\n- Nunca afirme que é humana. Se perguntada, diga que é uma assistente virtual.\n- Nunca invente preços, prazos ou informações que não estejam no prompt.\n- Nunca aceite pedidos de outros assuntos (política, saúde geral, etc).\n- Se o cliente mencionar emergência, pare tudo e oriente a ligar para serviços de emergência.'}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
               {/* Bloco: Envio em Lote */}
               <div className="border border-teal-100 rounded-xl p-4 bg-teal-50/40">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">🎬 Envio em Lote</label>
@@ -956,6 +971,7 @@ export default function SettingsPage() {
                   if (blocks.horario.trim()) partes.push(`## Horário de Atendimento\n${blocks.horario.trim()}`)
                   if (blocks.tom.trim()) partes.push(`## Tom e Linguagem\n${blocks.tom.trim()}`)
                   if (blocks.escalar.trim()) partes.push(`## Quando Passar para Humano\n${blocks.escalar.trim()}`)
+                  if (blocks.guardrails.trim()) partes.push(`## Guardrails\n${blocks.guardrails.trim()}`)
                   if (partes.length === 0) return
                   setCustomPromptMegaHair(partes.join('\n\n'))
                   setBuilderOpen(false)
