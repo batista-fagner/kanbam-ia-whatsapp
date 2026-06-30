@@ -125,7 +125,7 @@ export default function SettingsPage() {
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [mediaList, setMediaList] = useState([])
   const [promptSaved, setPromptSaved] = useState(false)
-  const [blocks, setBlocks] = useState({ identidade: '', regras: '', fluxo: '', objeccoes: '', exemplos: '', produtos: '', horario: '', tom: '', escalar: '', guardrails: '' })
+  const [blocks, setBlocks] = useState({ identidade: '', regras: '', fluxo: '', objeccoes: '', exemplos: '', produtos: '', horario: '', tom: '', diferenciais: '', informacoes_gerais: '', guardrails: '' })
   const [builderOpen, setBuilderOpen] = useState(false)
   const [appliedNotice, setAppliedNotice] = useState(false)
   const [batchTrigger, setBatchTrigger] = useState('')
@@ -857,15 +857,29 @@ export default function SettingsPage() {
                 />
               </div>
 
-              {/* Bloco: Quando Escalar */}
+              {/* Bloco: Diferenciais */}
               <div>
-                <label className="block text-sm font-semibold text-gray-600 mb-1.5">🚨 Quando Passar para Humano</label>
-                <p className="text-sm text-gray-400 mb-2">Gatilhos para desligar a IA e transferir para atendente.</p>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">⭐ Diferenciais</label>
+                <p className="text-sm text-gray-400 mb-2">O que torna você único? Vantagens competitivas, diferenças do concorrente.</p>
                 <textarea
-                  value={blocks.escalar}
-                  onChange={e => setBlocks(b => ({ ...b, escalar: e.target.value }))}
-                  rows={3}
-                  placeholder="Ex: Reclamação grave, pedido explícito de falar com pessoa, dúvida sobre alergia ou saúde, cliente muito confuso após 3 tentativas."
+                  value={blocks.diferenciais}
+                  onChange={e => setBlocks(b => ({ ...b, diferenciais: e.target.value }))}
+                  rows={4}
+                  placeholder="Ex: Mega hair 100% natural, dura 4 meses (concorrente dura 2), aplicação em 30 min, sem sujeira, agende online."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Bloco: Informações Gerais */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">ℹ️ Informações Gerais</label>
+                <p className="text-sm text-gray-400 mb-2">Dados da empresa: nome, localização, horário, site, contato.</p>
+                <textarea
+                  value={blocks.informacoes_gerais}
+                  onChange={e => setBlocks(b => ({ ...b, informacoes_gerais: e.target.value }))}
+                  rows={4}
+                  placeholder="Ex: Cabelô Mega Hair, localizada em Salvador/BA, funcionamos seg-sab 9h-18h, site: www.cabelomegahair.com.br, WhatsApp (71) 99999-9999"
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
                   spellCheck={false}
                 />
@@ -970,7 +984,8 @@ export default function SettingsPage() {
                   if (blocks.produtos.trim()) partes.push(`## Produtos e Serviços\n${blocks.produtos.trim()}`)
                   if (blocks.horario.trim()) partes.push(`## Horário de Atendimento\n${blocks.horario.trim()}`)
                   if (blocks.tom.trim()) partes.push(`## Tom e Linguagem\n${blocks.tom.trim()}`)
-                  if (blocks.escalar.trim()) partes.push(`## Quando Passar para Humano\n${blocks.escalar.trim()}`)
+                  if (blocks.diferenciais.trim()) partes.push(`## Diferenciais\n${blocks.diferenciais.trim()}`)
+                  if (blocks.informacoes_gerais.trim()) partes.push(`## Informações Gerais\n${blocks.informacoes_gerais.trim()}`)
                   if (blocks.guardrails.trim()) partes.push(`## Guardrails\n${blocks.guardrails.trim()}`)
                   if (partes.length === 0) return
                   setCustomPromptMegaHair(partes.join('\n\n'))
