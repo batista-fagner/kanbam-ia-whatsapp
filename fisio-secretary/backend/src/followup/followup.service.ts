@@ -22,8 +22,8 @@ const BUSINESS_END_HOUR = 20; // envia até 19:59; às 20h em diante, para.
 // Quantos follow-ups no MÁXIMO por execução do cron (a cada minuto). Evita rajada.
 const SEND_BATCH_PER_RUN = 5;
 // Espaçamento aleatório entre cada envio dentro do lote (ms) — imita ritmo humano.
-const MIN_GAP_MS = 3000;
-const MAX_GAP_MS = 9000;
+const MIN_GAP_MS = 7000;
+const MAX_GAP_MS = 15000;
 // Teto diário padrão por tenant, usado se a config não tiver valor.
 const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 
