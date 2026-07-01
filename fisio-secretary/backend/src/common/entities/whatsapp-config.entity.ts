@@ -47,6 +47,10 @@ export class WhatsappConfig {
   @Column({ name: 'media_limit_per_day', type: 'integer', default: 41 })
   mediaLimitPerDay: number;
 
+  // Limite de follow-ups automáticos enviados por dia (contagem BRT). Anti-bloqueio. Padrão: 40.
+  @Column({ name: 'followup_limit_per_day', type: 'integer', default: 40 })
+  followupLimitPerDay: number;
+
   // Quando true, usa o sistema multi-agente (Supervisor + sub-agentes) em vez do prompt único.
   @Column({ name: 'multi_agent_enabled', type: 'boolean', default: false })
   multiAgentEnabled: boolean;

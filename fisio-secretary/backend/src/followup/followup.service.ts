@@ -15,6 +15,18 @@ import { AppointmentsService } from '../appointments/appointments.service';
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
 const ALLOWED_DELAYS = [1, 4, 24];
 
+// ── Proteção anti-bloqueio do WhatsApp (envios automáticos) ──
+// Janela de horário comercial (BRT): só envia follow-up entre 9h e 20h.
+const BUSINESS_START_HOUR = 9;
+const BUSINESS_END_HOUR = 20; // envia até 19:59; às 20h em diante, para.
+// Quantos follow-ups no MÁXIMO por execução do cron (a cada minuto). Evita rajada.
+const SEND_BATCH_PER_RUN = 5;
+// Espaçamento aleatório entre cada envio dentro do lote (ms) — imita ritmo humano.
+const MIN_GAP_MS = 3000;
+const MAX_GAP_MS = 9000;
+// Teto diário padrão por tenant, usado se a config não tiver valor.
+const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
+
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
@@ -96,14 +108,39 @@ export class FollowupService {
   // múltiplas instâncias sem depender de Redis.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
+    // PROTEÇÃO 1 — Janela de horário: fora de 9h–20h (BRT) não envia nada.
+    // Os follow-ups vencidos ficam pending e saem quando a janela abrir.
+    if (!this.isWithinBusinessHours()) return;
+
+    // PROTEÇÃO 2 — Lote pequeno por execução (a cada minuto): evita rajada de 50 de uma vez.
     const due = await this.followupRepo.find({
       where: { status: 'pending', scheduledAt: LessThanOrEqual(new Date()) },
       order: { scheduledAt: 'ASC' },
-      take: 50,
+      take: SEND_BATCH_PER_RUN,
     });
     if (due.length === 0) return;
 
+    // Cache por execução: contagem de enviados hoje e limite, por tenant.
+    const sentTodayByTenant = new Map<string, number>();
+    const limitByTenant = new Map<string, number>();
+
     for (const f of due) {
+      // PROTEÇÃO 3 — Teto diário por tenant: ao atingir o limite, deixa pending pra amanhã.
+      let sentToday = sentTodayByTenant.get(f.tenantId);
+      if (sentToday === undefined) {
+        sentToday = await this.countSentTodayByTenant(f.tenantId);
+        sentTodayByTenant.set(f.tenantId, sentToday);
+      }
+      let limit = limitByTenant.get(f.tenantId);
+      if (limit === undefined) {
+        limit = await this.followupDailyLimit(f.tenantId);
+        limitByTenant.set(f.tenantId, limit);
+      }
+      if (sentToday >= limit) {
+        this.logger.warn(`[FOLLOWUP] Teto diário atingido (${limit}) p/ tenant ${f.tenantId} — adiando envios`);
+        continue;
+      }
+
       // Claim atômico: só prossegue se ESTA instância flipou pending → sending.
       const claim = await this.followupRepo
         .createQueryBuilder()
@@ -123,6 +160,7 @@ export class FollowupService {
         f.sentAt = new Date();
         f.error = null;
         await this.followupRepo.save(f);
+        sentTodayByTenant.set(f.tenantId, sentToday + 1);
         this.logger.log(`[FOLLOWUP] Enviado → ${f.phone} (lead ${f.leadId})`);
       } catch (err) {
         f.status = 'failed';
@@ -130,7 +168,52 @@ export class FollowupService {
         await this.followupRepo.save(f);
         this.logger.error(`[FOLLOWUP] Falha ao enviar p/ ${f.phone}: ${f.error}`);
       }
+
+      // Espaçamento humano entre envios (jitter) — nunca dispara em rajada.
+      await this.sleep(MIN_GAP_MS + Math.floor(Math.random() * (MAX_GAP_MS - MIN_GAP_MS)));
     }
+  }
+
+  // ── Helpers anti-bloqueio ──
+
+  // Hora atual em Brasília (0–23).
+  private currentHourBRT(): number {
+    const h = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false,
+    }).format(new Date());
+    // '24' pode aparecer à meia-noite em alguns ambientes — normaliza para 0.
+    const n = parseInt(h, 10);
+    return n === 24 ? 0 : n;
+  }
+
+  private isWithinBusinessHours(): boolean {
+    const h = this.currentHourBRT();
+    return h >= BUSINESS_START_HOUR && h < BUSINESS_END_HOUR;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  // Quantos follow-ups já foram ENVIADOS hoje (dia BRT) por este tenant.
+  private async countSentTodayByTenant(tenantId: string): Promise<number> {
+    const rows = await this.followupRepo.query(
+      `SELECT COUNT(*)::int AS cnt
+         FROM followups
+        WHERE tenant_id = $1
+          AND status = 'sent'
+          AND sent_at IS NOT NULL
+          AND (sent_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date
+              = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,
+      [tenantId],
+    );
+    return rows[0]?.cnt ?? 0;
+  }
+
+  private async followupDailyLimit(tenantId: string): Promise<number> {
+    const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
+    const limit = cfg?.followupLimitPerDay;
+    return typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FOLLOWUP_DAILY_LIMIT;
   }
 
   // A cada 10 min: detecta leads ociosos por raia e agenda follow-up automático.
@@ -138,6 +221,9 @@ export class FollowupService {
   // O claim atômico da raia garante "1x por raia, para sempre".
   @Cron('*/10 * * * *')
   async processAutoFollowups(): Promise<void> {
+    // Fora do horário comercial (9h–20h BRT) nem agenda — evita acumular backlog de madrugada.
+    if (!this.isWithinBusinessHours()) return;
+
     const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'] as const;
     const configs = await this.configRepo.find();
 
