@@ -249,8 +249,18 @@ export class EvolutionController {
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
 
-    // Proteção anti-loop: conta mensagens inbound nas últimas 24h.
-    // A cada 100 msgs, desliga a IA e alerta o admin no WhatsApp.
+    // Se IA desativada (etiquetado como inativo), apenas salva e notifica frontend — nunca responde
+    const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
+    if (!aiEnabled) {
+      this.logger.log(`IA desativada para ${phone} — mensagem ignorada (lead etiquetado ou operador assumiu)`);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
+    // Proteção anti-loop/economia de token: com a IA ligada, a cada 100 msgs inbound,
+    // desliga a IA e alerta o admin. Se a IA já estiver desligada (operador assumiu),
+    // essa checagem é ignorada (aiEnabled já retornou acima).
     const msgCount = await this.leadsService.countInboundMessages(conversation.id);
     if (msgCount > 0 && msgCount % 100 === 0) {
       const adminPhone = this.configService.get<string>('ADMIN_ALERT_PHONE');
@@ -258,7 +268,7 @@ export class EvolutionController {
       if (adminPhone && adminToken) {
         const baseUrl = this.configService.get<string>('UAZAPI_BASE_URL') ?? '';
         const tenantName = (await this.whatsappConfigService.getByTenant(tenantId))?.displayName ?? tenantId;
-        const alertText = `⚠️ *Loop detectado!*\n\nLead: *${lead.name || phone}*\nTenant: *${tenantName}*\nMensagens: *${msgCount} msgs*\n\nA IA foi desligada automaticamente. Verifique o Kanban.`;
+        const alertText = `⚠️ *Conversa muito longa com a IA!*\n\nLead: *${lead.name || phone}*\nTenant: *${tenantName}*\nMensagens: *${msgCount} msgs*\n\nA IA foi desativada automaticamente. Verifique o Kanban.`;
         try {
           await axios.post(`${baseUrl}/send/text`, { number: adminPhone, text: alertText }, { headers: { token: adminToken } });
           this.logger.warn(`[ANTI-LOOP] Alerta enviado ao admin — ${lead.name || phone} (${msgCount} msgs)`);
@@ -267,16 +277,7 @@ export class EvolutionController {
         }
       }
       await this.leadsService.toggleAi(lead.id, false);
-      this.logger.warn(`[ANTI-LOOP] IA desligada — lead ${phone} (${msgCount} msgs em 24h)`);
-      const updatedLead = await this.leadsService.findOne(lead.id);
-      this.leadsGateway.emitLeadUpdated(updatedLead);
-      return;
-    }
-
-    // Se IA desativada (etiquetado como inativo), apenas salva e notifica frontend — nunca responde
-    const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
-    if (!aiEnabled) {
-      this.logger.log(`IA desativada para ${phone} — mensagem ignorada (lead etiquetado ou operador assumiu)`);
+      this.logger.warn(`[ANTI-LOOP] IA desligada — lead ${phone} (${msgCount} msgs)`);
       const updatedLead = await this.leadsService.findOne(lead.id);
       this.leadsGateway.emitLeadUpdated(updatedLead);
       return;
