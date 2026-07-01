@@ -252,6 +252,16 @@ export class LeadsService implements OnApplicationBootstrap {
     });
   }
 
+  // Últimas N respostas da IA (mais recente primeiro) — usado pra detectar loop de repetição.
+  async getLastAiReplies(conversationId: string, limit: number): Promise<string[]> {
+    const msgs = await this.messagesRepo.find({
+      where: { conversationId, direction: 'outbound', sender: 'ai' },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return msgs.map((m) => m.content);
+  }
+
   async toggleAi(leadId: string, enabled: boolean, tenantId?: string): Promise<void> {
     await this.assertLeadTenant(leadId, tenantId);
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });

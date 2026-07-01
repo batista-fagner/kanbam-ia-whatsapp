@@ -56,6 +56,12 @@ export class EvolutionController {
     const message = body.message;
     if (!message || message.isGroup) return { ok: true };
 
+    // Reação a uma mensagem (ex: 😍 num balão) não é uma mensagem de verdade — ignora,
+    // senão a IA responde ao emoji e o cliente reage de novo, entrando num loop de reações.
+    if (message.type === 'reaction' || message.messageType === 'reaction' || message.reaction) {
+      return { ok: true };
+    }
+
     const rawPhone: string = body.chat?.phone ?? '';
     const phone = rawPhone.replace(/\D/g, '');
 
@@ -194,6 +200,49 @@ export class EvolutionController {
     });
   }
 
+  // Detecta quando a IA está prestes a enviar a mesma resposta pela 3ª vez seguida (loop de repetição).
+  // Se detectado, desativa a IA e bloqueia o envio — evita gastar tokens/mensagens num loop infinito.
+  private async detectAndBlockLoop(
+    conversationId: string,
+    leadId: string,
+    tenantId: string,
+    phone: string,
+    reply: string | undefined,
+  ): Promise<boolean> {
+    const normalized = reply?.trim().toLowerCase();
+    if (!normalized) return false;
+    const lastReplies = await this.leadsService.getLastAiReplies(conversationId, 2);
+    const isLoop = lastReplies.length === 2 && lastReplies.every((r) => r.trim().toLowerCase() === normalized);
+    if (isLoop) {
+      await this.leadsService.toggleAi(leadId, false, tenantId);
+      this.logger.warn(`🔁 [LOOP] Resposta repetida 3x seguidas detectada para ${phone} (tenant ${tenantId}) — IA desativada automaticamente, envio bloqueado`);
+      await this.notifyLoopDetected(tenantId, leadId, phone, reply!);
+    }
+    return isLoop;
+  }
+
+  // Envia um alerta via WhatsApp SOMENTE para o número fixo de monitoramento (ADMIN_ALERT_PHONE)
+  // quando um loop de repetição é detectado e a IA é desativada automaticamente.
+  private async notifyLoopDetected(tenantId: string, leadId: string, phone: string, repeatedReply: string): Promise<void> {
+    const adminPhone = this.configService.get<string>('ADMIN_ALERT_PHONE');
+    const adminToken = this.configService.get<string>('UAZAPI_TOKEN');
+    if (!adminPhone || !adminToken) return;
+
+    try {
+      const [lead, tenantConfig] = await Promise.all([
+        this.leadsService.findOne(leadId),
+        this.whatsappConfigService.getByTenant(tenantId),
+      ]);
+      const tenantName = tenantConfig?.displayName ?? tenantId;
+      const baseUrl = this.configService.get<string>('UAZAPI_BASE_URL') ?? '';
+      const alertText = `⚠️ *Loop de repetição detectado!*\n\nLead: *${lead?.name || phone}*\nTenant: *${tenantName}*\nResposta repetida 3x seguidas:\n"${repeatedReply.substring(0, 200)}"\n\nA IA foi desativada automaticamente. Verifique o Kanban.`;
+      await axios.post(`${baseUrl}/send/text`, { number: adminPhone, text: alertText }, { headers: { token: adminToken } });
+      this.logger.warn(`[LOOP-ALERT] Alerta enviado para ${adminPhone} — lead ${lead?.name || phone} (tenant ${tenantName})`);
+    } catch (err) {
+      this.logger.error(`[LOOP-ALERT] Falha ao enviar alerta de loop: ${err.message}`);
+    }
+  }
+
   private async processMessage(tenantId: string, phone: string, combinedText: string, messageKeyId: string, pushName?: string | null) {
     const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
 
@@ -259,6 +308,11 @@ export class EvolutionController {
       try {
         const result = await this.agentsService.chat(tenantId, combinedText, lead.currentAgentId ?? null);
         const reply = result.reply?.trim();
+        if (reply && await this.detectAndBlockLoop(conversation.id, lead.id, tenantId, phone, reply)) {
+          const updatedLead = await this.leadsService.findOne(lead.id);
+          this.leadsGateway.emitLeadUpdated(updatedLead);
+          return;
+        }
         if (reply) {
           await this.evolutionService.sendTextMessage(phone, reply, tenantToken);
           await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
@@ -315,6 +369,13 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     const aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
+
+    // CAMADA DE SEGURANÇA: resposta idêntica às 2 últimas (loop) → bloqueia envio e desativa a IA
+    if (await this.detectAndBlockLoop(conversation.id, lead.id, tenantId, phone, aiResponse.reply)) {
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
 
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
