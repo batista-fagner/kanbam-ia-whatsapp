@@ -49,6 +49,8 @@ const rules = [
       { label: 'Raias cobertas', color: 'bg-purple-50 text-purple-700 border-purple-200', rule: 'Novo Lead · Lead Frio · Lead Quente',                                               reason: 'Cada raia tem sua própria mensagem e tempo configurados.' },
       { label: 'Pré-requisitos', color: 'bg-rose-50 text-rose-700 border-rose-200',   rule: 'IA ligada no lead + telefone preenchido',                                               reason: 'Leads com IA desativada (atendimento manual) não recebem.' },
       { label: 'Variável',      color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: '{nome} → primeiro nome do lead',                                                        reason: 'Se o lead não tiver nome, o placeholder é removido automaticamente.' },
+      { label: 'Variação',      color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: '{opção A|opção B} → sorteia uma redação por envio',                                     reason: 'Anti-bloqueio: cada lead recebe um texto único, evitando mensagens idênticas em massa.' },
+      { label: 'Proteção',      color: 'bg-amber-50 text-amber-700 border-amber-200', rule: 'Janela 9h–20h · lote espaçado · teto diário por conta',                                 reason: 'Evita rajada e horários suspeitos que levam a bloqueio pelo WhatsApp.' },
     ],
     extra: 'O envio é feito pelo mesmo mecanismo do follow-up manual. A mensagem aparece na conversa do lead e atualiza o Kanban em tempo real.',
   },
@@ -224,11 +226,21 @@ export default function AlertRulesPage() {
               <RefreshCw className="w-4 h-4 text-teal-600" />
               <h2 className="text-sm font-semibold text-gray-800">Follow-up automático</h2>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-500 mb-2">
               Leads que pararam de responder recebem <strong>uma única</strong> mensagem por raia.
               Use <code className="px-1 py-0.5 bg-gray-100 rounded text-teal-700">{'{nome}'}</code> para o primeiro nome.
               Verificação a cada minuto.
             </p>
+            <div className="mb-4 p-3 bg-teal-50 border border-teal-100 rounded-lg text-xs text-gray-600 leading-relaxed">
+              💡 <strong>Variação automática (anti-bloqueio):</strong> use{' '}
+              <code className="px-1 py-0.5 bg-white rounded text-teal-700">{'{opção A|opção B|opção C}'}</code>{' '}
+              para o sistema sortear uma redação diferente a cada envio. Cada lead recebe um texto único,
+              o que evita que o WhatsApp veja centenas de mensagens idênticas.
+              <br />
+              Ex: <code className="px-1 py-0.5 bg-white rounded text-teal-700">{'{Oi|Olá|Ei} {nome}! {Vamos combinar?|Bora marcar?|Que tal agendar?}'}</code>
+              <br />
+              <span className="text-gray-500">Envios são espaçados e só saem entre <strong>9h e 20h</strong>, com teto diário por conta.</span>
+            </div>
 
             <div className="space-y-3">
               {FOLLOWUP_STAGES.map(({ key, label }) => {
@@ -272,7 +284,7 @@ export default function AlertRulesPage() {
                       value={s.message}
                       disabled={!s.enabled}
                       onChange={e => set({ message: e.target.value })}
-                      placeholder={`Ex: Oi {nome}, tudo bem? Vi que você ficou com alguma dúvida...`}
+                      placeholder={`Ex: {Oi|Olá} {nome}, tudo bem? {Vi que ficou com dúvida|Passando pra saber se posso ajudar}...`}
                       rows={2}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
                     />

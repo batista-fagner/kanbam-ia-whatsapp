@@ -195,6 +195,27 @@ export class FollowupService {
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  // Variação de texto (spin): resolve grupos {opção A|opção B|opção C} escolhendo
+  // uma alternativa aleatória. Deixa {nome}/{hora}/{data} intactos (não têm "|").
+  // Ex: "{Oi|Olá|Ei} {nome}! {Vamos combinar?|Bora marcar?}" → "Olá João! Bora marcar?"
+  // Objetivo anti-bloqueio: cada lead recebe uma redação diferente da mesma ideia,
+  // evitando que o WhatsApp veja centenas de mensagens idênticas.
+  private spin(text: string): string {
+    if (!text) return text;
+    const group = /\{([^{}]*\|[^{}]*)\}/; // só grupos que contêm "|"
+    let out = text;
+    let guard = 0;
+    while (group.test(out) && guard < 50) {
+      out = out.replace(group, (_m, inner: string) => {
+        const opts = inner.split('|');
+        return opts[Math.floor(Math.random() * opts.length)];
+      });
+      guard++;
+    }
+    // Limpa espaços duplos/vírgulas órfãs que sobram quando uma opção é vazia.
+    return out.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  }
+
   // Quantos follow-ups já foram ENVIADOS hoje (dia BRT) por este tenant.
   private async countSentTodayByTenant(tenantId: string): Promise<number> {
     const rows = await this.followupRepo.query(
@@ -325,14 +346,18 @@ export class FollowupService {
     const token = await this.resolveTenantToken(f.tenantId);
     if (!token) throw new Error('Token da instância não encontrado');
 
+    // Resolve a variação de texto no momento do envio: cada disparo vira uma
+    // redação única, mesmo que vários leads compartilhem o mesmo template.
+    const text = this.spin(f.message);
+
     await firstValueFrom(
-      this.http.post(`${baseUrl}/send/text`, { number: f.phone, text: f.message }, { headers: { token } }),
+      this.http.post(`${baseUrl}/send/text`, { number: f.phone, text }, { headers: { token } }),
     );
 
     // Registra na conversa + atualiza o lead no kanban em tempo real.
     const conversation = await this.leadsService.getConversationWithMessages(f.leadId, f.tenantId);
     if (conversation?.id) {
-      await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', f.message);
+      await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', text);
     }
     await this.leadsService.update(f.leadId, { lastMessageAt: new Date() } as any, f.tenantId);
     const lead = await this.leadsService.findOne(f.leadId, f.tenantId);
