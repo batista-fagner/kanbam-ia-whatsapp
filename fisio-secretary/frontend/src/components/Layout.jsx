@@ -30,6 +30,13 @@ export default function Layout({ onLogout }) {
 
   const isActive = (path) => location.pathname === path
 
+  const initials = (() => {
+    const base = (user?.name || user?.email || '?').trim()
+    const parts = base.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return base.slice(0, 2).toUpperCase()
+  })()
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
@@ -56,6 +63,19 @@ export default function Layout({ onLogout }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-2">
+          <Link
+            to="/profile"
+            className={`flex items-center gap-3 px-3 py-2 rounded transition ${
+              isActive('/profile') ? 'bg-teal-700 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+            title={collapsed ? (user?.name || 'Meu perfil') : ''}
+          >
+            <div className="w-8 h-8 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+              {initials}
+            </div>
+            {!collapsed && <span className="text-sm font-medium">{user?.name || 'Meu perfil'}</span>}
+          </Link>
+
           {navItems.map(item => {
             const Icon = item.icon
             return (
