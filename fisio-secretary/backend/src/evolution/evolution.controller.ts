@@ -15,6 +15,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { AgentsService } from '../agents/agents.service';
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -38,6 +39,7 @@ export class EvolutionController {
     private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
     private readonly appointmentsService: AppointmentsService,
+    private readonly agentsService: AgentsService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -58,7 +60,7 @@ export class EvolutionController {
     const phone = rawPhone.replace(/\D/g, '');
 
     // Mensagem enviada pelo próprio operador via WhatsApp (celular/Web), não pela API:
-    // - "opa" desativa a IA daquele lead
+    // - a palavra configurada em deactivationKeyword (padrão 'opa') desativa a IA daquele lead
     // - qualquer outra mensagem é salva como conversa do operador (sincroniza com o card)
     if (message.fromMe && !message.wasSentByApi) {
       const operatorText = (message.text ?? '').trim();
@@ -74,9 +76,12 @@ export class EvolutionController {
       try {
         const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId);
 
-        if (operatorText.toLowerCase() === 'opa') {
+        const tenantConfig = await this.whatsappConfigService.getByTenant(tenantId);
+        const deactivationKeyword = (tenantConfig?.deactivationKeyword || 'opa').toLowerCase();
+
+        if (operatorText.toLowerCase() === deactivationKeyword) {
           await this.leadsService.toggleAi(lead.id, false);
-          this.logger.log(`🛑 [OPA] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada`);
+          this.logger.log(`🛑 [DEACTIVATE] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada (palavra: "${deactivationKeyword}")`);
         } else if (operatorText) {
           await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', operatorText, messageId);
           this.logger.log(`📥 [OP-WHATSAPP] ${phone}: ${operatorText.substring(0, 40)}`);
@@ -247,6 +252,32 @@ export class EvolutionController {
       this.leadsGateway.emitLeadUpdated(updatedLead);
       return;
     }
+
+    // ── MULTI-AGENTE: se habilitado, roteia pelo supervisor e responde com o agente escolhido ──
+    if (instanceConfig?.multiAgentEnabled) {
+      void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
+      try {
+        const result = await this.agentsService.chat(tenantId, combinedText, lead.currentAgentId ?? null);
+        const reply = result.reply?.trim();
+        if (reply) {
+          await this.evolutionService.sendTextMessage(phone, reply, tenantToken);
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
+          // Persiste o agente atual no lead pra próxima mensagem continuar com ele
+          await this.leadsService.update(lead.id, { currentAgentId: result.agentId } as any);
+          if (result.handoffOccurred) {
+            this.logger.log(`[MULTI-AGENT] Handoff: ${result.transferredFrom} → ${result.agentName} (${phone})`);
+          } else {
+            this.logger.log(`[MULTI-AGENT] ${result.agentName} respondeu (${phone})`);
+          }
+        }
+      } catch (err) {
+        this.logger.error(`[MULTI-AGENT] Erro ao processar: ${err?.message}`);
+      }
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+    // ── FIM MULTI-AGENTE ──
 
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);

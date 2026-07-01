@@ -47,6 +47,14 @@ export class WhatsappConfig {
   @Column({ name: 'media_limit_per_day', type: 'integer', default: 41 })
   mediaLimitPerDay: number;
 
+  // Quando true, usa o sistema multi-agente (Supervisor + sub-agentes) em vez do prompt único.
+  @Column({ name: 'multi_agent_enabled', type: 'boolean', default: false })
+  multiAgentEnabled: boolean;
+
+  // Palavra que o operador digita no WhatsApp (fromMe) para desativar a IA daquele lead. Padrão: 'opa'.
+  @Column({ name: 'deactivation_keyword', type: 'varchar', default: 'opa' })
+  deactivationKeyword: string;
+
   // --- Gestão do cliente (D1) ---
   // Nome do cliente/negócio para exibir no painel admin
   @Column({ name: 'display_name', type: 'varchar', nullable: true })

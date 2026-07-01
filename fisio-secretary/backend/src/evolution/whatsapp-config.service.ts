@@ -173,6 +173,8 @@ export class WhatsappConfigService {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
       appointmentReminder?: { enabled?: boolean; message?: string } | null;
+      multiAgentEnabled?: boolean;
+      deactivationKeyword?: string | null;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -181,7 +183,14 @@ export class WhatsappConfigService {
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     if ('autoFollowupConfig' in fields) record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig);
     if ('appointmentReminder' in fields) record.appointmentReminder = this.sanitizeAppointmentReminder(fields.appointmentReminder);
+    if ('multiAgentEnabled' in fields) record.multiAgentEnabled = !!fields.multiAgentEnabled;
+    if ('deactivationKeyword' in fields) record.deactivationKeyword = this.sanitizeDeactivationKeyword(fields.deactivationKeyword);
     return this.repo.save(record);
+  }
+
+  private sanitizeDeactivationKeyword(raw: string | null | undefined): string {
+    const trimmed = String(raw ?? '').trim().slice(0, 40);
+    return trimmed || 'opa';
   }
 
   private sanitizeAppointmentReminder(raw: { enabled?: boolean; message?: string } | null | undefined): WhatsappConfig['appointmentReminder'] {

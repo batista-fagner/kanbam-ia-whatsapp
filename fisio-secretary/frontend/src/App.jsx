@@ -12,6 +12,7 @@ import AlertRulesPage from './pages/AlertRulesPage'
 import AdminPage from './pages/AdminPage'
 import MonitoringPage from './pages/MonitoringPage'
 import TemplatesPage from './pages/TemplatesPage'
+import AgentBuilderPage from './pages/AgentBuilderPage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
 import Layout from './components/Layout'
@@ -51,6 +52,7 @@ function Routing() {
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/alert-rules" element={<AlertRulesPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/agents" element={<AgentBuilderPage />} />
       </Route>
     </Routes>
   )

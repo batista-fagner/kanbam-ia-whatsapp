@@ -15,6 +15,7 @@ import { Followup } from './common/entities/followup.entity';
 import { TokenUsage } from './common/entities/token-usage.entity';
 import { ImplantacaoPayment } from './common/entities/implantacao-payment.entity';
 import { PromptTemplate } from './common/entities/prompt-template.entity';
+import { Agent } from './common/entities/agent.entity';
 import { InitialSchema1780170753448 } from './migrations/1780170753448-InitialSchema';
 import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
 import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
@@ -28,6 +29,9 @@ import { AddAutoFollowup1780700000000 } from './migrations/1780700000000-AddAuto
 import { AddAppointmentReminder1780800000000 } from './migrations/1780800000000-AddAppointmentReminder';
 import { AddMediaLimitPerDay1780900000000 } from './migrations/1780900000000-AddMediaLimitPerDay';
 import { CreatePromptTemplates1781000000000 } from './migrations/1781000000000-CreatePromptTemplates';
+import { CreateAgents1781100000000 } from './migrations/1781100000000-CreateAgents';
+import { AddMultiAgentEnabled1781200000000 } from './migrations/1781200000000-AddMultiAgentEnabled';
+import { AddLeadCurrentAgent1781300000000 } from './migrations/1781300000000-AddLeadCurrentAgent';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -39,6 +43,7 @@ import { BillingModule } from './billing/billing.module';
 import { PaymentsModule } from './payments/payments.module';
 import { FollowupModule } from './followup/followup.module';
 import { TemplatesModule } from './templates/templates.module';
+import { AgentsModule } from './agents/agents.module';
 
 @Module({
   imports: [
@@ -51,12 +56,12 @@ import { TemplatesModule } from './templates/templates.module';
         url: config.get('SUPABASE_DATABASE_URL'),
         // Postgres local (dev) não usa SSL; Supabase (prod) exige. Controlado por DATABASE_SSL.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000],
         migrationsRun: true,
         logging: false,
       }),
@@ -72,6 +77,7 @@ import { TemplatesModule } from './templates/templates.module';
     AppointmentsModule,
     FollowupModule,
     TemplatesModule,
+    AgentsModule,
   ],
 })
 export class AppModule {}

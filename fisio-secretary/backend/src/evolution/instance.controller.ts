@@ -75,6 +75,8 @@ export class InstanceController {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
       appointmentReminder?: { enabled?: boolean; message?: string } | null;
+      multiAgentEnabled?: boolean;
+      deactivationKeyword?: string | null;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

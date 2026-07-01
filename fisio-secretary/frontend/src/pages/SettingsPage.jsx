@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen, Sparkles } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
@@ -98,6 +98,127 @@ function PromptTemplatesCard({ onCopy }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function MultiAgentToggleCard({ config, onSaved }) {
+  const [enabled, setEnabled] = useState(!!config?.multiAgentEnabled)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function toggle() {
+    const next = !enabled
+    setEnabled(next)
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multiAgentEnabled: next }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } catch {
+      setEnabled(!next) // reverte
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${enabled ? 'bg-teal-100' : 'bg-gray-100'}`}>
+            <Sparkles className={`w-4 h-4 ${enabled ? 'text-teal-600' : 'text-gray-400'}`} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Sistema Multi-Agente</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {enabled
+                ? 'Ativado — mensagens do WhatsApp são roteadas pelo Supervisor entre os agentes configurados em /agents.'
+                : 'Desativado — usando o prompt único (Lindona / Sofia) normalmente.'}
+            </p>
+            {enabled && (
+              <a href="/agents" className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline mt-1">
+                <Sparkles className="w-3 h-3" /> Configurar agentes
+              </a>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+            enabled ? 'bg-teal-600' : 'bg-gray-200'
+          } ${saving ? 'opacity-50' : ''}`}
+          title={enabled ? 'Desativar multi-agente' : 'Ativar multi-agente'}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+      </div>
+      {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
+function DeactivationKeywordCard({ config, onSaved }) {
+  const [keyword, setKeyword] = useState(config?.deactivationKeyword ?? 'opa')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    const trimmed = keyword.trim()
+    if (!trimmed) return
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deactivationKeyword: trimmed }),
+      })
+      setKeyword(trimmed)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100">
+          <RotateCcw className="w-4 h-4 text-teal-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Palavra para desativar a IA</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Quando você digitar essa palavra pelo próprio WhatsApp (celular ou WhatsApp Web) em uma conversa, a IA é desativada automaticamente para aquele lead.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          maxLength={40}
+          placeholder="opa"
+          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+        <button
+          onClick={save}
+          disabled={saving || !keyword.trim()}
+          className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 transition"
+        >
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
     </div>
   )
 }
@@ -1008,6 +1129,16 @@ export default function SettingsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Card multi-agente — ainda em desenvolvimento, visível só em ambiente local */}
+      {!bootstrapping && instanceConfig && (import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')) && (
+        <MultiAgentToggleCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {/* Card palavra de desativação da IA */}
+      {!bootstrapping && instanceConfig && (
+        <DeactivationKeywordCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
       {/* Card de prompt customizado */}

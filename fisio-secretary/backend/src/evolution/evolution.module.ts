@@ -22,6 +22,7 @@ import { CalendarModule } from '../calendar/calendar.module';
 import { AudioModule } from '../audio/audio.module';
 import { MediaModule } from '../media/media.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
+import { AgentsModule } from '../agents/agents.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     AudioModule,
     MediaModule,
     AppointmentsModule,
+    AgentsModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController],
   providers: [

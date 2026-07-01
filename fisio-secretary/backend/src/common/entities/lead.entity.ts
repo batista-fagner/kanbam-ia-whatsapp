@@ -90,6 +90,10 @@ export class Lead {
   @Column({ name: 'auto_followup_sent_stages', type: 'jsonb', default: [] })
   autoFollowupSentStages: string[];
 
+  // Agente atual no sistema multi-agente. Null = supervisor decide na próxima mensagem.
+  @Column({ name: 'current_agent_id', type: 'uuid', nullable: true })
+  currentAgentId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -8,6 +8,7 @@ export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
   const { user } = useAuth()
+  const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },
@@ -17,6 +18,8 @@ export default function Layout({ onLogout }) {
     { icon: Image, label: 'Mídias', path: '/media' },
     { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
+    // Multi-agente ainda em desenvolvimento — visível só em ambiente local
+    ...(isLocalDev ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
     // { icon: BookOpen, label: 'Templates', path: '/templates' }, // TODO: ativar depois
     // Painel admin — só para o admin da plataforma
     ...(user?.role === 'admin' ? [

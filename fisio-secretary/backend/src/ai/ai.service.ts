@@ -218,6 +218,11 @@ export class AiService {
   private readonly liteClient: OpenAI | null = null;
   private readonly liteModel = 'gemini-2.5-flash-lite';
 
+  // Cliente do supervisor — gemini-2.5-flash (confiável, JSON sempre válido).
+  // Flash-lite é instável com JSON parsing. Flash normal é mais robusto.
+  private readonly supervisorClient: OpenAI | null = null;
+  private readonly supervisorModel = 'gemini-2.5-flash';
+
   constructor(
     private config: ConfigService,
     @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
@@ -253,6 +258,10 @@ export class AiService {
 
     if (geminiKey) {
       this.liteClient = new OpenAI({
+        apiKey: geminiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      });
+      this.supervisorClient = new OpenAI({
         apiKey: geminiKey,
         baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
       });
@@ -303,6 +312,98 @@ Escreva a mensagem de follow-up:`;
     const text = (resp.choices[0].message.content ?? '').trim().replace(/^["']|["']$/g, '').replace(/\x00/g, '');
     this.logger.log(`[FOLLOWUP] Sugestão gerada (${this.liteClient ? this.liteModel : model}): "${text.substring(0, 60)}..."`);
     return text;
+  }
+
+  // Supervisor: escolhe qual agente deve responder uma mensagem do cliente.
+  // Usa o modelo lite (barato). Recebe a lista de agentes ativos do tenant e a
+  // mensagem; devolve o id escolhido + um motivo curto. Sempre retorna um agente
+  // válido da lista (fallback: o primeiro / o default).
+  async routeToAgent(
+    message: string,
+    agents: Array<{ id: string; name: string; description: string; respondsTo?: string }>,
+  ): Promise<{ agentId: string; reason: string }> {
+    if (!agents.length) throw new Error('Nenhum agente ativo para rotear');
+    const fallback = agents[0];
+    if (agents.length === 1) {
+      return { agentId: fallback.id, reason: `Único agente conectado (${fallback.name}).` };
+    }
+
+    // Supervisor usa gemini-2.0-flash: estável, rápido (~0.5s), 1500 RPM.
+    // Sem retry — falha rápido pro fallback (melhor que esperar 3s em rate limit).
+    const client = this.supervisorClient ?? this.providers[0]?.client;
+    const model = this.supervisorClient ? this.supervisorModel : this.providers[0]?.model;
+    if (!client) throw new Error('Nenhum provedor LLM configurado');
+
+    const roster = agents
+      .map((a, i) => {
+        const extra = a.respondsTo?.trim() ? ` | Responde sobre: ${a.respondsTo.replace(/\s+/g, ' ').trim()}` : '';
+        return `${i + 1}. id="${a.id}" — ${a.name}: ${a.description || 'sem descrição'}${extra}`;
+      })
+      .join('\n');
+
+    const systemPrompt = `Você é o SUPERVISOR de um time de agentes de atendimento.
+Sua tarefa: ler a mensagem do cliente e escolher QUAL agente é o mais indicado para responder.
+Escolha SOMENTE um agente da lista, usando o id exato.
+Responda APENAS com JSON válido, sem texto extra, no formato:
+{"agentId": "<id>", "reason": "<motivo curto em pt-BR, 1 frase>"}`;
+
+    const userPrompt = `Agentes disponíveis:
+${roster}
+
+Mensagem do cliente: "${message}"
+
+Escolha o melhor agente:`;
+
+    try {
+      const resp = await client.chat.completions.create({
+        model,
+        max_tokens: 200,
+        response_format: { type: 'json_object' },
+        reasoning_effort: 'none',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any);
+      const raw = (resp.choices[0].message.content ?? '').trim();
+      const parsed = JSON.parse(raw);
+      const chosen = agents.find((a) => a.id === parsed.agentId) ?? fallback;
+      const reason = typeof parsed.reason === 'string' && parsed.reason.trim()
+        ? parsed.reason.trim()
+        : `Mais adequado para a mensagem (${chosen.name}).`;
+      this.logger.log(`[SUPERVISOR] "${message.substring(0, 40)}" → ${chosen.name}`);
+      return { agentId: chosen.id, reason };
+    } catch (err) {
+      this.logger.warn(`[SUPERVISOR] Falha no roteamento, usando fallback: ${err?.message}`);
+      return { agentId: fallback.id, reason: `Fallback: ${fallback.name} (roteador indisponível).` };
+    }
+  }
+
+  // Simula um agente respondendo a uma mensagem (para testes de handoff).
+  // Usa gemini-2.5-flash (mesmo do supervisor) — lite causa rate limit e latência alta.
+  async simulateAgentReply(agentName: string, systemPrompt: string, message: string): Promise<string> {
+    const client = this.supervisorClient ?? this.providers[0]?.client;
+    const model = this.supervisorClient ? this.supervisorModel : this.providers[0]?.model;
+    if (!client) throw new Error('Nenhum provedor LLM configurado');
+
+    const system = systemPrompt?.trim()
+      ? `${systemPrompt}\n\nSe a pergunta está fora do seu escopo, inclua [HANDOFF_SUPERVISOR] no final da sua resposta. Responda de forma CURTA (2-3 linhas máximo).`
+      : `Você é o agente "${agentName}". Responda de forma CURTA (2-3 linhas). Se estiver fora do seu escopo, inclua [HANDOFF_SUPERVISOR] no final.`;
+
+    try {
+      const resp = await client.chat.completions.create({
+        model,
+        max_tokens: 200,
+        reasoning_effort: 'none',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: message },
+        ],
+      } as any);
+      return (resp.choices[0].message.content ?? '').trim();
+    } catch {
+      return `[${agentName}] Não foi possível simular a resposta.`;
+    }
   }
 
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
