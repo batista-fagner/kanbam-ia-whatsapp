@@ -9,7 +9,7 @@ import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { LeadsService } from '../leads/leads.service';
-import { AiService } from '../ai/ai.service';
+import { AiService, AiResponse } from '../ai/ai.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
@@ -294,46 +294,6 @@ export class EvolutionController {
     const instanceConfig = await this.whatsappConfigService.getByTenant(tenantId);
     const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
-    // Sem prompt configurado → IA não responde (cada cliente tem seu próprio prompt)
-    // Mensagem já foi salva na linha acima (saveMessage inbound) — não salva de novo
-    if (instanceConfig?.agentType === 'megahair' && !instanceConfig?.customPromptMegaHair?.trim()) {
-      this.logger.warn(`[MEGAHAIR] Prompt não configurado para tenant ${tenantId} — mensagem ignorada`);
-      const updatedLead = await this.leadsService.findOne(lead.id);
-      this.leadsGateway.emitLeadUpdated(updatedLead);
-      return;
-    }
-
-    // ── MULTI-AGENTE: se habilitado, roteia pelo supervisor e responde com o agente escolhido ──
-    if (instanceConfig?.multiAgentEnabled) {
-      void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
-      try {
-        const result = await this.agentsService.chat(tenantId, combinedText, lead.currentAgentId ?? null);
-        const reply = result.reply?.trim();
-        if (reply && await this.detectAndBlockLoop(conversation.id, lead.id, tenantId, phone, reply)) {
-          const updatedLead = await this.leadsService.findOne(lead.id);
-          this.leadsGateway.emitLeadUpdated(updatedLead);
-          return;
-        }
-        if (reply) {
-          await this.evolutionService.sendTextMessage(phone, reply, tenantToken);
-          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
-          // Persiste o agente atual no lead pra próxima mensagem continuar com ele
-          await this.leadsService.update(lead.id, { currentAgentId: result.agentId } as any);
-          if (result.handoffOccurred) {
-            this.logger.log(`[MULTI-AGENT] Handoff: ${result.transferredFrom} → ${result.agentName} (${phone})`);
-          } else {
-            this.logger.log(`[MULTI-AGENT] ${result.agentName} respondeu (${phone})`);
-          }
-        }
-      } catch (err) {
-        this.logger.error(`[MULTI-AGENT] Erro ao processar: ${err?.message}`);
-      }
-      const updatedLead = await this.leadsService.findOne(lead.id);
-      this.leadsGateway.emitLeadUpdated(updatedLead);
-      return;
-    }
-    // ── FIM MULTI-AGENTE ──
-
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
 
@@ -368,7 +328,45 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
-    const aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
+    // ── MULTI-AGENTE ──────────────────────────────────────────────────────
+    // O agente atual do lead responde com o MESMO contrato JSON do single-prompt;
+    // a resposta cai no MESMO pós-processamento abaixo (loop, tags, agendamento,
+    // mídia, envio). Handoff entre agentes é resolvido dentro do chatForLead.
+    // Falha ou tenant sem agentes ativos → fallback pro fluxo single-prompt.
+    let aiResponse: AiResponse | null = null;
+    if (instanceConfig?.multiAgentEnabled) {
+      try {
+        const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext);
+        if (result) {
+          aiResponse = result.aiResponse;
+          // Persiste o agente atual no lead pra próxima mensagem continuar com ele
+          if (result.agentId !== lead.currentAgentId) {
+            await this.leadsService.update(lead.id, { currentAgentId: result.agentId } as any);
+          }
+          if (result.handoffOccurred) {
+            this.logger.log(`[MULTI-AGENT] Handoff: ${result.transferredFrom} → ${result.agentName} (${phone})`);
+          } else {
+            this.logger.log(`[MULTI-AGENT] ${result.agentName} respondeu (${phone})`);
+          }
+        } else {
+          this.logger.warn(`[MULTI-AGENT] Tenant ${tenantId} sem agentes ativos — usando fluxo single-prompt`);
+        }
+      } catch (err) {
+        this.logger.error(`[MULTI-AGENT] Erro ao processar (${phone}): ${err?.message} — fallback pro fluxo single-prompt`);
+      }
+    }
+
+    if (!aiResponse) {
+      // Sem prompt configurado → IA não responde (cada cliente tem seu próprio prompt)
+      // Mensagem já foi salva acima (saveMessage inbound) — não salva de novo
+      if (instanceConfig?.agentType === 'megahair' && !instanceConfig?.customPromptMegaHair?.trim()) {
+        this.logger.warn(`[MEGAHAIR] Prompt não configurado para tenant ${tenantId} — mensagem ignorada`);
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+        return;
+      }
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
+    }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
     // CAMADA DE SEGURANÇA: resposta idêntica às 2 últimas (loop) → bloqueia envio e desativa a IA

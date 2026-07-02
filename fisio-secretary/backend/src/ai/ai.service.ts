@@ -19,6 +19,7 @@ export interface AiResponse {
   appointmentValue?: number | null; // MegaHair: valor em reais
   tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
+  handoff?: boolean; // Multi-agente: true = o agente pediu pra passar o bastão pro supervisor
   fields?: {
     name?: string;
     symptoms?: string;
@@ -321,6 +322,7 @@ Escreva a mensagem de follow-up:`;
   async routeToAgent(
     message: string,
     agents: Array<{ id: string; name: string; description: string; respondsTo?: string }>,
+    opts?: { tenantId?: string; conversationTail?: string },
   ): Promise<{ agentId: string; reason: string }> {
     if (!agents.length) throw new Error('Nenhum agente ativo para rotear');
     const fallback = agents[0];
@@ -347,9 +349,11 @@ Escolha SOMENTE um agente da lista, usando o id exato.
 Responda APENAS com JSON válido, sem texto extra, no formato:
 {"agentId": "<id>", "reason": "<motivo curto em pt-BR, 1 frase>"}`;
 
+    // Cauda da conversa dá contexto pro roteamento acertar mesmo em mensagem curta ("sim", "quanto?").
+    const tailBlock = opts?.conversationTail ? `\nÚltimas mensagens da conversa:\n${opts.conversationTail}\n` : '';
     const userPrompt = `Agentes disponíveis:
 ${roster}
-
+${tailBlock}
 Mensagem do cliente: "${message}"
 
 Escolha o melhor agente:`;
@@ -365,6 +369,11 @@ Escolha o melhor agente:`;
           { role: 'user', content: userPrompt },
         ],
       } as any);
+      // Em produção (tenantId presente) o custo do roteador entra no painel de tokens.
+      if (opts?.tenantId) {
+        const u = (resp as any).usage;
+        void this._trackUsage(opts.tenantId, u?.prompt_tokens ?? 0, u?.prompt_tokens_details?.cached_tokens ?? 0, u?.completion_tokens ?? 0);
+      }
       const raw = (resp.choices[0].message.content ?? '').trim();
       const parsed = JSON.parse(raw);
       const chosen = agents.find((a) => a.id === parsed.agentId) ?? fallback;
@@ -557,10 +566,10 @@ REGRAS:
     ];
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string): Promise<AiResponse> {
-    const history = (lead.aiContext as any[]) ?? [];
-
-    const mediaInstructions = availableMediaNames.length > 0
+  // Instruções de uso do catálogo de mídias — compartilhadas entre o fluxo
+  // single-prompt (processMessageMegaHair) e o multi-agente (processMessageAgent).
+  private buildMediaInstructions(availableMediaNames: string[]): string {
+    return availableMediaNames.length > 0
       ? `
 CATÁLOGO DE MÍDIAS DISPONÍVEIS:
 ${availableMediaNames.map(n => `- "${n}"`).join('\n')}
@@ -613,6 +622,11 @@ OUTRAS REGRAS:
 - Várias mídias e a cliente não especificou categoria → liste os nomes e pergunte qual quer ver (PASSO 1), depois envie (PASSO 2).
 - Nunca use um nome fora da lista acima.`
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
+  }
+
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string): Promise<AiResponse> {
+    const history = (lead.aiContext as any[]) ?? [];
+    const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
 
     const defaultPromptBase = `Vc é a Lindona, consultora especialista em Mega Hair da Cabelô.
 Seu objetivo é VENDER — qualificar a cliente e fechar o agendamento de aplicação.
@@ -701,25 +715,74 @@ REGRAS:
       // callLLM faz o failover entre provedores automaticamente.
       const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
-      let raw = rawText;
-      // Remove null bytes (0x00) — alguns modelos os geram e o PostgreSQL rejeita.
-      raw = raw.replace(/\x00/g, '');
-      this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
-      // Remove markdown code fences que alguns modelos adicionam mesmo com json_object.
-      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      // Extrai o primeiro objeto JSON válido da resposta (ignora texto antes/depois).
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Resposta sem JSON válido');
-      const parsed: AiResponse = JSON.parse(jsonMatch[0]);
-      // Sanitiza o reply: remove null bytes que o modelo possa ter inserido no texto.
-      if (parsed.reply) parsed.reply = parsed.reply.replace(/\x00/g, '');
-      parsed.success = true;
-      parsed.rawJson = jsonMatch[0];
-      return parsed;
+      return this.parseAiJson(rawText);
     } catch (err) {
       this.logger.error(`❌ [LINDONA] Erro ao chamar IA: ${err.message}`);
       this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);
       this.logger.error(`❌ [LINDONA] Enviando resposta de fallback "probleminha"`);
+      return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
+    }
+  }
+
+  // Extrai e sanitiza o AiResponse do texto bruto do modelo.
+  private parseAiJson(rawText: string): AiResponse {
+    // Remove null bytes (0x00) — alguns modelos os geram e o PostgreSQL rejeita.
+    let raw = rawText.replace(/\x00/g, '');
+    this.logger.debug(`[LINDONA] Resposta bruta: ${raw}`);
+    // Remove markdown code fences que alguns modelos adicionam mesmo com json_object.
+    raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    // Extrai o primeiro objeto JSON válido da resposta (ignora texto antes/depois).
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Resposta sem JSON válido');
+    const parsed: AiResponse = JSON.parse(jsonMatch[0]);
+    // Sanitiza o reply: remove null bytes que o modelo possa ter inserido no texto.
+    if (parsed.reply) parsed.reply = parsed.reply.replace(/\x00/g, '');
+    parsed.success = true;
+    parsed.rawJson = jsonMatch[0];
+    return parsed;
+  }
+
+  // Fluxo multi-agente em PRODUÇÃO: o agente responde com o MESMO contrato JSON do
+  // fluxo single-prompt (stage/action/tags/mídia/agendamento), recebendo o histórico
+  // completo da conversa. Difere do single-prompt em: prompt do agente (não o da
+  // Lindona), regras de handoff (respondsTo/handoffWhen) e o campo "handoff" no JSON.
+  async processMessageAgent(
+    lead: Lead,
+    incomingText: string,
+    agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string },
+    availableMediaNames: string[],
+    extraSystemContext?: string,
+  ): Promise<AiResponse> {
+    const history = (lead.aiContext as any[]) ?? [];
+    const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
+
+    const scopeBlock = agent.respondsTo?.trim() ? `\nSEU ESCOPO (assuntos que VC responde):\n${agent.respondsTo.trim()}` : '';
+    const handoffRules = agent.handoffWhen?.trim() ? `\nQUANDO PASSAR O BASTÃO (handoff):\n${agent.handoffWhen.trim()}` : '';
+    const handoffBlock = `
+
+════════ PASSAGEM DE BASTÃO (HANDOFF) ════════
+Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock}${handoffRules}
+- Se a mensagem se encaixa nas regras de handoff acima (ou está claramente fora do seu escopo), retorne "handoff": true no JSON, com "reply": "" e "action": "none" — outro agente especializado assumirá.
+- Caso contrário, responda normalmente e retorne "handoff": false.
+- Na dúvida, RESPONDA (handoff é exceção, não regra).
+ADICIONE SEMPRE o campo "handoff" (true|false) ao JSON de resposta.`;
+
+    // buildDateBlock no final: prefixo estático (prompt do agente + mídia + JSON + handoff)
+    // fica idêntico entre conversas → habilita cache implícito do Gemini.
+    const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
+    const systemPrompt = `${agent.systemPrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${handoffBlock}${extraBlock}\n\n${buildDateBlock()}`;
+
+    const messages: any[] = [
+      ...history,
+      { role: 'user', content: incomingText },
+    ];
+
+    try {
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
+      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
+      return this.parseAiJson(rawText);
+    } catch (err) {
+      this.logger.error(`❌ [AGENT:${agent.name}] Erro ao chamar IA: ${err.message}`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
     }
   }
