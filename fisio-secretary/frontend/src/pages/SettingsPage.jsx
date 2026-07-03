@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen, Sparkles } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -224,6 +225,11 @@ function DeactivationKeywordCard({ config, onSaved }) {
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth()
+  // Multi-agente em rollout controlado: localhost + conta beta (resto segue no monólito).
+  const canSeeMultiAgent = import.meta.env.VITE_API_URL?.includes('localhost')
+    || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+    || user?.email === 'bfagner@hotmail.com.br'
   const [bootstrapping, setBootstrapping] = useState(true)
   const [instanceConfig, setInstanceConfig] = useState(null) // null = não tem; objeto = tem
   const [instanceStatus, setInstanceStatus] = useState(null)
@@ -1131,8 +1137,8 @@ export default function SettingsPage() {
         </>
       )}
 
-      {/* Card multi-agente — ainda em desenvolvimento, visível só em ambiente local */}
-      {!bootstrapping && instanceConfig && (import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')) && (
+      {/* Card multi-agente — rollout controlado (localhost + conta beta) */}
+      {!bootstrapping && instanceConfig && canSeeMultiAgent && (
         <MultiAgentToggleCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
