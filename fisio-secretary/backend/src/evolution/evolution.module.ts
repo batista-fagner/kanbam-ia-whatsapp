@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EvolutionController } from './evolution.controller';
 import { InstanceController } from './instance.controller';
 import { AdminController } from './admin.controller';
+import { MonolithTestController } from './monolith-test.controller';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -38,7 +39,7 @@ import { AgentsModule } from '../agents/agents.module';
     AppointmentsModule,
     AgentsModule,
   ],
-  controllers: [EvolutionController, InstanceController, AdminController],
+  controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [
     UazapiProvider,
     MetaProvider,

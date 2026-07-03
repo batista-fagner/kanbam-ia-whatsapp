@@ -787,7 +787,9 @@ REGRAS:
       // callLLM faz o failover entre provedores automaticamente.
       const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
-      return this.parseAiJson(rawText);
+      const parsed = this.parseAiJson(rawText);
+      parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
+      return parsed;
     } catch (err) {
       this.logger.error(`❌ [LINDONA] Erro ao chamar IA: ${err.message}`);
       this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);

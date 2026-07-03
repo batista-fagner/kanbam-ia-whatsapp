@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen, Sparkles } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -220,6 +220,191 @@ function DeactivationKeywordCard({ config, onSaved }) {
         </button>
       </div>
       {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
+function MonolithTestPanel({ open, onClose }) {
+  const [input, setInput] = useState('')
+  const [messages, setMessages] = useState([]) // { type: 'user'|'agent'|'error', text, meta }
+  const [aiContext, setAiContext] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [tokenTotals, setTokenTotals] = useState({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  function reset() {
+    setMessages([])
+    setAiContext([])
+    setInput('')
+    setTokenTotals({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
+  }
+
+  async function sendMessage() {
+    const text = input.trim()
+    if (!text || loading) return
+    setInput('')
+    setMessages((prev) => [...prev, { type: 'user', text }])
+    setLoading(true)
+    try {
+      const res = await authFetch(`${API_URL}/monolith-test/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, aiContext }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message || 'erro')
+
+      setMessages((prev) => [...prev, {
+        type: 'agent',
+        text: data.reply,
+        meta: { stage: data.stage, temperature: data.temperature, action: data.action, mediaName: data.mediaName, tags: data.tags },
+      }])
+      setAiContext(data.aiContext ?? [])
+      if (data.tokenUsage) {
+        setTokenTotals((prev) => ({
+          inputTokens: prev.inputTokens + (data.tokenUsage.inputTokens ?? 0),
+          cachedTokens: prev.cachedTokens + (data.tokenUsage.cachedTokens ?? 0),
+          outputTokens: prev.outputTokens + (data.tokenUsage.outputTokens ?? 0),
+        }))
+      }
+    } catch (e) {
+      setMessages((prev) => [...prev, { type: 'error', text: e.message || 'Erro ao processar' }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white h-full shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-teal-600" />
+            <h2 className="text-sm font-semibold text-gray-800">Simulação — Monólito (Lindona)</h2>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={reset} title="Reiniciar conversa" className="p-1.5 rounded hover:bg-gray-100 transition text-gray-400 hover:text-gray-600">
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 transition">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Info do fluxo */}
+        <div className="px-4 py-2 border-b bg-gray-50 border-gray-100 text-xs text-gray-500 flex items-center gap-2">
+          <Bot className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Prompt único (processMessageMegaHair) — sem agentes, sem handoff.</span>
+        </div>
+
+        {/* Contador de tokens da simulação */}
+        <div className="px-4 py-2 border-b border-gray-100 bg-violet-50/50 flex items-center gap-3 text-[11px] text-violet-700">
+          <span className="font-semibold">Tokens desta simulação:</span>
+          <span>{tokenTotals.inputTokens.toLocaleString('pt-BR')} entrada</span>
+          <span className="text-violet-400">·</span>
+          <span>{tokenTotals.cachedTokens.toLocaleString('pt-BR')} cache</span>
+          <span className="text-violet-400">·</span>
+          <span>{tokenTotals.outputTokens.toLocaleString('pt-BR')} saída</span>
+        </div>
+
+        {/* Mensagens */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-2">
+              <MessageSquare className="w-8 h-8 opacity-40" />
+              <p className="text-xs text-center">Manda uma mensagem pra iniciar a simulação do monólito.</p>
+            </div>
+          )}
+
+          {messages.map((msg, i) => {
+            if (msg.type === 'user') return (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[80%] bg-teal-600 text-white text-sm rounded-2xl rounded-tr-sm px-4 py-2.5 shadow-sm">
+                  {msg.text}
+                </div>
+              </div>
+            )
+            if (msg.type === 'error') return (
+              <div key={i} className="text-xs text-red-500 text-center">{msg.text}</div>
+            )
+            return (
+              <div key={i} className="flex flex-col gap-1">
+                <div className="max-w-[85%] bg-white border border-gray-200 text-gray-800 text-sm rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm">
+                  {msg.text}
+                </div>
+                {msg.meta && (
+                  <div className="flex flex-wrap gap-1 ml-1">
+                    {msg.meta.stage && <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">stage: {msg.meta.stage}</span>}
+                    {msg.meta.temperature && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-100">{msg.meta.temperature}</span>}
+                    {msg.meta.action && msg.meta.action !== 'none' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">action: {msg.meta.action}</span>}
+                    {msg.meta.mediaName && <span className="text-[9px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-600 border border-pink-100">mídia: {Array.isArray(msg.meta.mediaName) ? msg.meta.mediaName.join(', ') : msg.meta.mediaName}</span>}
+                    {msg.meta.tags?.length > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-600 border border-teal-100">tags: {msg.meta.tags.join(', ')}</span>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Pensando...
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="border-t border-gray-100 p-3 flex items-center gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') sendMessage() }}
+            placeholder="Digite uma mensagem..."
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 transition"
+          >
+            Enviar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MonolithTestCard() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-violet-100">
+            <Zap className="w-4 h-4 text-violet-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Testar Monólito (com contador de token)</p>
+            <p className="text-xs text-gray-500 mt-0.5">Simula uma conversa com o prompt único (Lindona), sem WhatsApp, mostrando o consumo de token em tempo real.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen(true)}
+          className="px-3 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition flex-shrink-0"
+        >
+          Abrir teste
+        </button>
+      </div>
+      <MonolithTestPanel open={open} onClose={() => setOpen(false)} />
     </div>
   )
 }
@@ -1140,6 +1325,11 @@ export default function SettingsPage() {
       {/* Card multi-agente — rollout controlado (localhost + conta beta) */}
       {!bootstrapping && instanceConfig && canSeeMultiAgent && (
         <MultiAgentToggleCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {/* Card de teste do monólito com contador de token — mesma conta beta */}
+      {!bootstrapping && instanceConfig && canSeeMultiAgent && (
+        <MonolithTestCard />
       )}
 
       {/* Card palavra de desativação da IA */}
