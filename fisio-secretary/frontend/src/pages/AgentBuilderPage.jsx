@@ -330,6 +330,7 @@ function TestPanel({ open, onClose, connected }) {
   const [currentAgentName, setCurrentAgentName] = useState(null)
   const [aiContext, setAiContext] = useState([])
   const [loading, setLoading] = useState(false)
+  const [tokenTotals, setTokenTotals] = useState({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -342,6 +343,7 @@ function TestPanel({ open, onClose, connected }) {
     setCurrentAgentName(null)
     setAiContext([])
     setInput('')
+    setTokenTotals({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
   }
 
   async function sendMessage() {
@@ -377,6 +379,13 @@ function TestPanel({ open, onClose, connected }) {
       setCurrentAgentId(data.agentId)
       setCurrentAgentName(data.agentName)
       setAiContext(data.aiContext ?? [])
+      if (data.tokenUsage) {
+        setTokenTotals((prev) => ({
+          inputTokens: prev.inputTokens + (data.tokenUsage.inputTokens ?? 0),
+          cachedTokens: prev.cachedTokens + (data.tokenUsage.cachedTokens ?? 0),
+          outputTokens: prev.outputTokens + (data.tokenUsage.outputTokens ?? 0),
+        }))
+      }
     } catch (e) {
       setMessages((prev) => [...prev, { type: 'error', text: e.message || 'Erro ao processar' }])
     } finally {
@@ -414,6 +423,16 @@ function TestPanel({ open, onClose, connected }) {
             ? <span>Atendendo: <strong>{currentAgentName}</strong></span>
             : <span>Supervisor vai escolher o agente na 1ª mensagem</span>
           }
+        </div>
+
+        {/* Contador de tokens da simulação */}
+        <div className="px-4 py-2 border-b border-gray-100 bg-violet-50/50 flex items-center gap-3 text-[11px] text-violet-700">
+          <span className="font-semibold">Tokens desta simulação:</span>
+          <span>{tokenTotals.inputTokens.toLocaleString('pt-BR')} entrada</span>
+          <span className="text-violet-400">·</span>
+          <span>{tokenTotals.cachedTokens.toLocaleString('pt-BR')} cache</span>
+          <span className="text-violet-400">·</span>
+          <span>{tokenTotals.outputTokens.toLocaleString('pt-BR')} saída</span>
         </div>
 
         {/* Mensagens */}

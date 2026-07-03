@@ -20,6 +20,7 @@ export interface AiResponse {
   tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
   handoff?: boolean; // Multi-agente: true = o agente pediu pra passar o bastão pro supervisor
+  tokenUsage?: { inputTokens: number; cachedTokens: number; outputTokens: number }; // Multi-agente: consumo desta chamada (contador de teste)
   fields?: {
     name?: string;
     symptoms?: string;
@@ -875,7 +876,9 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
     try {
       const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
-      return this.parseAiJson(rawText);
+      const parsed = this.parseAiJson(rawText);
+      parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
+      return parsed;
     } catch (err) {
       this.logger.error(`❌ [AGENT:${agent.name}] Erro ao chamar IA: ${err.message}`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };

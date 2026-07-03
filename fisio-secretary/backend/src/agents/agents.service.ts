@@ -120,6 +120,7 @@ export class AgentsService {
       mediaName: result.aiResponse.mediaName,
       tags: result.aiResponse.tags,
       aiContext: updatedContext,
+      tokenUsage: result.tokenUsage,
     };
   }
 
@@ -155,7 +156,7 @@ export class AgentsService {
     message: string,
     availableMediaNames: string[],
     extraSystemContext?: string,
-  ): Promise<{ aiResponse: AiResponse; agentId: string; agentName: string; handoffOccurred: boolean; transferredFrom: string | null } | null> {
+  ): Promise<{ aiResponse: AiResponse; agentId: string; agentName: string; handoffOccurred: boolean; transferredFrom: string | null; tokenUsage: { inputTokens: number; cachedTokens: number; outputTokens: number } } | null> {
     const active = await this.repo.find({
       where: { tenantId, isActive: true },
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
@@ -175,9 +176,10 @@ export class AgentsService {
     }
 
     let response = await this.aiService.processMessageAgent(lead, message, current, availableMediaNames, extraSystemContext);
+    const firstUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
     if (!response.handoff || active.length === 1) {
       this.ensureReply(response);
-      return { aiResponse: response, agentId: current.id, agentName: current.name, handoffOccurred: false, transferredFrom: null };
+      return { aiResponse: response, agentId: current.id, agentName: current.name, handoffOccurred: false, transferredFrom: null, tokenUsage: firstUsage };
     }
 
     // Handoff: supervisor roteia entre os DEMAIS agentes; o escolhido gera a resposta final.
@@ -191,7 +193,13 @@ export class AgentsService {
     response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true });
     response.handoff = false;
     this.ensureReply(response);
-    return { aiResponse: response, agentId: next.id, agentName: next.name, handoffOccurred: true, transferredFrom: current.name };
+    const secondUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+    const tokenUsage = {
+      inputTokens: firstUsage.inputTokens + secondUsage.inputTokens,
+      cachedTokens: firstUsage.cachedTokens + secondUsage.cachedTokens,
+      outputTokens: firstUsage.outputTokens + secondUsage.outputTokens,
+    };
+    return { aiResponse: response, agentId: next.id, agentName: next.name, handoffOccurred: true, transferredFrom: current.name, tokenUsage };
   }
 
   // Garantia: nunca devolver reply vazio pro cliente (handoff deixa reply="").

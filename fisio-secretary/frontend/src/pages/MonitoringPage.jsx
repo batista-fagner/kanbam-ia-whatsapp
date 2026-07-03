@@ -8,6 +8,9 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
+// Tenant único com acesso ao multiagente (Cabelô/bfagner) — card de teste dedicado.
+const MULTI_AGENT_TENANT_ID = 'c71af07c-daf0-4efa-a9d3-a94c28288730'
+
 const fmt = (n) => Number(n ?? 0).toLocaleString('pt-BR')
 const fmtUsd = (n) => `$${Number(n ?? 0).toFixed(4)}`
 const fmtUsdShort = (n) => `$${Number(n ?? 0).toFixed(2)}`
@@ -77,7 +80,15 @@ export default function MonitoringPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Auto-refresh a cada 8s só quando visualizando hoje — pra acompanhar o teste do multiagente ao vivo.
+  useEffect(() => {
+    if (date !== brToday()) return
+    const id = setInterval(load, 8000)
+    return () => clearInterval(id)
+  }, [date, load])
+
   const isToday = date === brToday()
+  const multiAgentTenant = tenants.find(t => t.tenant_id === MULTI_AGENT_TENANT_ID)
 
   const anomalies = overview?.anomalies ?? []
   const periodLabel = isToday ? 'hoje' : new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -123,6 +134,41 @@ export default function MonitoringPage() {
           </button>
         </div>
       </div>
+
+      {/* Card dedicado — teste do multiagente (Cabelô/bfagner), auto-refresh a cada 8s */}
+      {isToday && (
+        <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              <h2 className="text-sm font-semibold">Teste do multiagente — {multiAgentTenant?.tenant_name ?? 'Cabelô'}</h2>
+            </div>
+            <span className="text-[10px] text-violet-200">atualiza sozinho a cada 8s</span>
+          </div>
+          {multiAgentTenant ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <p className="text-[10px] text-violet-200 uppercase">Tokens hoje</p>
+                <p className="text-xl font-bold">{fmt(multiAgentTenant.input_today)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-violet-200 uppercase">Cache</p>
+                <p className="text-xl font-bold">{multiAgentTenant.cache_pct ?? '—'}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-violet-200 uppercase">Custo hoje</p>
+                <p className="text-xl font-bold">{fmtUsd(multiAgentTenant.cost_today)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-violet-200 uppercase">Top lead</p>
+                <p className="text-sm font-medium">{multiAgentTenant.top_lead?.lead_name || '—'} {multiAgentTenant.top_lead && <span className="text-violet-200">({fmt(multiAgentTenant.top_lead.msg_count)} msgs)</span>}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-violet-200">Sem consumo registrado ainda hoje.</p>
+          )}
+        </div>
+      )}
 
       {/* Overview cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
