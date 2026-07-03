@@ -90,11 +90,17 @@ export class AgentsService {
     const mediaFiles = await this.mediaService.listAll(tenantId);
     const availableMediaNames = mediaFiles.map((m) => m.name);
 
+    // Em produção os fatos (name/symptoms/urgency/...) vivem nas colunas do lead,
+    // persistidas a cada turno. No teste não persistimos, então reconstruímos os
+    // fatos acumulados a partir do próprio aiContext — assim o bloco de fatos da
+    // Onda 2 é exercitado igual à produção.
+    const facts = this.extractAccumulatedFields(aiContext ?? []);
     const fakeLead = {
       id: 'test-session',
       tenantId,
       currentAgentId: currentAgentId ?? null,
       aiContext: aiContext ?? [],
+      ...facts,
     } as Lead;
 
     const result = await this.chatForLead(tenantId, fakeLead, message, availableMediaNames);
@@ -115,6 +121,26 @@ export class AgentsService {
       tags: result.aiResponse.tags,
       aiContext: updatedContext,
     };
+  }
+
+  // Só no modo de teste: reconstrói os fatos acumulados varrendo o `fields` dos
+  // turnos do assistant no aiContext (última ocorrência não-nula vence). Em produção
+  // isso não é necessário — os fatos já estão persistidos nas colunas do lead.
+  private extractAccumulatedFields(aiContext: any[]) {
+    const acc: { name?: string; symptoms?: string; urgency?: string; availability?: string; budget?: string } = {};
+    for (const m of aiContext) {
+      if (m?.role !== 'assistant' || typeof m.content !== 'string') continue;
+      try {
+        const f = JSON.parse(m.content)?.fields;
+        if (!f) continue;
+        if (f.name && f.name !== 'null') acc.name = f.name;
+        if (f.symptoms) acc.symptoms = f.symptoms;
+        if (f.urgency) acc.urgency = f.urgency;
+        if (f.availability) acc.availability = f.availability;
+        if (f.budget) acc.budget = f.budget;
+      } catch { /* turno sem JSON válido, ignora */ }
+    }
+    return acc;
   }
 
   // ───────────────── Fluxo de PRODUÇÃO (webhook WhatsApp) ─────────────────
@@ -159,9 +185,10 @@ export class AgentsService {
     const { agentId: newId } = await this.aiService.routeToAgent(message, remaining, { tenantId, conversationTail });
     const next = active.find((a) => a.id === newId) ?? active.find((a) => a.id !== current.id) ?? current;
 
-    // Avisa o novo agente que o bastão já foi passado — evita handoff em cadeia (ping-pong).
-    const noHandoffNote = `${extraSystemContext ? `${extraSystemContext}\n\n` : ''}NOTA DO SISTEMA: o supervisor transferiu esta conversa pra vc. Responda da melhor forma possível dentro do seu conhecimento — NÃO retorne "handoff": true nesta rodada.`;
-    response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, noHandoffNote);
+    // O agente que recebe o bastão responde com o handoff DESABILITADO estruturalmente
+    // (opts.disableHandoff) — obriga uma resposta real e evita o ping-pong de
+    // handoff:true + reply:"" que cai no fallback genérico.
+    response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true });
     response.handoff = false;
     this.ensureReply(response);
     return { aiResponse: response, agentId: next.id, agentName: next.name, handoffOccurred: true, transferredFrom: current.name };

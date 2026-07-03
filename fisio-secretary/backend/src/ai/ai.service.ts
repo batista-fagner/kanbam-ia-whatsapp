@@ -259,6 +259,46 @@ function buildAgentJsonSchema(caps: { canSchedule: boolean; canSendMedia: boolea
   return `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua campos além destes):\n{\n${lines.join('\n')}\n}`;
 }
 
+// ───── ONDA 2: histórico compactado (fluxo multi-agente) ─────
+// Resumo estruturado dos fatos já conhecidos da cliente, montado a partir das
+// colunas do lead que a IA já preenche a cada turno (name/symptoms/urgency/...).
+// Custo ZERO de LLM — é subproduto do JSON que o agente já gera. Serve de "memória
+// de longo prazo" quando turnos antigos saem da janela deslizante (slimHistory).
+function buildKnownFactsBlock(lead: {
+  name?: string | null; symptoms?: string | null; urgency?: string | null;
+  availability?: string | null; budget?: string | null;
+}): string {
+  const facts: string[] = [];
+  if (lead.name && lead.name !== 'null') facts.push(`nome=${lead.name}`);
+  if (lead.symptoms) facts.push(`interesse/histórico=${lead.symptoms}`);
+  if (lead.urgency) facts.push(`urgência=${lead.urgency}`);
+  if (lead.availability) facts.push(`disponibilidade=${lead.availability}`);
+  if (lead.budget) facts.push(`orçamento=${lead.budget}`);
+  if (!facts.length) return '';
+  return `FATOS JÁ CONHECIDOS DESTA CLIENTE (não pergunte de novo o que já está aqui): ${facts.join('; ')}.`;
+}
+
+// Máx. de mensagens do histórico enviadas ao LLM (janela deslizante). 16 = ~8 turnos
+// user/assistant — cobre o vaivém recente; o que sai da janela fica no bloco de fatos.
+const AGENT_HISTORY_WINDOW = 16;
+
+// Enxuga o histórico pro LLM: (1) reply-only — as respostas do assistant guardam o
+// JSON bruto no aiContext, mas o LLM só precisa reler o texto (metadados de controle
+// não ajudam); (2) janela deslizante — só os últimos N. NÃO altera o que é PERSISTIDO
+// (storage segue com JSON completo → monólito e buildConversationTail intactos).
+function slimHistoryForLlm(history: any[], maxMessages: number): any[] {
+  const slimmed = history.map((m) => {
+    if (m?.role !== 'assistant') return m;
+    let content = typeof m.content === 'string' ? m.content : '';
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed.reply === 'string') content = parsed.reply;
+    } catch { /* já é texto puro */ }
+    return { role: 'assistant', content };
+  });
+  return slimmed.slice(-maxMessages);
+}
+
 interface LlmProvider {
   name: string;
   client: OpenAI;
@@ -783,6 +823,7 @@ REGRAS:
     agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string; canSchedule?: boolean; canSendMedia?: boolean },
     availableMediaNames: string[],
     extraSystemContext?: string,
+    opts?: { disableHandoff?: boolean },
   ): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
@@ -790,9 +831,16 @@ REGRAS:
     // mídia/agendamento se o agente de fato usa (Onda 1) → menos tokens de I/O.
     const caps = { canSchedule: agent.canSchedule !== false, canSendMedia: agent.canSendMedia !== false };
 
+    // disableHandoff: usado na 2ª chamada (agente que RECEBEU o bastão). Remove a
+    // opção de handoff estruturalmente e obriga o agente a responder — sem isso o
+    // modelo às vezes devolve handoff:true + reply:"" de novo, caindo no fallback
+    // genérico (ping-pong de "me conta mais o que vc precisa").
     const scopeBlock = agent.respondsTo?.trim() ? `\nSEU ESCOPO (assuntos que VC responde):\n${agent.respondsTo.trim()}` : '';
     const handoffRules = agent.handoffWhen?.trim() ? `\nQUANDO PASSAR O BASTÃO (handoff):\n${agent.handoffWhen.trim()}` : '';
-    const handoffBlock = `════════ PASSAGEM DE BASTÃO (HANDOFF) ════════
+    const handoffBlock = opts?.disableHandoff
+      ? `════════ VOCÊ ASSUMIU A CONVERSA ════════
+Vc é o agente "${agent.name}". O supervisor acabou de te transferir esta conversa — vc DEVE responder AGORA e NÃO pode transferir de novo. Se faltar informação pra ajudar, PERGUNTE ao cliente de forma acolhedora. NUNCA devolva "reply" vazio. Sempre retorne "handoff": false.`
+      : `════════ PASSAGEM DE BASTÃO (HANDOFF) ════════
 Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock}${handoffRules}
 - Se a mensagem se encaixa nas regras de handoff acima (ou está claramente fora do seu escopo), retorne "handoff": true no JSON, com "reply": "" e "action": "none" — outro agente especializado assumirá.
 - Caso contrário, responda normalmente e retorne "handoff": false.
@@ -812,9 +860,16 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
       dateTail,
     ].map(b => b.trim()).filter(Boolean).join('\n\n');
 
+    // ONDA 2: histórico enxuto (reply-only + janela) + bloco de fatos. Os fatos
+    // vão JUNTO da mensagem atual (no fim), pra não quebrar o cache do prefixo
+    // [system + histórico]. buildUpdatedContext (a persistência) segue guardando o
+    // incomingText cru — os fatos não poluem o aiContext salvo.
+    const recentHistory = slimHistoryForLlm(history, AGENT_HISTORY_WINDOW);
+    const factsBlock = buildKnownFactsBlock(lead);
+    const userContent = factsBlock ? `${factsBlock}\n\n${incomingText}` : incomingText;
     const messages: any[] = [
-      ...history,
-      { role: 'user', content: incomingText },
+      ...recentHistory,
+      { role: 'user', content: userContent },
     ];
 
     try {
