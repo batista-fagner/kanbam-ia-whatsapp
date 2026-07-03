@@ -24,6 +24,12 @@ const SEND_BATCH_PER_RUN = 5;
 // Espaçamento aleatório entre cada envio dentro do lote (ms) — imita ritmo humano.
 const MIN_GAP_MS = 7000;
 const MAX_GAP_MS = 15000;
+// Espaçamento MÍNIMO entre envios do MESMO tenant — espalha os follow-ups ao longo
+// do dia (1 a cada 3 min) em vez de deixá-los saírem em rajada. Anti-bloqueio.
+const MIN_TENANT_SEND_GAP_MS = 3 * 60 * 1000;
+// Candidatos lidos por execução do cron; o nº REAL de envios é limitado por
+// SEND_BATCH_PER_RUN. Pool amplo evita que um tenant com backlog monopolize o lote.
+const DUE_POOL_SIZE = 200;
 // Teto diário padrão por tenant, usado se a config não tiver valor.
 const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 
@@ -112,19 +118,25 @@ export class FollowupService {
     // Os follow-ups vencidos ficam pending e saem quando a janela abrir.
     if (!this.isWithinBusinessHours()) return;
 
-    // PROTEÇÃO 2 — Lote pequeno por execução (a cada minuto): evita rajada de 50 de uma vez.
+    // PROTEÇÃO 2 — Puxa um pool de candidatos vencidos; o nº REAL de envios por
+    // execução é limitado por SEND_BATCH_PER_RUN (sentThisRun). Pool amplo evita que
+    // um tenant com backlog grande monopolize o lote e trave os demais.
     const due = await this.followupRepo.find({
       where: { status: 'pending', scheduledAt: LessThanOrEqual(new Date()) },
       order: { scheduledAt: 'ASC' },
-      take: SEND_BATCH_PER_RUN,
+      take: DUE_POOL_SIZE,
     });
     if (due.length === 0) return;
 
-    // Cache por execução: contagem de enviados hoje e limite, por tenant.
+    // Cache por execução: enviados hoje, limite e último envio, por tenant.
     const sentTodayByTenant = new Map<string, number>();
     const limitByTenant = new Map<string, number>();
+    const lastSentByTenant = new Map<string, Date | null>();
+    let sentThisRun = 0;
 
     for (const f of due) {
+      if (sentThisRun >= SEND_BATCH_PER_RUN) break; // teto de envios por execução
+
       // PROTEÇÃO 3 — Teto diário por tenant: ao atingir o limite, deixa pending pra amanhã.
       let sentToday = sentTodayByTenant.get(f.tenantId);
       if (sentToday === undefined) {
@@ -139,6 +151,18 @@ export class FollowupService {
       if (sentToday >= limit) {
         this.logger.warn(`[FOLLOWUP] Teto diário atingido (${limit}) p/ tenant ${f.tenantId} — adiando envios`);
         continue;
+      }
+
+      // PROTEÇÃO 4 — Espaçamento por tenant: no MÍNIMO 3 min entre um envio e o
+      // próximo do mesmo tenant. Espalha os follow-ups pelo dia (anti-rajada) e serve
+      // de backoff quando os envios estão falhando (nº bloqueado/desconectado).
+      let lastSent = lastSentByTenant.get(f.tenantId);
+      if (lastSent === undefined) {
+        lastSent = await this.lastSentAtByTenant(f.tenantId);
+        lastSentByTenant.set(f.tenantId, lastSent);
+      }
+      if (lastSent && Date.now() - lastSent.getTime() < MIN_TENANT_SEND_GAP_MS) {
+        continue; // ainda dentro do intervalo → deixa pending, tenta no próximo tick
       }
 
       // Claim atômico: só prossegue se ESTA instância flipou pending → sending.
@@ -160,7 +184,7 @@ export class FollowupService {
         f.sentAt = new Date();
         f.error = null;
         await this.followupRepo.save(f);
-        sentTodayByTenant.set(f.tenantId, sentToday + 1);
+        sentTodayByTenant.set(f.tenantId, sentToday + 1); // só sucesso conta pro teto diário
         this.logger.log(`[FOLLOWUP] Enviado → ${f.phone} (lead ${f.leadId})`);
       } catch (err) {
         f.status = 'failed';
@@ -168,6 +192,11 @@ export class FollowupService {
         await this.followupRepo.save(f);
         this.logger.error(`[FOLLOWUP] Falha ao enviar p/ ${f.phone}: ${f.error}`);
       }
+
+      // Conta a TENTATIVA (sucesso ou falha) e marca o último envio do tenant: aplica
+      // o teto por execução e o espaçamento de 3 min mesmo quando o envio falha.
+      sentThisRun++;
+      lastSentByTenant.set(f.tenantId, new Date());
 
       // Espaçamento humano entre envios (jitter) — nunca dispara em rajada.
       await this.sleep(MIN_GAP_MS + Math.floor(Math.random() * (MAX_GAP_MS - MIN_GAP_MS)));
@@ -235,6 +264,17 @@ export class FollowupService {
     const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
     const limit = cfg?.followupLimitPerDay;
     return typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FOLLOWUP_DAILY_LIMIT;
+  }
+
+  // Momento do último follow-up ENVIADO por este tenant (null se nunca enviou).
+  // Base do espaçamento mínimo entre envios (PROTEÇÃO 4, anti-rajada).
+  private async lastSentAtByTenant(tenantId: string): Promise<Date | null> {
+    const rows = await this.followupRepo.query(
+      `SELECT MAX(sent_at) AS last FROM followups WHERE tenant_id = $1 AND status = 'sent'`,
+      [tenantId],
+    );
+    const last = rows[0]?.last;
+    return last ? new Date(last) : null;
   }
 
   // A cada 10 min: detecta leads ociosos por raia e agenda follow-up automático.
