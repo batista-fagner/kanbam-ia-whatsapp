@@ -9,6 +9,10 @@ export default function Layout({ onLogout }) {
   const location = useLocation()
   const { user } = useAuth()
   const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+  // Multi-agente em rollout controlado: visível em localhost e para a conta beta.
+  // Todos os outros clientes seguem no monólito (o backend também só ativa via
+  // multiAgentEnabled por tenant, default false).
+  const canSeeMultiAgent = isLocalDev || user?.email === 'bfagner@hotmail.com.br'
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },
@@ -18,8 +22,8 @@ export default function Layout({ onLogout }) {
     { icon: Image, label: 'Mídias', path: '/media' },
     { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
-    // Multi-agente ainda em desenvolvimento — visível só em ambiente local
-    ...(isLocalDev ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
+    // Multi-agente em rollout controlado — localhost + conta beta
+    ...(canSeeMultiAgent ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
     // { icon: BookOpen, label: 'Templates', path: '/templates' }, // TODO: ativar depois
     // Painel admin — só para o admin da plataforma
     ...(user?.role === 'admin' ? [

@@ -39,6 +39,14 @@ export class Agent {
   @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault: boolean;
 
+  // Capacidades do agente — controlam quais blocos do prompt são montados.
+  // false = economiza tokens (não injeta as regras/tabela correspondentes).
+  @Column({ name: 'can_schedule', type: 'boolean', default: true })
+  canSchedule: boolean;
+
+  @Column({ name: 'can_send_media', type: 'boolean', default: true })
+  canSendMedia: boolean;
+
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 

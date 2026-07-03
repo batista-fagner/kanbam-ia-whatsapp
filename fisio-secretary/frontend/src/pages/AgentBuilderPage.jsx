@@ -18,6 +18,8 @@ const emptyAgent = {
   handoffWhen: '',
   systemPrompt: '',
   isDefault: false,
+  canSchedule: true,
+  canSendMedia: true,
 }
 
 // ───────────────────────── Modal de edição do agente ─────────────────────────
@@ -121,6 +123,32 @@ function AgentModal({ agent, onSave, onClose }) {
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                   placeholder={'dúvida técnica\nreclamação / suporte'}
                 />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Capacidades <span className="text-gray-400">(desligar economiza tokens — não injeta as regras no prompt)</span>
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.canSchedule !== false}
+                    onChange={(e) => setForm((f) => ({ ...f, canSchedule: e.target.checked }))}
+                    className="w-4 h-4 accent-teal-600"
+                  />
+                  Agenda consultas (tabela de datas + regras de agendamento)
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.canSendMedia !== false}
+                    onChange={(e) => setForm((f) => ({ ...f, canSendMedia: e.target.checked }))}
+                    className="w-4 h-4 accent-teal-600"
+                  />
+                  Envia mídias/vídeos (catálogo + regras de envio)
+                </label>
               </div>
             </div>
 
@@ -297,9 +325,10 @@ function Canvas({ connected, highlightId, onEdit, onDetach }) {
 // ───────────────────────── Painel de chat simulado ─────────────────────────
 function TestPanel({ open, onClose, connected }) {
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState([]) // { type: 'user'|'agent'|'transfer', text, agentName }
+  const [messages, setMessages] = useState([]) // { type: 'user'|'agent'|'transfer', text, agentName, meta }
   const [currentAgentId, setCurrentAgentId] = useState(null)
   const [currentAgentName, setCurrentAgentName] = useState(null)
+  const [aiContext, setAiContext] = useState([])
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
 
@@ -311,6 +340,7 @@ function TestPanel({ open, onClose, connected }) {
     setMessages([])
     setCurrentAgentId(null)
     setCurrentAgentName(null)
+    setAiContext([])
     setInput('')
   }
 
@@ -324,7 +354,7 @@ function TestPanel({ open, onClose, connected }) {
       const res = await authFetch(`${API_URL}/agents/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, currentAgentId }),
+        body: JSON.stringify({ message: text, currentAgentId, aiContext }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.message || 'erro')
@@ -342,9 +372,11 @@ function TestPanel({ open, onClose, connected }) {
         type: 'agent',
         text: data.reply,
         agentName: data.agentName,
+        meta: { stage: data.stage, temperature: data.temperature, action: data.action, mediaName: data.mediaName, tags: data.tags },
       }])
       setCurrentAgentId(data.agentId)
       setCurrentAgentName(data.agentName)
+      setAiContext(data.aiContext ?? [])
     } catch (e) {
       setMessages((prev) => [...prev, { type: 'error', text: e.message || 'Erro ao processar' }])
     } finally {
@@ -419,6 +451,15 @@ function TestPanel({ open, onClose, connected }) {
                 <div className="max-w-[85%] bg-white border border-gray-200 text-gray-800 text-sm rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm">
                   {msg.text}
                 </div>
+                {msg.meta && (
+                  <div className="flex flex-wrap gap-1 ml-1">
+                    {msg.meta.stage && <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">stage: {msg.meta.stage}</span>}
+                    {msg.meta.temperature && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-100">{msg.meta.temperature}</span>}
+                    {msg.meta.action && msg.meta.action !== 'none' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">action: {msg.meta.action}</span>}
+                    {msg.meta.mediaName && <span className="text-[9px] px-1.5 py-0.5 rounded bg-pink-50 text-pink-600 border border-pink-100">mídia: {Array.isArray(msg.meta.mediaName) ? msg.meta.mediaName.join(', ') : msg.meta.mediaName}</span>}
+                    {msg.meta.tags?.length > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-600 border border-teal-100">tags: {msg.meta.tags.join(', ')}</span>}
+                  </div>
+                )}
               </div>
             )
           })}
