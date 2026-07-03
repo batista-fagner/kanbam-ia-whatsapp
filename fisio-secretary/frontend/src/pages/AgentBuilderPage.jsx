@@ -226,7 +226,7 @@ function CanvasAgent({ agent, highlight, onEdit, onDetach }) {
   return (
     <div
       onClick={() => onEdit(agent)}
-      className={`group relative w-44 bg-white rounded-xl border-2 px-4 py-3 cursor-pointer transition shadow-sm hover:shadow-md ${
+      className={`group relative w-52 bg-white rounded-xl border-2 px-4 py-3 cursor-pointer transition shadow-sm hover:shadow-md ${
         highlight
           ? 'border-teal-500 ring-4 ring-teal-100'
           : isEntry
@@ -247,9 +247,9 @@ function CanvasAgent({ agent, highlight, onEdit, onDetach }) {
       >
         <X className="w-3 h-3" />
       </button>
-      <div className="flex items-center gap-1.5 mb-1">
-        <Bot className={`w-4 h-4 flex-shrink-0 ${isEntry ? 'text-amber-500' : 'text-teal-600'}`} />
-        <p className="text-sm font-semibold text-gray-800 truncate">{agent.name}</p>
+      <div className="flex items-start gap-1.5 mb-1">
+        <Bot className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isEntry ? 'text-amber-500' : 'text-teal-600'}`} />
+        <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">{agent.name}</p>
       </div>
       <p className="text-xs text-gray-500 line-clamp-2 leading-snug">{agent.description || 'sem descrição'}</p>
     </div>
