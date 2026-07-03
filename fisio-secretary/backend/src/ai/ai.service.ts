@@ -201,6 +201,64 @@ REGRAS ABSOLUTAS:
 ═══════════════════════════════════════════════════════════════════`;
 }
 
+// Versão enxuta do bloco de datas — só hoje + saudação (~150 chars). Usada por
+// agentes que NÃO agendam (não precisam da tabela de lookup completa).
+function buildMiniDateBlock(): string {
+  const TZ = 'America/Sao_Paulo';
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: TZ, weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+  }).formatToParts(now);
+  const g = (t: string) => parts.find(p => p.type === t)!.value;
+  const hour = parseInt(new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', hour12: false }).format(now), 10);
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  return `DATA DE HOJE: ${g('day')}/${g('month')}/${g('year')} (${g('weekday')}). Ao cumprimentar, use EXATAMENTE "${greeting}" (nunca escreva com barras).`;
+}
+
+// ───── Blocos composáveis do contrato JSON — FLUXO MULTI-AGENTE ─────
+// Separados do JSON_FORMAT_MEGAHAIR (monólito, intocado) pra permitir montar só
+// o que cada agente precisa. Menos boilerplate = menos tokens de entrada e saída.
+
+const AGENT_STAGE_RULES = `════════ REGRAS DE STAGE E TAGS (reavalie a cada mensagem) ════════
+- stage="lead_quente" — interesse claro (perguntou preço/textura, quis ver vídeo, disse que já usa/usou o produto).
+- stage="lead_frio" — sem interesse imediato.
+- stage="perdido" — desistiu, foi rude, ou pediu algo fora do catálogo.
+- stage="novo_lead" — só na 1ª mensagem, antes de qualquer qualificação.
+- tags=["qualificado"] quando confirmar que JÁ USA / JÁ USOU o produto. tags=[] nos demais casos.`;
+
+const AGENT_SCHEDULING_RULES = `════════ AGENDAMENTO (quando a cliente disser que vai à loja) ════════
+Agende DIRETO, sem pedir horário (padrão 09:00). Consulte a TABELA DE DATAS abaixo — NUNCA calcule.
+- DATA ESPECÍFICA ("amanhã","sexta","dia 25"): action="schedule", appointmentDateTime="YYYY-MM-DDT09:00:00", stage="agendado", tags=[].
+- DATA VAGA ("semana que vem","mês que vem"): copie a data pronta da seção EXPRESSÕES VAGAS da tabela; action="schedule", stage="agendado", tags=["data-aproximada"].
+- appointmentService="mega_hair" (1ª vez) ou "manutencao"; appointmentValue = valor em reais ou null.
+- stage="agendado" e action="schedule" são INSEPARÁVEIS — nunca um sem o outro. Nunca pergunte horário. Confirme citando data + dia da semana da tabela.`;
+
+// Monta o schema de saída listando SÓ os campos que o agente pode usar.
+// Campos condicionais (mídia/agendamento) fora = menos tokens de output.
+function buildAgentJsonSchema(caps: { canSchedule: boolean; canSendMedia: boolean }): string {
+  const actions = ['none', caps.canSchedule && 'schedule', caps.canSendMedia && 'send_media'].filter(Boolean).join('|');
+  const stages = caps.canSchedule
+    ? 'novo_lead|lead_frio|lead_quente|agendado|perdido'
+    : 'novo_lead|lead_frio|lead_quente|perdido';
+  const lines = [
+    '  "reply": "texto da resposta para a cliente",',
+    `  "stage": "${stages}",`,
+    '  "temperature": "quente|morno|frio",',
+    `  "action": "${actions}",`,
+  ];
+  if (caps.canSendMedia) lines.push('  "mediaName": "id exato do catálogo (ou array de ids p/ vários vídeos) — só com action=send_media",');
+  if (caps.canSchedule) {
+    lines.push('  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS — só com action=schedule",');
+    lines.push('  "appointmentService": "mega_hair|manutencao|null",');
+    lines.push('  "appointmentValue": null,');
+  }
+  lines.push('  "tags": [],');
+  lines.push('  "shouldIgnore": false,');
+  lines.push('  "handoff": false,');
+  lines.push('  "fields": { "name": "nome se coletado ou null" }');
+  return `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua campos além destes):\n{\n${lines.join('\n')}\n}`;
+}
+
 interface LlmProvider {
   name: string;
   client: OpenAI;
@@ -385,33 +443,6 @@ Escolha o melhor agente:`;
     } catch (err) {
       this.logger.warn(`[SUPERVISOR] Falha no roteamento, usando fallback: ${err?.message}`);
       return { agentId: fallback.id, reason: `Fallback: ${fallback.name} (roteador indisponível).` };
-    }
-  }
-
-  // Simula um agente respondendo a uma mensagem (para testes de handoff).
-  // Usa gemini-2.5-flash (mesmo do supervisor) — lite causa rate limit e latência alta.
-  async simulateAgentReply(agentName: string, systemPrompt: string, message: string): Promise<string> {
-    const client = this.supervisorClient ?? this.providers[0]?.client;
-    const model = this.supervisorClient ? this.supervisorModel : this.providers[0]?.model;
-    if (!client) throw new Error('Nenhum provedor LLM configurado');
-
-    const system = systemPrompt?.trim()
-      ? `${systemPrompt}\n\nSe a pergunta está fora do seu escopo, inclua [HANDOFF_SUPERVISOR] no final da sua resposta. Responda de forma CURTA (2-3 linhas máximo).`
-      : `Você é o agente "${agentName}". Responda de forma CURTA (2-3 linhas). Se estiver fora do seu escopo, inclua [HANDOFF_SUPERVISOR] no final.`;
-
-    try {
-      const resp = await client.chat.completions.create({
-        model,
-        max_tokens: 200,
-        reasoning_effort: 'none',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: message },
-        ],
-      } as any);
-      return (resp.choices[0].message.content ?? '').trim();
-    } catch {
-      return `[${agentName}] Não foi possível simular a resposta.`;
     }
   }
 
@@ -749,28 +780,37 @@ REGRAS:
   async processMessageAgent(
     lead: Lead,
     incomingText: string,
-    agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string },
+    agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string; canSchedule?: boolean; canSendMedia?: boolean },
     availableMediaNames: string[],
     extraSystemContext?: string,
   ): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
-    const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
+
+    // Capacidades controlam a montagem condicional do prompt: só injeta o bloco de
+    // mídia/agendamento se o agente de fato usa (Onda 1) → menos tokens de I/O.
+    const caps = { canSchedule: agent.canSchedule !== false, canSendMedia: agent.canSendMedia !== false };
 
     const scopeBlock = agent.respondsTo?.trim() ? `\nSEU ESCOPO (assuntos que VC responde):\n${agent.respondsTo.trim()}` : '';
     const handoffRules = agent.handoffWhen?.trim() ? `\nQUANDO PASSAR O BASTÃO (handoff):\n${agent.handoffWhen.trim()}` : '';
-    const handoffBlock = `
-
-════════ PASSAGEM DE BASTÃO (HANDOFF) ════════
+    const handoffBlock = `════════ PASSAGEM DE BASTÃO (HANDOFF) ════════
 Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock}${handoffRules}
 - Se a mensagem se encaixa nas regras de handoff acima (ou está claramente fora do seu escopo), retorne "handoff": true no JSON, com "reply": "" e "action": "none" — outro agente especializado assumirá.
 - Caso contrário, responda normalmente e retorne "handoff": false.
-- Na dúvida, RESPONDA (handoff é exceção, não regra).
-ADICIONE SEMPRE o campo "handoff" (true|false) ao JSON de resposta.`;
+- Na dúvida, RESPONDA (handoff é exceção, não regra).`;
 
-    // buildDateBlock no final: prefixo estático (prompt do agente + mídia + JSON + handoff)
-    // fica idêntico entre conversas → habilita cache implícito do Gemini.
-    const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
-    const systemPrompt = `${agent.systemPrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${handoffBlock}${extraBlock}\n\n${buildDateBlock()}`;
+    // Ordem importa pro cache: blocos estáticos primeiro, data (variável) SEMPRE por
+    // último. Só monta o que o agente precisa — mídia/agendamento condicionais.
+    const dateTail = caps.canSchedule ? buildDateBlock() : buildMiniDateBlock();
+    const systemPrompt = [
+      agent.systemPrompt,
+      caps.canSendMedia ? this.buildMediaInstructions(availableMediaNames) : '',
+      AGENT_STAGE_RULES,
+      caps.canSchedule ? AGENT_SCHEDULING_RULES : '',
+      buildAgentJsonSchema(caps),
+      handoffBlock,
+      extraSystemContext ?? '',
+      dateTail,
+    ].map(b => b.trim()).filter(Boolean).join('\n\n');
 
     const messages: any[] = [
       ...history,

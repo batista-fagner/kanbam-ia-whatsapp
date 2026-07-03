@@ -4,15 +4,18 @@ import { Repository } from 'typeorm';
 import { Agent } from '../common/entities/agent.entity';
 import { AiService, AiResponse } from '../ai/ai.service';
 import { Lead } from '../common/entities/lead.entity';
+import { MediaService } from '../media/media.service';
 
 type AgentInput = Partial<Pick<Agent,
-  'name' | 'description' | 'respondsTo' | 'handoffWhen' | 'systemPrompt' | 'isActive' | 'isDefault' | 'sortOrder'>>;
+  'name' | 'description' | 'respondsTo' | 'handoffWhen' | 'systemPrompt' | 'isActive' | 'isDefault' | 'sortOrder'
+  | 'canSchedule' | 'canSendMedia'>>;
 
 @Injectable()
 export class AgentsService {
   constructor(
     @InjectRepository(Agent) private readonly repo: Repository<Agent>,
     private readonly aiService: AiService,
+    private readonly mediaService: MediaService,
   ) {}
 
   findAll(tenantId: string) {
@@ -33,6 +36,8 @@ export class AgentsService {
       isActive: body.isActive ?? false,
       isDefault: body.isDefault ?? false,
       sortOrder: body.sortOrder ?? 0,
+      canSchedule: body.canSchedule ?? true,
+      canSendMedia: body.canSendMedia ?? true,
     });
     return this.repo.save(agent);
   }
@@ -49,6 +54,8 @@ export class AgentsService {
     if (body.isActive !== undefined) agent.isActive = body.isActive;
     if (body.isDefault !== undefined) agent.isDefault = body.isDefault;
     if (body.sortOrder !== undefined) agent.sortOrder = body.sortOrder;
+    if (body.canSchedule !== undefined) agent.canSchedule = body.canSchedule;
+    if (body.canSendMedia !== undefined) agent.canSendMedia = body.canSendMedia;
     return this.repo.save(agent);
   }
 
@@ -73,54 +80,40 @@ export class AgentsService {
     return { agentId: chosen.id, agentName: chosen.name };
   }
 
-  // Simula uma mensagem dentro de uma conversa com agente atual definido.
-  // Retorna resposta do agente e, se houve handoff, o novo agente.
-  async chat(tenantId: string, message: string, currentAgentId: string | null) {
+  // Simulação de teste (tela "Agentes", sem WhatsApp): usa o MESMO caminho de
+  // produção (chatForLead → processMessageAgent, com histórico e capacidades
+  // canSchedule/canSendMedia) — sem persistir Lead no banco. O estado da conversa
+  // (aiContext) roda de ida e volta com o frontend a cada turno.
+  async chatTest(tenantId: string, message: string, currentAgentId: string | null, aiContext: any[]) {
     if (!message?.trim()) throw new BadRequestException('Mensagem é obrigatória');
-    const active = await this.repo.find({
-      where: { tenantId, isActive: true },
-      order: { sortOrder: 'ASC', createdAt: 'ASC' },
-    });
-    if (!active.length) throw new BadRequestException('Conecte ao menos um agente ao supervisor');
 
-    const roster = active.map((a) => ({ id: a.id, name: a.name, description: a.description, respondsTo: a.respondsTo }));
+    const mediaFiles = await this.mediaService.listAll(tenantId);
+    const availableMediaNames = mediaFiles.map((m) => m.name);
 
-    // Resolve agente atual: usa o informado ou roteia pelo supervisor
-    let currentAgent = active.find((a) => a.id === currentAgentId) ?? null;
-    if (!currentAgent) {
-      const { agentId } = await this.aiService.routeToAgent(message, roster);
-      currentAgent = active.find((a) => a.id === agentId) ?? active[0];
-    }
+    const fakeLead = {
+      id: 'test-session',
+      tenantId,
+      currentAgentId: currentAgentId ?? null,
+      aiContext: aiContext ?? [],
+    } as Lead;
 
-    // Agente responde
-    const reply = await this.aiService.simulateAgentReply(currentAgent.name, currentAgent.systemPrompt, message);
-    const hasHandoff = reply.includes('[HANDOFF_SUPERVISOR]');
-    const cleanReply = reply.replace(/\[HANDOFF_SUPERVISOR\]/g, '').trim();
+    const result = await this.chatForLead(tenantId, fakeLead, message, availableMediaNames);
+    if (!result) throw new BadRequestException('Conecte ao menos um agente ao supervisor');
 
-    if (!hasHandoff) {
-      return {
-        reply: cleanReply,
-        agentId: currentAgent.id,
-        agentName: currentAgent.name,
-        handoffOccurred: false,
-        transferredFrom: null,
-      };
-    }
-
-    // Handoff: supervisor roteia pra outro agente (excluindo o atual)
-    const remaining = roster.filter((a) => a.id !== currentAgent.id);
-    const { agentId: newId } = await this.aiService.routeToAgent(message, remaining.length ? remaining : roster);
-    const newAgent = active.find((a) => a.id === newId) ?? active.find((a) => a.id !== currentAgent.id) ?? active[0];
-
-    // Novo agente responde
-    const newReply = await this.aiService.simulateAgentReply(newAgent.name, newAgent.systemPrompt, message);
+    const updatedContext = this.aiService.buildUpdatedContext(fakeLead, message, result.aiResponse.rawJson!);
 
     return {
-      reply: newReply.replace(/\[HANDOFF_SUPERVISOR\]/g, '').trim(),
-      agentId: newAgent.id,
-      agentName: newAgent.name,
-      handoffOccurred: true,
-      transferredFrom: currentAgent.name,
+      reply: result.aiResponse.reply,
+      agentId: result.agentId,
+      agentName: result.agentName,
+      handoffOccurred: result.handoffOccurred,
+      transferredFrom: result.transferredFrom,
+      stage: result.aiResponse.stage,
+      temperature: result.aiResponse.temperature,
+      action: result.aiResponse.action,
+      mediaName: result.aiResponse.mediaName,
+      tags: result.aiResponse.tags,
+      aiContext: updatedContext,
     };
   }
 
