@@ -296,27 +296,27 @@ function Canvas({ connected, highlightId, onEdit, onDetach }) {
           <>
             {/* linha vertical do supervisor */}
             <div className="h-8 w-px bg-gray-300" />
-            {/* barramento horizontal + droplines — 1 linha só (sem wrap), com scroll horizontal
-                se não couber. Cards têm largura fixa (w-52=208px) então o barramento pode ser
-                calculado exatamente do centro do 1º ao centro do último, sem "sobrar" linha órfã. */}
-            <div className="max-w-full overflow-x-auto">
-              <div className="relative inline-block">
-                {connected.length > 1 && (
-                  <div className="absolute top-0 h-px bg-gray-300" style={{ left: 104, right: 104 }} />
-                )}
-                <div className="flex items-start gap-6 pt-0 w-max">
-                  {connected.map((a) => (
-                    <div key={a.id} className="flex flex-col items-center flex-shrink-0 w-52">
-                      <div className={`h-8 w-px ${a.isDefault ? 'bg-amber-400' : 'bg-gray-300'}`} />
-                      <CanvasAgent
-                        agent={a}
-                        highlight={highlightId === a.id}
-                        onEdit={onEdit}
-                        onDetach={onDetach}
-                      />
-                    </div>
-                  ))}
-                </div>
+            {/* barramento horizontal + droplines — 1 linha só (sem wrap). Cards têm largura fixa
+                (w-52=208px) então o barramento pode ser calculado exatamente do centro do 1º ao
+                centro do último, sem "sobrar" linha órfã. Sem overflow próprio aqui — se não
+                couber, quem rola é o Canvas inteiro (overflow-auto lá em cima), então a barra de
+                scroll aparece no rodapé do painel, não flutuando embaixo da fileira de cards. */}
+            <div className="relative inline-block">
+              {connected.length > 1 && (
+                <div className="absolute top-0 h-px bg-gray-300" style={{ left: 104, right: 104 }} />
+              )}
+              <div className="flex items-start gap-6 pt-0 w-max">
+                {connected.map((a) => (
+                  <div key={a.id} className="flex flex-col items-center flex-shrink-0 w-52">
+                    <div className={`h-8 w-px ${a.isDefault ? 'bg-amber-400' : 'bg-gray-300'}`} />
+                    <CanvasAgent
+                      agent={a}
+                      highlight={highlightId === a.id}
+                      onEdit={onEdit}
+                      onDetach={onDetach}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </>
