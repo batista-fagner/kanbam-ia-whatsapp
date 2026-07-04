@@ -32,6 +32,10 @@ import { CreatePromptTemplates1781000000000 } from './migrations/1781000000000-C
 import { CreateAgents1781100000000 } from './migrations/1781100000000-CreateAgents';
 import { AddMultiAgentEnabled1781200000000 } from './migrations/1781200000000-AddMultiAgentEnabled';
 import { AddLeadCurrentAgent1781300000000 } from './migrations/1781300000000-AddLeadCurrentAgent';
+import { AddDeactivationKeyword1782917553913 } from './migrations/1782917553913-AddDeactivationKeyword';
+import { AddFollowupLimitPerDay1782932396574 } from './migrations/1782932396574-AddFollowupLimitPerDay';
+import { AddAgentCapabilities1783000000000 } from './migrations/1783000000000-AddAgentCapabilities';
+import { AddAgentCanvasPosition1784000000000 } from './migrations/1784000000000-AddAgentCanvasPosition';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -61,7 +65,7 @@ import { AgentsModule } from './agents/agents.module';
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000],
         migrationsRun: true,
         logging: false,
       }),

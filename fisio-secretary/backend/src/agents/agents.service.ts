@@ -8,7 +8,7 @@ import { MediaService } from '../media/media.service';
 
 type AgentInput = Partial<Pick<Agent,
   'name' | 'description' | 'respondsTo' | 'handoffWhen' | 'systemPrompt' | 'isActive' | 'isDefault' | 'sortOrder'
-  | 'canSchedule' | 'canSendMedia'>>;
+  | 'canSchedule' | 'canSendMedia' | 'canvasX' | 'canvasY'>>;
 
 @Injectable()
 export class AgentsService {
@@ -38,6 +38,8 @@ export class AgentsService {
       sortOrder: body.sortOrder ?? 0,
       canSchedule: body.canSchedule ?? true,
       canSendMedia: body.canSendMedia ?? true,
+      canvasX: body.canvasX ?? null,
+      canvasY: body.canvasY ?? null,
     });
     return this.repo.save(agent);
   }
@@ -56,6 +58,8 @@ export class AgentsService {
     if (body.sortOrder !== undefined) agent.sortOrder = body.sortOrder;
     if (body.canSchedule !== undefined) agent.canSchedule = body.canSchedule;
     if (body.canSendMedia !== undefined) agent.canSendMedia = body.canSendMedia;
+    if (body.canvasX !== undefined) agent.canvasX = body.canvasX;
+    if (body.canvasY !== undefined) agent.canvasY = body.canvasY;
     return this.repo.save(agent);
   }
 

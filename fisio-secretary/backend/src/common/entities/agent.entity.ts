@@ -47,6 +47,14 @@ export class Agent {
   @Column({ name: 'can_send_media', type: 'boolean', default: true })
   canSendMedia: boolean;
 
+  // Posição salva do nó no canvas do Agent Builder (React Flow). Null = ainda não
+  // foi arrastado manualmente, usa o auto-layout calculado no frontend.
+  @Column({ name: 'canvas_x', type: 'double precision', nullable: true })
+  canvasX: number | null;
+
+  @Column({ name: 'canvas_y', type: 'double precision', nullable: true })
+  canvasY: number | null;
+
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 

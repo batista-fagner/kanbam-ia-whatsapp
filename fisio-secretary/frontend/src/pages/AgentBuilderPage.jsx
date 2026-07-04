@@ -312,10 +312,15 @@ function buildFlow(connected, highlightId, handlers) {
   const startX = -(total / 2) + NODE_W / 2
 
   connected.forEach((a, i) => {
+    // Posição salva (arrastada manualmente) tem prioridade sobre o auto-layout.
+    const hasSavedPosition = a.canvasX != null && a.canvasY != null
+    const position = hasSavedPosition
+      ? { x: a.canvasX, y: a.canvasY }
+      : { x: startX + i * (NODE_W + NODE_GAP), y: ROW_Y }
     nodes.push({
       id: a.id,
       type: 'agent',
-      position: { x: startX + i * (NODE_W + NODE_GAP), y: ROW_Y },
+      position,
       data: { agent: a, highlight: highlightId === a.id, ...handlers },
     })
     edges.push({
@@ -331,7 +336,7 @@ function buildFlow(connected, highlightId, handlers) {
 }
 
 // ───────────────────────── Canvas com React Flow ─────────────────────────
-function FlowCanvas({ connected, highlightId, onEditAgent, onDetachAgent, onConnectAgent }) {
+function FlowCanvas({ connected, highlightId, onEditAgent, onDetachAgent, onConnectAgent, onMoveAgent }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const { fitView } = useReactFlow()
@@ -368,6 +373,12 @@ function FlowCanvas({ connected, highlightId, onEditAgent, onDetachAgent, onConn
     if (id) onConnectAgent(id)
   }, [onConnectAgent])
 
+  // Salva a posição só do agente arrastado (não mexe nos demais).
+  const onNodeDragStop = useCallback((_event, node) => {
+    if (node.type !== 'agent') return
+    onMoveAgent(node.id, { canvasX: node.position.x, canvasY: node.position.y })
+  }, [onMoveAgent])
+
   return (
     <div className="flex-1 rounded-xl border border-gray-200 overflow-hidden bg-gray-50/60" onDragOver={onDragOver} onDrop={onDrop}>
       <ReactFlow
@@ -376,6 +387,7 @@ function FlowCanvas({ connected, highlightId, onEditAgent, onDetachAgent, onConn
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
         proOptions={{ hideAttribution: true }}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
@@ -660,6 +672,7 @@ export default function AgentBuilderPage() {
       return prev
     })
   }, [patchAgent])
+  const onMoveAgent = useCallback((id, pos) => patchAgent(id, pos), [patchAgent])
 
   async function handleDelete(id) {
     await authFetch(`${API_URL}/agents/${id}`, { method: 'DELETE' })
@@ -740,6 +753,7 @@ export default function AgentBuilderPage() {
               onEditAgent={onEditAgent}
               onDetachAgent={onDetachAgent}
               onConnectAgent={onConnectAgent}
+              onMoveAgent={onMoveAgent}
             />
           </ReactFlowProvider>
         </div>
