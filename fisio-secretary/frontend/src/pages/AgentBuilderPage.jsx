@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors,
-} from '@dnd-kit/core'
+  ReactFlow, ReactFlowProvider, Background, Controls, Panel,
+  Handle, Position, useNodesState, useEdgesState, useReactFlow,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 import {
   Bot, Sparkles, Plus, X, Pencil, Trash2, Play, Loader2, GripVertical,
   Workflow, Star, ArrowRight, MessageSquare, ArrowRightLeft, Send, RotateCcw,
@@ -180,14 +182,10 @@ function AgentModal({ agent, onSave, onClose }) {
   )
 }
 
-// ───────────────────────── Card visual reutilizável (palette + overlay) ─────────────────────────
-function AgentCard({ agent, floating = false }) {
+// ───────────────────────── Card visual da palette ─────────────────────────
+function AgentCard({ agent }) {
   return (
-    <div className={`flex items-center gap-2 px-3 py-2.5 bg-white border rounded-lg transition ${
-      floating
-        ? 'border-teal-400 shadow-2xl scale-105 cursor-grabbing ring-2 ring-teal-200 rotate-1'
-        : 'border-gray-200'
-    }`}>
+    <div className="flex items-center gap-2 px-3 py-2.5 bg-white border border-gray-200 rounded-lg transition">
       <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-gray-800 truncate">{agent.name}</p>
@@ -198,15 +196,17 @@ function AgentCard({ agent, floating = false }) {
   )
 }
 
-// ───────────────────────── Chip arrastável (palette) ─────────────────────────
+// ───────────────────────── Chip arrastável (palette → canvas, HTML5 DnD) ─────────────────────────
 function PaletteAgent({ agent, onEdit }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `palette-${agent.id}`, data: { agent } })
   return (
-    <div ref={setNodeRef} className="relative group">
+    <div className="relative group">
       <div
-        {...attributes}
-        {...listeners}
-        className={`transition ${isDragging ? 'opacity-30' : 'hover:shadow-sm cursor-grab active:cursor-grabbing'}`}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('application/agentId', agent.id)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        className="cursor-grab active:cursor-grabbing hover:shadow-sm transition"
       >
         <AgentCard agent={agent} />
       </div>
@@ -220,13 +220,33 @@ function PaletteAgent({ agent, onEdit }) {
   )
 }
 
-// ───────────────────────── Nó do agente no canvas ─────────────────────────
-function CanvasAgent({ agent, highlight, onEdit, onDetach }) {
+// ───────────────────────── Nós customizados do React Flow ─────────────────────────
+function SupervisorNode() {
+  return (
+    <div className="w-56 rounded-2xl px-5 py-4 text-white shadow-lg bg-gradient-to-br from-teal-600 to-teal-700">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+          <Workflow className="w-[18px] h-[18px]" />
+        </div>
+        <div>
+          <p className="text-sm font-bold leading-tight">Supervisor</p>
+          <p className="text-[11px] text-teal-100">Roteador inteligente</p>
+        </div>
+      </div>
+      <p className="text-[11px] text-teal-100/90 mt-2 leading-snug">
+        Decide qual agente responde com base no que cada um faz.
+      </p>
+      <Handle type="source" position={Position.Bottom} className="!bg-teal-300 !w-2.5 !h-2.5 !border-2 !border-white" />
+    </div>
+  )
+}
+
+function AgentNode({ data }) {
+  const { agent, highlight, onEdit, onDetach } = data
   const isEntry = agent.isDefault
   return (
     <div
-      onClick={() => onEdit(agent)}
-      className={`group relative w-52 bg-white rounded-xl border-2 px-4 py-3 cursor-pointer transition shadow-sm hover:shadow-md ${
+      className={`group relative w-56 bg-white rounded-xl border-2 px-4 py-3 transition shadow-sm hover:shadow-md ${
         highlight
           ? 'border-teal-500 ring-4 ring-teal-100'
           : isEntry
@@ -234,19 +254,33 @@ function CanvasAgent({ agent, highlight, onEdit, onDetach }) {
             : 'border-gray-200 hover:border-teal-300'
       }`}
     >
+      <Handle type="target" position={Position.Top} className="!bg-gray-300 !w-2.5 !h-2.5 !border-2 !border-white" />
+
       {/* Badge "Entrada" no agente de entrada */}
       {isEntry && (
-        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-amber-400 text-white text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-amber-400 text-white text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm z-10">
           <Star className="w-2.5 h-2.5" /> ENTRADA
         </div>
       )}
+
+      {/* Editar (aparece no hover) */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(agent) }}
+        className="nodrag absolute -top-2 -left-2 w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-400 opacity-0 group-hover:opacity-100 hover:text-teal-600 hover:border-teal-200 transition"
+        title="Editar agente"
+      >
+        <Pencil className="w-3 h-3" />
+      </button>
+
+      {/* Desconectar */}
       <button
         onClick={(e) => { e.stopPropagation(); onDetach(agent) }}
-        className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:border-red-200 transition"
+        className="nodrag absolute -top-2 -right-2 w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:border-red-200 transition"
         title="Desconectar do supervisor"
       >
         <X className="w-3 h-3" />
       </button>
+
       <div className="flex items-start gap-1.5 mb-1">
         <Bot className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isEntry ? 'text-amber-500' : 'text-teal-600'}`} />
         <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">{agent.name}</p>
@@ -256,72 +290,113 @@ function CanvasAgent({ agent, highlight, onEdit, onDetach }) {
   )
 }
 
-// ───────────────────────── Zona do canvas (droppable) ─────────────────────────
-function Canvas({ connected, highlightId, onEdit, onDetach }) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'canvas' })
-  return (
-    <div
-      ref={setNodeRef}
-      className={`relative flex-1 rounded-xl border-2 border-dashed transition overflow-auto ${
-        isOver ? 'border-teal-400 bg-teal-50/40' : 'border-gray-200 bg-gray-50/60'
-      }`}
-    >
-      <div className="min-h-full flex flex-col items-center py-10 px-6">
-        {/* Supervisor */}
-        <div className="relative w-56 rounded-2xl px-5 py-4 text-white shadow-lg bg-gradient-to-br from-teal-600 to-teal-700">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <Workflow className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <p className="text-sm font-bold leading-tight">Supervisor</p>
-              <p className="text-[11px] text-teal-100">Roteador inteligente</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-teal-100/90 mt-2 leading-snug">
-            Decide qual agente responde com base no que cada um faz.
-          </p>
-        </div>
+const nodeTypes = { supervisor: SupervisorNode, agent: AgentNode }
 
-        {connected.length === 0 ? (
-          <>
-            <div className="h-10 w-px bg-gray-300 my-1" />
-            <div className="text-center text-gray-400 mt-4">
+// Layout automático: supervisor no topo, agentes numa fileira embaixo (centralizada).
+const NODE_W = 224
+const NODE_GAP = 56
+const ROW_Y = 220
+
+function buildFlow(connected, highlightId, handlers) {
+  const nodes = [{
+    id: 'supervisor',
+    type: 'supervisor',
+    position: { x: -NODE_W / 2, y: 0 },
+    data: {},
+    draggable: false,
+    selectable: false,
+  }]
+  const edges = []
+
+  const total = connected.length * NODE_W + Math.max(0, connected.length - 1) * NODE_GAP
+  const startX = -(total / 2) + NODE_W / 2
+
+  connected.forEach((a, i) => {
+    nodes.push({
+      id: a.id,
+      type: 'agent',
+      position: { x: startX + i * (NODE_W + NODE_GAP), y: ROW_Y },
+      data: { agent: a, highlight: highlightId === a.id, ...handlers },
+    })
+    edges.push({
+      id: `e-sup-${a.id}`,
+      source: 'supervisor',
+      target: a.id,
+      type: 'smoothstep',
+      style: { stroke: a.isDefault ? '#f59e0b' : '#cbd5e1', strokeWidth: 2 },
+    })
+  })
+
+  return { nodes, edges }
+}
+
+// ───────────────────────── Canvas com React Flow ─────────────────────────
+function FlowCanvas({ connected, highlightId, onEditAgent, onDetachAgent, onConnectAgent }) {
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const { fitView } = useReactFlow()
+
+  // Handlers estáveis pra não recriar nós à toa.
+  const handlers = useMemo(() => ({ onEdit: onEditAgent, onDetach: onDetachAgent }), [onEditAgent, onDetachAgent])
+
+  // Assinatura do conjunto de agentes: só rebalanceia o layout quando muda a
+  // composição (add/remove/reorder/entrada/nome/descrição) ou o highlight — NÃO
+  // quando o usuário só arrasta um nó (posição não entra na assinatura).
+  const signature = useMemo(
+    () => connected.map((a) => `${a.id}:${a.sortOrder}:${a.isDefault}:${a.name}:${a.description}`).join('|') + `#${highlightId ?? ''}`,
+    [connected, highlightId],
+  )
+
+  useEffect(() => {
+    const { nodes: n, edges: e } = buildFlow(connected, highlightId, handlers)
+    setNodes(n)
+    setEdges(e)
+    // Recentraliza suavemente após montar/rebalancear.
+    const t = setTimeout(() => fitView({ padding: 0.2, duration: 300, maxZoom: 1 }), 60)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature])
+
+  const onDragOver = useCallback((e) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault()
+    const id = e.dataTransfer.getData('application/agentId')
+    if (id) onConnectAgent(id)
+  }, [onConnectAgent])
+
+  return (
+    <div className="flex-1 rounded-xl border border-gray-200 overflow-hidden bg-gray-50/60" onDragOver={onDragOver} onDrop={onDrop}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        proOptions={{ hideAttribution: true }}
+        fitView
+        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        minZoom={0.3}
+        maxZoom={1.5}
+        nodesConnectable={false}
+        deleteKeyCode={null}
+        className="bg-gray-50/60"
+      >
+        <Background color="#e2e8f0" gap={20} />
+        <Controls showInteractive={false} className="!shadow-sm" />
+        {connected.length === 0 && (
+          <Panel position="top-center" className="!top-40">
+            <div className="text-center text-gray-400 pointer-events-none">
               <ArrowRight className="w-5 h-5 mx-auto mb-2 rotate-90 opacity-40" />
-              <p className="text-sm">Arraste um agente pra cá</p>
+              <p className="text-sm">Arraste um agente da lista pra cá</p>
               <p className="text-xs mt-0.5">pra conectá-lo ao supervisor</p>
             </div>
-          </>
-        ) : (
-          <>
-            {/* linha vertical do supervisor */}
-            <div className="h-8 w-px bg-gray-300" />
-            {/* barramento horizontal + droplines — 1 linha só (sem wrap). Cards têm largura fixa
-                (w-52=208px) então o barramento pode ser calculado exatamente do centro do 1º ao
-                centro do último, sem "sobrar" linha órfã. Sem overflow próprio aqui — se não
-                couber, quem rola é o Canvas inteiro (overflow-auto lá em cima), então a barra de
-                scroll aparece no rodapé do painel, não flutuando embaixo da fileira de cards. */}
-            <div className="relative inline-block">
-              {connected.length > 1 && (
-                <div className="absolute top-0 h-px bg-gray-300" style={{ left: 104, right: 104 }} />
-              )}
-              <div className="flex items-start gap-6 pt-0 w-max">
-                {connected.map((a) => (
-                  <div key={a.id} className="flex flex-col items-center flex-shrink-0 w-52">
-                    <div className={`h-8 w-px ${a.isDefault ? 'bg-amber-400' : 'bg-gray-300'}`} />
-                    <CanvasAgent
-                      agent={a}
-                      highlight={highlightId === a.id}
-                      onEdit={onEdit}
-                      onDetach={onDetach}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
+          </Panel>
         )}
-      </div>
+      </ReactFlow>
     </div>
   )
 }
@@ -541,10 +616,7 @@ export default function AgentBuilderPage() {
   const [editing, setEditing] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [testOpen, setTestOpen] = useState(false)
-  const [draggingAgent, setDraggingAgent] = useState(null)
-  const justConnected = useRef(null)
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const [highlightId, setHighlightId] = useState(null)
 
   useEffect(() => {
     authFetch(`${API_URL}/agents`)
@@ -565,7 +637,7 @@ export default function AgentBuilderPage() {
     })
   }
 
-  async function patchAgent(id, body) {
+  const patchAgent = useCallback(async (id, body) => {
     const res = await authFetch(`${API_URL}/agents/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -574,26 +646,20 @@ export default function AgentBuilderPage() {
     const data = await res.json()
     upsert(data)
     return data
-  }
+  }, [])
 
-  function handleDragStart(event) {
-    const agent = event.active.data?.current?.agent
-    if (agent) setDraggingAgent(agent)
-  }
-
-  function handleDragEnd(event) {
-    setDraggingAgent(null)
-    const { active, over } = event
-    if (!over) return
-    if (over.id === 'canvas' && String(active.id).startsWith('palette-')) {
-      const agent = active.data?.current?.agent
-      if (agent && !agent.isActive) {
-        justConnected.current = agent.id
-        setTimeout(() => { justConnected.current = null }, 1200)
-        patchAgent(agent.id, { isActive: true })
-      }
-    }
-  }
+  const onEditAgent = useCallback((agent) => { setEditing(agent); setModalOpen(true) }, [])
+  const onDetachAgent = useCallback((agent) => patchAgent(agent.id, { isActive: false }), [patchAgent])
+  const onConnectAgent = useCallback((id) => {
+    setAgents((prev) => {
+      const agent = prev.find((a) => a.id === id)
+      if (!agent || agent.isActive) return prev
+      setHighlightId(id)
+      setTimeout(() => setHighlightId(null), 1400)
+      patchAgent(id, { isActive: true })
+      return prev
+    })
+  }, [patchAgent])
 
   async function handleDelete(id) {
     await authFetch(`${API_URL}/agents/${id}`, { method: 'DELETE' })
@@ -631,56 +697,52 @@ export default function AgentBuilderPage() {
           <Loader2 className="w-6 h-6 text-teal-600 animate-spin" />
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 flex gap-4 p-4 min-h-0">
-            {/* Palette */}
-            <aside className="w-64 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-sm font-semibold text-gray-800">Agentes disponíveis</p>
-                <p className="text-xs text-gray-400 mt-0.5">Arraste para o canvas pra conectar</p>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {detached.length === 0 ? (
-                  <div className="text-center text-gray-300 py-8">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-xs">Todos os agentes estão conectados</p>
+        <div className="flex-1 flex gap-4 p-4 min-h-0">
+          {/* Palette */}
+          <aside className="w-64 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <p className="text-sm font-semibold text-gray-800">Agentes disponíveis</p>
+              <p className="text-xs text-gray-400 mt-0.5">Arraste para o canvas pra conectar</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {detached.length === 0 ? (
+                <div className="text-center text-gray-300 py-8">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-xs">Todos os agentes estão conectados</p>
+                </div>
+              ) : (
+                detached.map((a) => (
+                  <div key={a.id} className="relative group">
+                    <PaletteAgent agent={a} onEdit={(ag) => { setEditing(ag); setModalOpen(true) }} />
+                    <button
+                      onClick={() => setConfirmDelete(a)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-gray-200 rounded-full items-center justify-center text-gray-300 hidden group-hover:flex hover:text-red-600 transition"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                ) : (
-                  detached.map((a) => (
-                    <div key={a.id} className="relative group">
-                      <PaletteAgent agent={a} onEdit={(ag) => { setEditing(ag); setModalOpen(true) }} />
-                      <button
-                        onClick={() => setConfirmDelete(a)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-gray-200 rounded-full items-center justify-center text-gray-300 hidden group-hover:flex hover:text-red-600 transition"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              <button
-                onClick={() => { setEditing(null); setModalOpen(true) }}
-                className="m-3 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-teal-700 border border-dashed border-teal-300 rounded-lg hover:bg-teal-50 transition"
-              >
-                <Plus className="w-4 h-4" /> Novo agente
-              </button>
-            </aside>
+                ))
+              )}
+            </div>
+            <button
+              onClick={() => { setEditing(null); setModalOpen(true) }}
+              className="m-3 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-teal-700 border border-dashed border-teal-300 rounded-lg hover:bg-teal-50 transition"
+            >
+              <Plus className="w-4 h-4" /> Novo agente
+            </button>
+          </aside>
 
-            {/* Canvas */}
-            <Canvas
+          {/* Canvas React Flow */}
+          <ReactFlowProvider>
+            <FlowCanvas
               connected={connected}
-              highlightId={justConnected.current}
-              onEdit={(a) => { setEditing(a); setModalOpen(true) }}
-              onDetach={(a) => patchAgent(a.id, { isActive: false })}
+              highlightId={highlightId}
+              onEditAgent={onEditAgent}
+              onDetachAgent={onDetachAgent}
+              onConnectAgent={onConnectAgent}
             />
-          </div>
-
-          {/* Card flutuante que segue o cursor durante o arraste */}
-          <DragOverlay dropAnimation={{ duration: 150, easing: 'ease-out' }}>
-            {draggingAgent ? <AgentCard agent={draggingAgent} floating /> : null}
-          </DragOverlay>
-        </DndContext>
+          </ReactFlowProvider>
+        </div>
       )}
 
       {modalOpen && (
