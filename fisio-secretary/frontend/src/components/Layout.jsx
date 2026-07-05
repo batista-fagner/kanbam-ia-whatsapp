@@ -9,10 +9,11 @@ export default function Layout({ onLogout }) {
   const location = useLocation()
   const { user } = useAuth()
   const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
-  // Multi-agente em rollout controlado: visível em localhost e para a conta beta.
+  // Multi-agente em rollout controlado: visível em localhost e para contas beta.
   // Todos os outros clientes seguem no monólito (o backend também só ativa via
-  // multiAgentEnabled por tenant, default false).
-  const canSeeMultiAgent = isLocalDev || user?.email === 'bfagner@hotmail.com.br'
+  // multiAgentEnabled por tenant, default false — aqui é só a aba do simulador).
+  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com']
+  const canSeeMultiAgent = isLocalDev || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },

@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AiService } from '../ai/ai.service';
@@ -6,9 +7,9 @@ import { WhatsappConfigService } from './whatsapp-config.service';
 import { MediaService } from '../media/media.service';
 import { Lead } from '../common/entities/lead.entity';
 
-// Usuário autorizado a testar o monólito (contador de token, sem WhatsApp) — mesmo
-// rollout gated do multi-agente. Ver canSeeMultiAgent no frontend.
-const ALLOWED_EMAIL = 'bfagner@hotmail.com.br';
+// Contas autorizadas a testar o monólito (contador de token, sem WhatsApp) — mesmo
+// rollout gated do multi-agente. Ver MULTI_AGENT_BETA_EMAILS no frontend.
+const ALLOWED_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com'];
 
 // Simulação de conversa com o fluxo monólito (processMessageMegaHair), sem persistir
 // Lead nem passar pelo WhatsApp — só pra medir consumo de token em tempo real.
@@ -19,6 +20,7 @@ export class MonolithTestController {
     private readonly aiService: AiService,
     private readonly whatsappConfigService: WhatsappConfigService,
     private readonly mediaService: MediaService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post('chat')
@@ -26,7 +28,10 @@ export class MonolithTestController {
     @Body() body: { message: string; aiContext?: any[] },
     @CurrentUser() user: { tenantId: string; email: string },
   ) {
-    if (user.email !== ALLOWED_EMAIL) {
+    // Ambiente local (DATABASE_SSL=false no .env.development) libera qualquer conta —
+    // mesma regra do canSeeMultiAgent/canSeeMonolithTest no frontend.
+    const isLocalDev = this.config.get('DATABASE_SSL') === 'false';
+    if (!isLocalDev && !ALLOWED_EMAILS.includes(user.email)) {
       throw new ForbiddenException('Teste do monólito disponível apenas para esta conta.');
     }
     if (!body?.message?.trim()) throw new BadRequestException('Mensagem é obrigatória');

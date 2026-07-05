@@ -411,10 +411,11 @@ function MonolithTestCard() {
 
 export default function SettingsPage() {
   const { user } = useAuth()
-  // Multi-agente em rollout controlado: localhost + conta beta (resto segue no monólito).
+  // Multi-agente em rollout controlado: localhost + contas beta (resto segue no monólito).
+  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com']
   const canSeeMultiAgent = import.meta.env.VITE_API_URL?.includes('localhost')
     || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
-    || user?.email === 'bfagner@hotmail.com.br'
+    || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
   const [bootstrapping, setBootstrapping] = useState(true)
   const [instanceConfig, setInstanceConfig] = useState(null) // null = não tem; objeto = tem
   const [instanceStatus, setInstanceStatus] = useState(null)
