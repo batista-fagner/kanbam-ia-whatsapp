@@ -77,6 +77,7 @@ export class InstanceController {
       appointmentReminder?: { enabled?: boolean; message?: string } | null;
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;
+      activationKeyword?: string | null;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

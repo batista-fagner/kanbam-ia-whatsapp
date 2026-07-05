@@ -67,6 +67,7 @@ export class EvolutionController {
 
     // Mensagem enviada pelo próprio operador via WhatsApp (celular/Web), não pela API:
     // - a palavra configurada em deactivationKeyword (padrão 'opa') desativa a IA daquele lead
+    // - a palavra configurada em activationKeyword (padrão 'volta') reativa a IA daquele lead
     // - qualquer outra mensagem é salva como conversa do operador (sincroniza com o card)
     if (message.fromMe && !message.wasSentByApi) {
       const operatorText = (message.text ?? '').trim();
@@ -84,10 +85,14 @@ export class EvolutionController {
 
         const tenantConfig = await this.whatsappConfigService.getByTenant(tenantId);
         const deactivationKeyword = (tenantConfig?.deactivationKeyword || 'opa').toLowerCase();
+        const activationKeyword = (tenantConfig?.activationKeyword || 'volta').toLowerCase();
 
         if (operatorText.toLowerCase() === deactivationKeyword) {
           await this.leadsService.toggleAi(lead.id, false);
           this.logger.log(`🛑 [DEACTIVATE] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada (palavra: "${deactivationKeyword}")`);
+        } else if (operatorText.toLowerCase() === activationKeyword) {
+          await this.leadsService.toggleAi(lead.id, true);
+          this.logger.log(`✅ [ACTIVATE] IA reativada para ${phone} via WhatsApp (palavra: "${activationKeyword}")`);
         } else if (operatorText) {
           await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', operatorText, messageId);
           this.logger.log(`📥 [OP-WHATSAPP] ${phone}: ${operatorText.substring(0, 40)}`);

@@ -224,6 +224,65 @@ function DeactivationKeywordCard({ config, onSaved }) {
   )
 }
 
+function ActivationKeywordCard({ config, onSaved }) {
+  const [keyword, setKeyword] = useState(config?.activationKeyword ?? 'volta')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    const trimmed = keyword.trim()
+    if (!trimmed) return
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activationKeyword: trimmed }),
+      })
+      setKeyword(trimmed)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100">
+          <RotateCcw className="w-4 h-4 text-teal-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Palavra para reativar a IA</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Quando você digitar essa palavra pelo próprio WhatsApp (celular ou WhatsApp Web) em uma conversa, a IA volta a responder automaticamente para aquele lead.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          maxLength={40}
+          placeholder="volta"
+          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+        <button
+          onClick={save}
+          disabled={saving || !keyword.trim()}
+          className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 transition"
+        >
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
 function MonolithTestPanel({ open, onClose }) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([]) // { type: 'user'|'agent'|'error', text, meta }
@@ -1336,6 +1395,11 @@ export default function SettingsPage() {
       {/* Card palavra de desativação da IA */}
       {!bootstrapping && instanceConfig && (
         <DeactivationKeywordCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {/* Card palavra de ativação da IA */}
+      {!bootstrapping && instanceConfig && (
+        <ActivationKeywordCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
       {/* Card de prompt customizado */}

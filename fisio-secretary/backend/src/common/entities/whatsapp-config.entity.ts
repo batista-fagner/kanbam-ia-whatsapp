@@ -59,6 +59,10 @@ export class WhatsappConfig {
   @Column({ name: 'deactivation_keyword', type: 'varchar', default: 'opa' })
   deactivationKeyword: string;
 
+  // Palavra que o operador digita no WhatsApp (fromMe) para reativar a IA daquele lead. Padrão: 'volta'.
+  @Column({ name: 'activation_keyword', type: 'varchar', default: 'volta' })
+  activationKeyword: string;
+
   // --- Gestão do cliente (D1) ---
   // Nome do cliente/negócio para exibir no painel admin
   @Column({ name: 'display_name', type: 'varchar', nullable: true })
