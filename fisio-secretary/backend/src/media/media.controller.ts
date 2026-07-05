@@ -1,11 +1,27 @@
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
-  UploadedFile, UseInterceptors, BadRequestException, UseGuards,
+  UploadedFile, UseInterceptors, BadRequestException, UseGuards, UseFilters,
+  PayloadTooLargeException, ExceptionFilter, Catch, ArgumentsHost, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MediaService } from './media.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+
+const MAX_FILE_SIZE_MB = 50;
+
+// Multer rejeita arquivo grande antes do controller rodar — o erro chega em inglês
+// ("File too large"), por isso captura aqui e devolve uma mensagem em pt clara.
+@Catch(PayloadTooLargeException)
+class FileTooLargeFilter implements ExceptionFilter {
+  catch(_exception: PayloadTooLargeException, host: ArgumentsHost) {
+    const response = host.switchToHttp().getResponse();
+    response.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+      statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+      message: `Arquivo muito grande. O tamanho máximo permitido é ${MAX_FILE_SIZE_MB}MB.`,
+    });
+  }
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('media')
@@ -18,7 +34,8 @@ export class MediaController {
   }
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseFilters(FileTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 } }))
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body('name') name: string,

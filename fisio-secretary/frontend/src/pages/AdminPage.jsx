@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2 } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient } from '../services/api'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -269,7 +269,18 @@ export default function AdminPage() {
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-600"><Wifi className="w-3 h-3" /> conectado</span>
                     : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><WifiOff className="w-3 h-3" /> desconectado</span>}
                   {!c.isActive && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">suspenso</span>}
-                  {c.planStatus === 'past_due' && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">PIX em atraso</span>}
+                  {c.planStatus === 'past_due' && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 pl-2 pr-1 py-0.5 rounded-full">
+                      PIX em atraso
+                      <button
+                        onClick={() => { if (confirm('Remover a tag "PIX em atraso" deste cliente?')) clearClientPastDue(c.id).then(load) }}
+                        title="Remover tag"
+                        className="hover:bg-amber-200 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
                   {c.paymentMethod && c.paymentMethod !== 'manual' && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{c.paymentMethod === 'card' ? '💳 cartão' : '⚡ pix'}</span>}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">

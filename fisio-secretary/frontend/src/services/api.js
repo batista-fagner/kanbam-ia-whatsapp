@@ -201,6 +201,9 @@ export const updateClientBilling = (id, payload) => // payload: { nextPaymentDat
     body: JSON.stringify(payload),
   }).then(json)
 
+export const clearClientPastDue = (id) =>
+  authFetch(`${BASE}/admin/clients/${id}/clear-past-due`, { method: 'PATCH' }).then(json)
+
 export const deleteClient = (id) =>
   authFetch(`${BASE}/admin/clients/${id}`, { method: 'DELETE' }).then(json)
 

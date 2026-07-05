@@ -56,6 +56,14 @@ export class WhatsappConfigService {
     return this.repo.save(record);
   }
 
+  // Admin remove manualmente a tag "PIX em atraso" (ex: cliente pagou por fora / erro no gateway)
+  async clearPastDue(tenantId: string): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.planStatus = 'active';
+    return this.repo.save(record);
+  }
+
   async updateBilling(tenantId: string, fields: { nextPaymentDate?: string | null; billingPhone?: string | null; billingDay?: number | null }): Promise<WhatsappConfig | null> {
     const record = await this.getByTenant(tenantId);
     if (!record) return null;

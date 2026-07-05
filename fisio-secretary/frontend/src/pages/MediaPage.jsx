@@ -13,6 +13,8 @@ function normalizeReelInput(input) {
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const MAX_FILE_SIZE_MB = 50
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 function formatSize(bytes) {
   if (!bytes) return ''
@@ -63,12 +65,21 @@ export default function MediaPage() {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) setSelectedFile(file)
+    if (file) pickFile(file)
   }
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
-    if (file) setSelectedFile(file)
+    if (file) pickFile(file)
+  }
+
+  const pickFile = (file) => {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`Arquivo muito grande. O tamanho máximo permitido é ${MAX_FILE_SIZE_MB}MB.`)
+      return
+    }
+    setError(null)
+    setSelectedFile(file)
   }
 
   const handleUpload = async () => {

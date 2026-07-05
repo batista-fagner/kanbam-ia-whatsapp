@@ -123,6 +123,14 @@ export class AdminController {
     return { ok: true, usersUpdated: users.length };
   }
 
+  // Remove manualmente a tag "PIX em atraso" (não mexe em isActive/suspensão)
+  @Patch('clients/:id/clear-past-due')
+  async clearPastDue(@Param('id') id: string) {
+    const updated = await this.whatsappConfigService.clearPastDue(id);
+    if (!updated) throw new BadRequestException('Cliente não encontrado');
+    return { ok: true };
+  }
+
   // Atualiza dados de cobrança (data de vencimento + telefone de contato)
   @Patch('clients/:id/billing')
   async updateBilling(@Param('id') id: string, @Body() body: { nextPaymentDate?: string | null; billingPhone?: string | null }) {
