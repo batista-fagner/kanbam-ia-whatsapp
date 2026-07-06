@@ -636,6 +636,10 @@ function TestPanel({ open, onClose, connected }) {
 // ───────────────────────── Página ─────────────────────────
 export default function AgentBuilderPage() {
   const { user } = useAuth()
+  // Cliente real em teste do multi-agente: vê o construtor, mas o painel de
+  // simulação/chat fica reservado só pra contas internas de teste.
+  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com']
+  const canSeeTestPanel = !HIDE_TEST_PANEL_EMAILS.includes(user?.email)
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -704,12 +708,14 @@ export default function AgentBuilderPage() {
           <span className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">{connected.length} conectados</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTestOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 transition"
-          >
-            <Play className="w-4 h-4" /> Testar
-          </button>
+          {canSeeTestPanel && (
+            <button
+              onClick={() => setTestOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 transition"
+            >
+              <Play className="w-4 h-4" /> Testar
+            </button>
+          )}
           <button
             onClick={() => { setEditing(null); setModalOpen(true) }}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition"
@@ -781,7 +787,7 @@ export default function AgentBuilderPage() {
         />
       )}
 
-      <TestPanel open={testOpen} onClose={() => setTestOpen(false)} connected={connected} />
+      {canSeeTestPanel && <TestPanel open={testOpen} onClose={() => setTestOpen(false)} connected={connected} />}
 
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
