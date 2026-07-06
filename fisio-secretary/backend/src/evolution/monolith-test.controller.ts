@@ -9,7 +9,7 @@ import { Lead } from '../common/entities/lead.entity';
 
 // Contas autorizadas a testar o monólito (contador de token, sem WhatsApp) — mesmo
 // rollout gated do multi-agente. Ver MULTI_AGENT_BETA_EMAILS no frontend.
-const ALLOWED_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com'];
+const ALLOWED_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com'];
 
 // Simulação de conversa com o fluxo monólito (processMessageMegaHair), sem persistir
 // Lead nem passar pelo WhatsApp — só pra medir consumo de token em tempo real.

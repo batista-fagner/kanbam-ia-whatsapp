@@ -471,7 +471,7 @@ Escolha o melhor agente:`;
       // Em produção (tenantId presente) o custo do roteador entra no painel de tokens.
       if (opts?.tenantId) {
         const u = (resp as any).usage;
-        void this._trackUsage(opts.tenantId, u?.prompt_tokens ?? 0, u?.prompt_tokens_details?.cached_tokens ?? 0, u?.completion_tokens ?? 0);
+        void this._trackUsage(opts.tenantId, u?.prompt_tokens ?? 0, u?.prompt_tokens_details?.cached_tokens ?? 0, u?.completion_tokens ?? 0, 'multi_agent');
       }
       const raw = (resp.choices[0].message.content ?? '').trim();
       const parsed = JSON.parse(raw);
@@ -542,21 +542,21 @@ Escolha o melhor agente:`;
     throw lastErr ?? new Error('Todos os provedores LLM falharam');
   }
 
-  private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number): Promise<void> {
+  private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number, engine: 'monolith' | 'multi_agent' = 'monolith'): Promise<void> {
     try {
       // Data no fuso de Brasília (en-CA → 'YYYY-MM-DD'). UTC adiantaria o dia à noite.
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
       // Custo: input não-cacheado $0.30/1M, cacheado $0.03/1M, output $2.50/1M
       const cost = (inputTokens - cachedTokens) * 0.0000003 + cachedTokens * 0.00000003 + outputTokens * 0.0000025;
       await this.tokenUsageRepo.query(`
-        INSERT INTO token_usage (tenant_id, date, input_tokens, cached_tokens, output_tokens, cost_usd)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (tenant_id, date) DO UPDATE SET
+        INSERT INTO token_usage (tenant_id, date, engine, input_tokens, cached_tokens, output_tokens, cost_usd)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tenant_id, date, engine) DO UPDATE SET
           input_tokens  = token_usage.input_tokens  + EXCLUDED.input_tokens,
           cached_tokens = token_usage.cached_tokens + EXCLUDED.cached_tokens,
           output_tokens = token_usage.output_tokens + EXCLUDED.output_tokens,
           cost_usd      = token_usage.cost_usd      + EXCLUDED.cost_usd
-      `, [tenantId, today, inputTokens, cachedTokens, outputTokens, cost]);
+      `, [tenantId, today, engine, inputTokens, cachedTokens, outputTokens, cost]);
     } catch (err) {
       this.logger.error(`[USAGE] Falha ao salvar token usage: ${err.message}`);
     }
@@ -789,7 +789,7 @@ REGRAS:
     try {
       // callLLM faz o failover entre provedores automaticamente.
       const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
-      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
+      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'monolith');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
       return parsed;
@@ -880,7 +880,7 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
 
     try {
       const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride);
-      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
+      void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'multi_agent');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
       return parsed;

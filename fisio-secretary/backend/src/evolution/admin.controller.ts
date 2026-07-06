@@ -183,7 +183,9 @@ export class AdminController {
         COALESCE(SUM(cached_tokens), 0)::int AS total_cached,
         COALESCE(SUM(output_tokens), 0)::int AS total_output,
         COALESCE(SUM(cost_usd), 0)           AS total_cost,
-        COUNT(DISTINCT tenant_id)::int        AS active_tenants
+        COUNT(DISTINCT tenant_id)::int        AS active_tenants,
+        COALESCE(SUM(cost_usd) FILTER (WHERE engine = 'monolith'), 0)    AS cost_monolith,
+        COALESCE(SUM(cost_usd) FILTER (WHERE engine = 'multi_agent'), 0) AS cost_multi_agent
       FROM token_usage WHERE date = $1
     `, [day]);
 
@@ -217,7 +219,12 @@ export class AdminController {
         COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.output_tokens ELSE 0 END), 0)::int AS output_today,
         COALESCE(SUM(CASE WHEN tu.date = $1 THEN tu.cost_usd      ELSE 0 END), 0)      AS cost_today,
         COALESCE(SUM(CASE WHEN tu.date >= ($1::date - 6) AND tu.date <= $1 THEN tu.cost_usd ELSE 0 END), 0) AS cost_7d,
-        COUNT(DISTINCT tu.date) FILTER (WHERE tu.date >= ($1::date - 6) AND tu.date <= $1) AS active_days_7d
+        COUNT(DISTINCT tu.date) FILTER (WHERE tu.date >= ($1::date - 6) AND tu.date <= $1) AS active_days_7d,
+        -- Quebra por motor (monólito x multi-agente) — pra acompanhar a migração gradual.
+        COALESCE(SUM(CASE WHEN tu.date = $1 AND tu.engine = 'monolith'    THEN tu.cost_usd ELSE 0 END), 0) AS cost_today_monolith,
+        COALESCE(SUM(CASE WHEN tu.date = $1 AND tu.engine = 'multi_agent' THEN tu.cost_usd ELSE 0 END), 0) AS cost_today_multi_agent,
+        COALESCE(SUM(CASE WHEN tu.date = $1 AND tu.engine = 'monolith'    THEN tu.input_tokens ELSE 0 END), 0)::int AS input_today_monolith,
+        COALESCE(SUM(CASE WHEN tu.date = $1 AND tu.engine = 'multi_agent' THEN tu.input_tokens ELSE 0 END), 0)::int AS input_today_multi_agent
       FROM whatsapp_config wc
       LEFT JOIN token_usage tu ON tu.tenant_id = wc.id
       GROUP BY wc.id, wc.display_name, wc.profile_name
@@ -285,7 +292,9 @@ export class AdminController {
         SUM(input_tokens)::int  AS total_input,
         SUM(cached_tokens)::int AS total_cached,
         SUM(output_tokens)::int AS total_output,
-        SUM(cost_usd)           AS total_cost
+        SUM(cost_usd)           AS total_cost,
+        COALESCE(SUM(cost_usd) FILTER (WHERE engine = 'monolith'), 0)    AS cost_monolith,
+        COALESCE(SUM(cost_usd) FILTER (WHERE engine = 'multi_agent'), 0) AS cost_multi_agent
       FROM token_usage
       WHERE date >= CURRENT_DATE - INTERVAL '14 days'
       GROUP BY date

@@ -183,7 +183,9 @@ export default function MonitoringPage() {
           icon={DollarSign}
           label={`Custo ${periodLabel}`}
           value={fmtUsdShort(overview?.total_cost)}
-          sub="USD"
+          sub={Number(overview?.cost_multi_agent) > 0
+            ? `🤖 ${fmtUsdShort(overview?.cost_multi_agent)} · monólito ${fmtUsdShort(overview?.cost_monolith)}`
+            : 'USD'}
           color="bg-emerald-500"
         />
         <OverviewCard
@@ -270,7 +272,16 @@ export default function MonitoringPage() {
                   <td className="px-4 py-3 text-center">
                     <CacheIndicator pct={t.cache_pct} />
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{fmtUsd(t.cost_today)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">
+                    {fmtUsd(t.cost_today)}
+                    {Number(t.cost_today_multi_agent) > 0 && (
+                      <div className="text-[10px] text-gray-400 font-normal mt-0.5">
+                        <span className="text-purple-600">🤖 {fmtUsd(t.cost_today_multi_agent)}</span>
+                        {' · '}
+                        <span>monólito {fmtUsd(t.cost_today_monolith)}</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <span className={`font-semibold ${Number(t.projected_monthly) > 5 ? 'text-red-600' : Number(t.projected_monthly) > 1 ? 'text-yellow-600' : 'text-green-600'}`}>
                       {fmtUsdShort(t.projected_monthly)}

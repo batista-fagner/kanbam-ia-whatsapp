@@ -638,7 +638,7 @@ export default function AgentBuilderPage() {
   const { user } = useAuth()
   // Cliente real em teste do multi-agente: vê o construtor, mas o painel de
   // simulação/chat fica reservado só pra contas internas de teste.
-  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com']
+  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com', 'claudia_temp@hotmail.com']
   const canSeeTestPanel = !HIDE_TEST_PANEL_EMAILS.includes(user?.email)
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
