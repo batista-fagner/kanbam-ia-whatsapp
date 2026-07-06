@@ -57,7 +57,7 @@ function AgentModal({ agent, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[94vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-teal-600" />
@@ -159,8 +159,8 @@ function AgentModal({ agent, onSave, onClose }) {
               <textarea
                 value={form.systemPrompt}
                 onChange={set('systemPrompt')}
-                rows={8}
-                className="w-full text-sm font-mono border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                rows={20}
+                className="w-full text-sm font-mono border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
                 placeholder="Como esse agente conversa, tom, regras específicas..."
                 spellCheck={false}
               />

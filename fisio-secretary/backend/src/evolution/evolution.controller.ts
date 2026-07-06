@@ -381,6 +381,73 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       return;
     }
 
+    // Ações de calendário — roda ANTES do shouldIgnore: a IA pode confirmar um
+    // agendamento e já encaminhar pro humano (shouldIgnore=true) na MESMA resposta
+    // (ex: "Combinado! ... Vou deixar encaminhado com o Alex"). Se ficasse depois do
+    // early-return do shouldIgnore, o agendamento nunca seria criado nesse caso.
+    const action = aiResponse.action;
+
+    // Agendamento interno (tabela appointments) — não usa Google Calendar
+    if (action === 'schedule' && aiResponse.appointmentDateTime) {
+      try {
+        const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
+        // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
+        const canceled = await this.appointmentsService.cancelActiveByLeadId(lead.id);
+        if (canceled > 0) {
+          this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
+        }
+        await this.appointmentsService.create({
+          tenantId,
+          leadId: lead.id,
+          clientName: lead.name || lead.phone,
+          clientPhone: lead.phone,
+          service: aiResponse.appointmentService ?? 'mega_hair',
+          value: aiResponse.appointmentValue ?? null,
+          status: 'agendado',
+          startDateTime,
+        });
+        await this.leadsService.update(lead.id, { appointmentAt: startDateTime });
+        this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
+      } catch (err: any) {
+        this.logger.error(`Erro ao criar agendamento MegaHair: ${err.message}`);
+      }
+    }
+
+    if (action === 'cancel' && lead.calendarEventId) {
+      await this.calendarService.cancelAppointment(lead.calendarEventId);
+      await this.leadsService.update(lead.id, { calendarEventId: null, calendarEventLink: null, appointmentAt: null });
+    }
+
+    if (action === 'reschedule' && aiResponse.appointmentDateTime) {
+      const newDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
+      const { available, conflictingEvent } = await this.calendarService.checkAvailability(newDateTime);
+
+      if (!available) {
+        this.logger.warn(`Reagendamento bloqueado — horário ocupado: ${newDateTime.toISOString()}`);
+        const busyReply = `Esse horário também está ocupado (${conflictingEvent}). Tem outro horário de preferência? 😊`;
+        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+        return;
+      }
+
+      if (lead.calendarEventId) {
+        await this.calendarService.updateAppointment(lead.calendarEventId, newDateTime);
+        await this.leadsService.update(lead.id, { appointmentAt: newDateTime });
+      } else {
+        const event = await this.calendarService.createAppointment({
+          leadName: lead.name || lead.phone,
+          phone: lead.phone,
+          symptoms: lead.symptoms || '',
+          startDateTime: newDateTime,
+        });
+        if (event) {
+          await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: newDateTime });
+        }
+      }
+    }
+
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
       this.logger.warn(`Lead ${phone} marcado para ignorar. Aplicando etiquetas e não respondendo mais.`);
@@ -468,70 +535,6 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         await this.leadsService.updateStage(lead.id, aiResponse.stage as any, 'ai');
       } else {
         this.logger.warn(`Stage regressivo bloqueado: ${lead.stage} → ${aiResponse.stage}`);
-      }
-    }
-
-    // Ações de calendário
-    const action = aiResponse.action;
-
-    // Agendamento interno (tabela appointments) — não usa Google Calendar
-    if (action === 'schedule' && aiResponse.appointmentDateTime) {
-      try {
-        const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
-        // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
-        const canceled = await this.appointmentsService.cancelActiveByLeadId(lead.id);
-        if (canceled > 0) {
-          this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
-        }
-        await this.appointmentsService.create({
-          tenantId,
-          leadId: lead.id,
-          clientName: lead.name || lead.phone,
-          clientPhone: lead.phone,
-          service: aiResponse.appointmentService ?? 'mega_hair',
-          value: aiResponse.appointmentValue ?? null,
-          status: 'agendado',
-          startDateTime,
-        });
-        await this.leadsService.update(lead.id, { appointmentAt: startDateTime });
-        this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
-      } catch (err: any) {
-        this.logger.error(`Erro ao criar agendamento MegaHair: ${err.message}`);
-      }
-    }
-
-    if (action === 'cancel' && lead.calendarEventId) {
-      await this.calendarService.cancelAppointment(lead.calendarEventId);
-      await this.leadsService.update(lead.id, { calendarEventId: null, calendarEventLink: null, appointmentAt: null });
-    }
-
-    if (action === 'reschedule' && aiResponse.appointmentDateTime) {
-      const newDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
-      const { available, conflictingEvent } = await this.calendarService.checkAvailability(newDateTime);
-
-      if (!available) {
-        this.logger.warn(`Reagendamento bloqueado — horário ocupado: ${newDateTime.toISOString()}`);
-        const busyReply = `Esse horário também está ocupado (${conflictingEvent}). Tem outro horário de preferência? 😊`;
-        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
-        const updatedLead = await this.leadsService.findOne(lead.id);
-        this.leadsGateway.emitLeadUpdated(updatedLead);
-        return;
-      }
-
-      if (lead.calendarEventId) {
-        await this.calendarService.updateAppointment(lead.calendarEventId, newDateTime);
-        await this.leadsService.update(lead.id, { appointmentAt: newDateTime });
-      } else {
-        const event = await this.calendarService.createAppointment({
-          leadName: lead.name || lead.phone,
-          phone: lead.phone,
-          symptoms: lead.symptoms || '',
-          startDateTime: newDateTime,
-        });
-        if (event) {
-          await this.leadsService.update(lead.id, { calendarEventId: event.id, calendarEventLink: event.htmlLink, appointmentAt: newDateTime });
-        }
       }
     }
 
