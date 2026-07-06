@@ -1449,14 +1449,61 @@ export default function SettingsPage() {
                   )
                 })()}
               </div>
-              <textarea
-                ref={promptRef}
-                value={customPromptMegaHair}
-                onChange={e => setCustomPromptMegaHair(e.target.value)}
-                className="w-full h-80 text-sm font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed"
-                placeholder="Digite o prompt da IA aqui..."
-                spellCheck={false}
-              />
+              <div className="relative">
+                {/* Overlay de highlight */}
+                {searchTerm && (() => {
+                  const positions = searchOccurrences(searchTerm, customPromptMegaHair)
+                  if (positions.length === 0) return null
+                  const parts = []
+                  let lastEnd = 0
+                  positions.forEach((start, idx) => {
+                    const end = start + searchTerm.length
+                    parts.push({
+                      type: 'text',
+                      content: customPromptMegaHair.slice(lastEnd, start),
+                      isHighlight: false,
+                    })
+                    parts.push({
+                      type: 'text',
+                      content: customPromptMegaHair.slice(start, end),
+                      isHighlight: idx === searchIndex,
+                    })
+                    lastEnd = end
+                  })
+                  parts.push({
+                    type: 'text',
+                    content: customPromptMegaHair.slice(lastEnd),
+                    isHighlight: false,
+                  })
+                  return (
+                    <pre
+                      className="absolute inset-0 w-full h-80 text-sm font-mono p-3 border border-transparent resize-none pointer-events-none whitespace-pre-wrap break-words overflow-hidden rounded-lg leading-relaxed"
+                      style={{ color: 'transparent' }}
+                    >
+                      {parts.map((part, idx) =>
+                        part.isHighlight ? (
+                          <span key={idx} className="bg-yellow-300">{part.content}</span>
+                        ) : (
+                          part.content
+                        )
+                      )}
+                    </pre>
+                  )
+                })()}
+                {/* Textarea sobre o overlay (fundo transparente pra deixar o highlight aparecer) */}
+                <textarea
+                  ref={promptRef}
+                  value={customPromptMegaHair}
+                  onChange={e => setCustomPromptMegaHair(e.target.value)}
+                  onScroll={e => {
+                    const preEl = promptRef.current?.parentElement?.querySelector('pre')
+                    if (preEl) preEl.scrollTop = e.target.scrollTop
+                  }}
+                  className="relative w-full h-80 text-sm font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed bg-transparent"
+                  placeholder="Digite o prompt da IA aqui..."
+                  spellCheck={false}
+                />
+              </div>
             </div>
 
             {/* Coluna direita: mídias disponíveis (clique para inserir o nome no prompt) */}
