@@ -490,7 +490,7 @@ Escolha o melhor agente:`;
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
-  private async callLLM(systemPrompt: string, messages: any[]): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
+  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
     if (this.providers.length === 0) {
       throw new Error('Nenhum provedor LLM configurado');
     }
@@ -498,10 +498,13 @@ Escolha o melhor agente:`;
     let lastErr: any;
     for (let i = 0; i < this.providers.length; i++) {
       const provider = this.providers[i];
+      // modelOverride: só pro simulador de teste do multi-agente (nunca usado no
+      // fluxo real de WhatsApp) — troca o modelo do provedor Gemini pra comparação.
+      const modelToUse = modelOverride && provider.isGemini ? modelOverride : provider.model;
       try {
         const response = await callWithRetry(
           () => provider.client.chat.completions.create({
-            model: provider.model,
+            model: modelToUse,
             max_tokens: 1024,
             response_format: { type: 'json_object' },
             ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
@@ -826,7 +829,7 @@ REGRAS:
     agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string; canSchedule?: boolean; canSendMedia?: boolean },
     availableMediaNames: string[],
     extraSystemContext?: string,
-    opts?: { disableHandoff?: boolean },
+    opts?: { disableHandoff?: boolean; modelOverride?: string },
   ): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
@@ -876,7 +879,7 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
     ];
 
     try {
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens);
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };

@@ -25,10 +25,10 @@ export class AgentsController {
 
   @Post('chat')
   chat(
-    @Body() body: { message: string; currentAgentId?: string | null; aiContext?: any[] },
+    @Body() body: { message: string; currentAgentId?: string | null; aiContext?: any[]; model?: string },
     @CurrentUser('tenantId') tenantId: string,
   ) {
-    return this.agentsService.chatTest(tenantId, body?.message, body?.currentAgentId ?? null, body?.aiContext ?? []);
+    return this.agentsService.chatTest(tenantId, body?.message, body?.currentAgentId ?? null, body?.aiContext ?? [], body?.model || undefined);
   }
 
   @Patch(':id')

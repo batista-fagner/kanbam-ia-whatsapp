@@ -422,6 +422,7 @@ function TestPanel({ open, onClose, connected }) {
   const [aiContext, setAiContext] = useState([])
   const [loading, setLoading] = useState(false)
   const [tokenTotals, setTokenTotals] = useState({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
+  const [model, setModel] = useState('')
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -447,7 +448,7 @@ function TestPanel({ open, onClose, connected }) {
       const res = await authFetch(`${API_URL}/agents/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, currentAgentId, aiContext }),
+        body: JSON.stringify({ message: text, currentAgentId, aiContext, model: model || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.message || 'erro')
@@ -503,6 +504,19 @@ function TestPanel({ open, onClose, connected }) {
               <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
+        </div>
+
+        {/* Modelo usado na simulação (só afeta este teste, nunca o WhatsApp real) */}
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2 text-xs">
+          <span className="text-gray-400">Modelo:</span>
+          <select
+            value={model}
+            onChange={(e) => { setModel(e.target.value); reset(); }}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            <option value="">Padrão (gemini-2.5-flash)</option>
+            <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+          </select>
         </div>
 
         {/* Agente atual */}
