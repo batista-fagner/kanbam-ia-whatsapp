@@ -475,6 +475,11 @@ export default function SettingsPage() {
   const canSeeMultiAgent = import.meta.env.VITE_API_URL?.includes('localhost')
     || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
     || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
+  // Cliente real em teste do multi-agente: esconde ambos os painéis de teste
+  // (monólito e multi-agente) — construtor ativo, mas análise via simulador reservada
+  // só pra contas internas.
+  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com']
+  const canSeeTestPanel = !HIDE_TEST_PANEL_EMAILS.includes(user?.email)
   const [bootstrapping, setBootstrapping] = useState(true)
   const [instanceConfig, setInstanceConfig] = useState(null) // null = não tem; objeto = tem
   const [instanceStatus, setInstanceStatus] = useState(null)
@@ -1387,8 +1392,8 @@ export default function SettingsPage() {
         <MultiAgentToggleCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
-      {/* Card de teste do monólito com contador de token — mesma conta beta */}
-      {!bootstrapping && instanceConfig && canSeeMultiAgent && (
+      {/* Card de teste do monólito com contador de token — mesma conta beta, escondido pra cliente real */}
+      {!bootstrapping && instanceConfig && canSeeMultiAgent && canSeeTestPanel && (
         <MonolithTestCard />
       )}
 
