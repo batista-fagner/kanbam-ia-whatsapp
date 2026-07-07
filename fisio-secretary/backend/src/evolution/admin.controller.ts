@@ -12,6 +12,8 @@ import { TokenUsage } from '../common/entities/token-usage.entity';
 import { Lead } from '../common/entities/lead.entity';
 import { Message } from '../common/entities/message.entity';
 import { Conversation } from '../common/entities/conversation.entity';
+import { AgentsService } from '../agents/agents.service';
+import { NotFoundException } from '@nestjs/common';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -22,6 +24,7 @@ export class AdminController {
     private readonly whatsappConfigService: WhatsappConfigService,
     private readonly usersService: UsersService,
     private readonly leadsService: LeadsService,
+    private readonly agentsService: AgentsService,
     private readonly config: ConfigService,
     @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
     @InjectRepository(Lead) private readonly leadRepo: Repository<Lead>,
@@ -161,6 +164,68 @@ export class AdminController {
       ORDER BY tu.date DESC, tu.cost_usd DESC
     `, [dateFrom, dateTo]);
     return rows;
+  }
+
+  // ─── Auditoria de prompts (visão do super-admin sobre todos os tenants) ──
+
+  // Prévia curta pra listagem — não manda o texto completo do prompt.
+  private preview(text: string | null | undefined, max = 150): string | null {
+    if (!text?.trim()) return null;
+    const trimmed = text.trim();
+    return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
+  }
+
+  // Lista, por tenant, o tamanho (em caracteres) de cada prompt configurado —
+  // monólito (custom_prompt_sofia/megahair) e multi-agente (agents.system_prompt).
+  // Não retorna o texto completo aqui (só preview curto); pra ler tudo, usar
+  // os endpoints abaixo (/admin/prompts/:tenantId/monolith/:kind e /agent/:agentId).
+  @Get('prompts')
+  async listPrompts() {
+    const tenants = await this.whatsappConfigService.listAll();
+    const result: any[] = [];
+    for (const t of tenants) {
+      const agents = await this.agentsService.findAll(t.id);
+      result.push({
+        tenantId: t.id,
+        displayName: t.displayName ?? t.profileName,
+        agentType: t.agentType,
+        multiAgentEnabled: t.multiAgentEnabled,
+        monolith: {
+          sofia: t.customPromptSofia?.trim()
+            ? { length: t.customPromptSofia.length, preview: this.preview(t.customPromptSofia) }
+            : null,
+          megahair: t.customPromptMegaHair?.trim()
+            ? { length: t.customPromptMegaHair.length, preview: this.preview(t.customPromptMegaHair) }
+            : null,
+        },
+        multiAgent: agents.map(a => ({
+          agentId: a.id,
+          name: a.name,
+          isActive: a.isActive,
+          length: a.systemPrompt?.length ?? 0,
+        })),
+      });
+    }
+    return result;
+  }
+
+  // Texto completo do prompt monólito de um tenant (kind = 'sofia' | 'megahair').
+  @Get('prompts/:tenantId/monolith/:kind')
+  async getMonolithPrompt(@Param('tenantId') tenantId: string, @Param('kind') kind: 'sofia' | 'megahair') {
+    if (kind !== 'sofia' && kind !== 'megahair') throw new BadRequestException('kind inválido — use sofia ou megahair');
+    const tenant = await this.whatsappConfigService.getByTenant(tenantId);
+    if (!tenant) throw new NotFoundException('Cliente não encontrado');
+    const text = kind === 'sofia' ? tenant.customPromptSofia : tenant.customPromptMegaHair;
+    return { text: text ?? '', length: text?.length ?? 0 };
+  }
+
+  // Texto completo do system_prompt de um agente específico do multi-agente.
+  @Get('prompts/:tenantId/agent/:agentId')
+  async getAgentPrompt(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string) {
+    const agents = await this.agentsService.findAll(tenantId);
+    const agent = agents.find(a => a.id === agentId);
+    if (!agent) throw new NotFoundException('Agente não encontrado');
+    return { text: agent.systemPrompt ?? '', length: agent.systemPrompt?.length ?? 0 };
   }
 
   // ─── Monitoring endpoints ────────────────────────────────────────────────

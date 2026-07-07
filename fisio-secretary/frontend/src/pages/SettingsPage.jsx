@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Search, ChevronUp, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import PromptSearchViewer from '../components/PromptSearchViewer'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -507,8 +508,6 @@ export default function SettingsPage() {
   const [appliedNotice, setAppliedNotice] = useState(false)
   const [batchTrigger, setBatchTrigger] = useState('')
   const [batchSelected, setBatchSelected] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchIndex, setSearchIndex] = useState(0)
   const pollingRef = useRef(null)
   const promptRef = useRef(null)
 
@@ -604,37 +603,6 @@ export default function SettingsPage() {
     getMediaList().then(setMediaList).catch(() => setMediaList([]))
     return () => stopPolling()
   }, [])
-
-  // Busca e seleciona ocorrência no textarea do prompt.
-  const searchOccurrences = (term, text) => {
-    if (!term) return []
-    const lower = text.toLowerCase()
-    const key = term.toLowerCase()
-    const positions = []
-    let pos = 0
-    while ((pos = lower.indexOf(key, pos)) !== -1) {
-      positions.push(pos)
-      pos += key.length
-    }
-    return positions
-  }
-
-  const navigateSearch = (dir) => {
-    const positions = searchOccurrences(searchTerm, customPromptMegaHair)
-    if (positions.length === 0) return
-    const next = (searchIndex + dir + positions.length) % positions.length
-    setSearchIndex(next)
-    const el = promptRef.current
-    if (!el) return
-    const start = positions[next]
-    const end = start + searchTerm.length
-    el.focus()
-    el.setSelectionRange(start, end)
-    // Scroll para a seleção
-    const lineHeight = 16
-    const lines = customPromptMegaHair.slice(0, start).split('\n').length
-    el.scrollTop = (lines - 3) * lineHeight
-  }
 
   // Insere snippet completo de envio de mídia na posição do cursor do textarea do prompt.
   const insertMediaName = (name) => {
@@ -1416,94 +1384,12 @@ export default function SettingsPage() {
           <div className="flex gap-4">
             {/* Coluna esquerda: editor do prompt */}
             <div className="flex-1 min-w-0">
-              {/* Barra de busca */}
-              <div className="flex items-center gap-2 mb-2">
-                <div className="relative flex-1">
-                  <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={e => { setSearchTerm(e.target.value); setSearchIndex(0) }}
-                    onKeyDown={e => { if (e.key === 'Enter') navigateSearch(e.shiftKey ? -1 : 1) }}
-                    placeholder="Buscar no prompt..."
-                    className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-gray-800 placeholder-gray-400"
-                  />
-                </div>
-                {searchTerm && (() => {
-                  const total = searchOccurrences(searchTerm, customPromptMegaHair).length
-                  return (
-                    <>
-                      <span className="text-sm text-gray-600 font-medium whitespace-nowrap">
-                        {total === 0 ? 'Não encontrado' : `${searchIndex + 1}/${total}`}
-                      </span>
-                      <button onClick={() => navigateSearch(-1)} disabled={total === 0} className="p-1 rounded hover:bg-teal-50 disabled:opacity-30 transition">
-                        <ChevronUp className="w-3.5 h-3.5 text-teal-600" />
-                      </button>
-                      <button onClick={() => navigateSearch(1)} disabled={total === 0} className="p-1 rounded hover:bg-teal-50 disabled:opacity-30 transition">
-                        <ChevronDown className="w-3.5 h-3.5 text-teal-600" />
-                      </button>
-                      <button onClick={() => setSearchTerm('')} className="p-1 rounded hover:bg-gray-100 transition">
-                        <X className="w-3.5 h-3.5 text-gray-500" />
-                      </button>
-                    </>
-                  )
-                })()}
-              </div>
-              <div className="relative">
-                {/* Overlay de highlight */}
-                {searchTerm && (() => {
-                  const positions = searchOccurrences(searchTerm, customPromptMegaHair)
-                  if (positions.length === 0) return null
-                  const parts = []
-                  let lastEnd = 0
-                  positions.forEach((start, idx) => {
-                    const end = start + searchTerm.length
-                    parts.push({
-                      type: 'text',
-                      content: customPromptMegaHair.slice(lastEnd, start),
-                      isHighlight: false,
-                    })
-                    parts.push({
-                      type: 'text',
-                      content: customPromptMegaHair.slice(start, end),
-                      isHighlight: idx === searchIndex,
-                    })
-                    lastEnd = end
-                  })
-                  parts.push({
-                    type: 'text',
-                    content: customPromptMegaHair.slice(lastEnd),
-                    isHighlight: false,
-                  })
-                  return (
-                    <pre
-                      className="absolute inset-0 w-full h-80 text-sm font-mono p-3 border border-transparent resize-none pointer-events-none whitespace-pre-wrap break-words overflow-hidden rounded-lg leading-relaxed"
-                      style={{ color: 'transparent' }}
-                    >
-                      {parts.map((part, idx) =>
-                        part.isHighlight ? (
-                          <span key={idx} className="bg-yellow-300">{part.content}</span>
-                        ) : (
-                          part.content
-                        )
-                      )}
-                    </pre>
-                  )
-                })()}
-                {/* Textarea sobre o overlay (fundo transparente pra deixar o highlight aparecer) */}
-                <textarea
-                  ref={promptRef}
-                  value={customPromptMegaHair}
-                  onChange={e => setCustomPromptMegaHair(e.target.value)}
-                  onScroll={e => {
-                    const preEl = promptRef.current?.parentElement?.querySelector('pre')
-                    if (preEl) preEl.scrollTop = e.target.scrollTop
-                  }}
-                  className="relative w-full h-80 text-sm font-mono border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-700 leading-relaxed bg-transparent"
-                  placeholder="Digite o prompt da IA aqui..."
-                  spellCheck={false}
-                />
-              </div>
+              <PromptSearchViewer
+                ref={promptRef}
+                value={customPromptMegaHair}
+                onChange={setCustomPromptMegaHair}
+                placeholder="Digite o prompt da IA aqui..."
+              />
             </div>
 
             {/* Coluna direita: mídias disponíveis (clique para inserir o nome no prompt) */}

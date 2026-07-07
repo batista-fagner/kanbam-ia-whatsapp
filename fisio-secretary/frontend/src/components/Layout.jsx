@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -29,6 +29,7 @@ export default function Layout({ onLogout }) {
     // Painel admin — só para o admin da plataforma
     ...(user?.role === 'admin' ? [
       { icon: Users, label: 'Clientes', path: '/admin' },
+      { icon: FileText, label: 'Prompts', path: '/admin/prompts' },
       { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
     ] : []),
   ]

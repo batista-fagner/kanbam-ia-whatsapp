@@ -214,6 +214,16 @@ export const getTokenUsage = (from, to) => {
   return authFetch(`${BASE}/admin/usage?${params}`).then(json)
 }
 
+// --- Admin: auditoria de prompts de todos os tenants ---
+export const getAdminPrompts = () =>
+  authFetch(`${BASE}/admin/prompts`).then(json)
+
+export const getAdminMonolithPrompt = (tenantId, kind) => // kind: 'sofia' | 'megahair'
+  authFetch(`${BASE}/admin/prompts/${tenantId}/monolith/${kind}`).then(json)
+
+export const getAdminAgentPrompt = (tenantId, agentId) =>
+  authFetch(`${BASE}/admin/prompts/${tenantId}/agent/${agentId}`).then(json)
+
 // --- Checkout público (Stripe) — sem auth ---
 export const createCheckout = (payload) => // { name, email, phone, method: 'card'|'pix' }
   fetch(`${BASE}/payments/checkout`, {

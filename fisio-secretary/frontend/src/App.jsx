@@ -10,6 +10,7 @@ import DeletedLeadsPage from './pages/DeletedLeadsPage'
 import DashboardPage from './pages/DashboardPage'
 import AlertRulesPage from './pages/AlertRulesPage'
 import AdminPage from './pages/AdminPage'
+import AdminPromptsPage from './pages/AdminPromptsPage'
 import MonitoringPage from './pages/MonitoringPage'
 import TemplatesPage from './pages/TemplatesPage'
 import AgentBuilderPage from './pages/AgentBuilderPage'
@@ -50,6 +51,7 @@ function Routing() {
         <Route path="/media" element={<MediaPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/prompts" element={<AdminPromptsPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/alert-rules" element={<AlertRulesPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
