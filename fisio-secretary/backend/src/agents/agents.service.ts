@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Agent } from '../common/entities/agent.entity';
@@ -12,6 +12,8 @@ type AgentInput = Partial<Pick<Agent,
 
 @Injectable()
 export class AgentsService {
+  private readonly logger = new Logger(AgentsService.name);
+
   constructor(
     @InjectRepository(Agent) private readonly repo: Repository<Agent>,
     private readonly aiService: AiService,
@@ -183,7 +185,7 @@ export class AgentsService {
     let response = await this.aiService.processMessageAgent(lead, message, current, availableMediaNames, extraSystemContext, { modelOverride });
     const firstUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
     if (!response.handoff || active.length === 1) {
-      this.ensureReply(response);
+      this.ensureReply(response, tenantId, current.name);
       return { aiResponse: response, agentId: current.id, agentName: current.name, handoffOccurred: false, transferredFrom: null, tokenUsage: firstUsage };
     }
 
@@ -197,7 +199,7 @@ export class AgentsService {
     // handoff:true + reply:"" que cai no fallback genérico.
     response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true, modelOverride });
     response.handoff = false;
-    this.ensureReply(response);
+    this.ensureReply(response, tenantId, next.name);
     const secondUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
     const tokenUsage = {
       inputTokens: firstUsage.inputTokens + secondUsage.inputTokens,
@@ -208,8 +210,13 @@ export class AgentsService {
   }
 
   // Garantia: nunca devolver reply vazio pro cliente (handoff deixa reply="").
-  private ensureReply(response: AiResponse): void {
+  // Loga quando isso acontece — é sinal de que o modelo ignorou a instrução de
+  // "nunca devolva reply vazio" (ver disableHandoff em processMessageAgent), o que
+  // faz a conversa parecer "resetar" pro cliente. Fica rastreável nos logs pra
+  // acompanhar se algum agente específico faz isso com frequência.
+  private ensureReply(response: AiResponse, tenantId: string, agentName: string): void {
     if (!response.reply?.trim() && response.action !== 'send_media') {
+      this.logger.warn(`[FALLBACK-REPLY] Agente "${agentName}" (tenant ${tenantId}) devolveu reply vazio — usando fallback genérico`);
       response.reply = 'Oi! Me conta um pouquinho mais o que vc precisa? 😊';
     }
   }

@@ -452,8 +452,18 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     if (aiResponse.shouldIgnore === true) {
       this.logger.warn(`Lead ${phone} marcado para ignorar. Aplicando etiquetas e não respondendo mais.`);
 
+      // Se a IA pediu pra mandar mídia nesta mesma resposta (ex: último vídeo antes
+      // de encaminhar pro humano), envia ANTES de desligar — senão o cliente fica
+      // sem vídeo E sem texto (bug: o early-return abaixo pulava o bloco de mídia
+      // que só rodava mais adiante no fluxo normal).
+      let mediaSentCount = 0;
+      if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
+        mediaSentCount = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
+      }
+
       // Envia a mensagem final UMA VEZ antes de silenciar
       if (aiResponse.reply) {
+        if (mediaSentCount > 0) await new Promise(r => setTimeout(r, 500));
         this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
         await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
@@ -541,57 +551,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // Envio de mídia (imagem/vídeo cadastrada no sistema).
     // mediaName pode ser string (1 vídeo) ou array (vários — ex: "todos os lisos").
     if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
-      const DEFAULT_CAPTION = 'repare na ponta como ele é todo inteiro, o que acha?';
-      const MAX_MEDIA = 12; // teto de segurança para evitar flood
-      const names = (Array.isArray(aiResponse.mediaName) ? aiResponse.mediaName : [aiResponse.mediaName])
-        .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
-        .slice(0, MAX_MEDIA);
-
-      // Limite diário de vídeos por tenant (BRT). Padrão: 41.
-      const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 41;
-      const alreadySentToday = await this.leadsService.countTodayOutboundMedia(tenantId);
-      const remainingQuota = Math.max(0, dailyLimit - alreadySentToday);
-
-      // Notifica o cliente via WhatsApp UMA VEZ por dia ao atingir o limite
-      if (remainingQuota === 0) {
-        const todayBRT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-        const lastNotified = this.mediaLimitNotifiedDate.get(tenantId);
-        if (lastNotified !== todayBRT && instanceConfig?.billingPhone) {
-          this.mediaLimitNotifiedDate.set(tenantId, todayBRT);
-          // Usa BILLING_SENDER_TOKEN se configurado, senão cai no token do próprio tenant
-          const billingToken = this.configService.get<string>('BILLING_SENDER_TOKEN') || tenantToken;
-          const baseUrl = this.configService.get<string>('UAZAPI_BASE_URL') ?? '';
-          const tenantName = instanceConfig.displayName ?? 'seu negócio';
-          const alertMsg = `⚠️ *Limite diário de vídeos atingido!*\n\nOlá! O assistente virtual de *${tenantName}* atingiu o limite de *${dailyLimit} vídeos* enviados hoje.\n\nOs próximos pedidos de vídeo receberão apenas a descrição em texto. O envio volta automaticamente amanhã. 🎬\n\nEm caso de dúvidas, entre em contato com o suporte.`;
-          try {
-            await axios.post(`${baseUrl}/send/text`, { number: instanceConfig.billingPhone, text: alertMsg }, { headers: { token: billingToken } });
-            this.logger.warn(`[MEDIA-LIMIT] Notificação enviada para ${instanceConfig.billingPhone} (tenant ${tenantId})`);
-          } catch (err) {
-            this.logger.error(`[MEDIA-LIMIT] Falha ao notificar ${instanceConfig.billingPhone}: ${err.message}`);
-          }
-        }
-      }
-
-      let sentCount = 0;
-      for (let i = 0; i < names.length; i++) {
-        if (sentCount >= remainingQuota) {
-          this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
-          break;
-        }
-        const mediaFile = await this.mediaService.findByName(names[i], tenantId);
-        if (!mediaFile) {
-          this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
-          continue;
-        }
-        const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
-        // Legenda configurável por vídeo (MediaPage). Sem legenda cadastrada → usa padrão.
-        const caption = mediaFile.caption?.trim() || DEFAULT_CAPTION;
-        await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`);
-        sentCount++;
-        // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.
-        if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
-      }
+      const sentCount = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
 
       if (sentCount > 0) {
         // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
@@ -620,6 +580,73 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
+  }
+
+  // Envia 1+ mídias cadastradas (respeitando o teto diário por tenant) e salva cada
+  // uma como mensagem outbound. Extraído pra ser chamado tanto no fluxo normal quanto
+  // no early-return de shouldIgnore (que antes descartava o envio de mídia — ver bug
+  // do handoff de "tela" perdendo o vídeo quando a IA desliga na mesma resposta).
+  private async sendMediaMessages(
+    tenantId: string,
+    phone: string,
+    conversationId: string,
+    tenantToken: string | undefined,
+    instanceConfig: any,
+    mediaNameInput: string | string[],
+  ): Promise<number> {
+    const DEFAULT_CAPTION = 'repare na ponta como ele é todo inteiro, o que acha?';
+    const MAX_MEDIA = 12; // teto de segurança para evitar flood
+    const names = (Array.isArray(mediaNameInput) ? mediaNameInput : [mediaNameInput])
+      .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
+      .slice(0, MAX_MEDIA);
+
+    // Limite diário de vídeos por tenant (BRT). Padrão: 41.
+    const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 41;
+    const alreadySentToday = await this.leadsService.countTodayOutboundMedia(tenantId);
+    const remainingQuota = Math.max(0, dailyLimit - alreadySentToday);
+
+    // Notifica o cliente via WhatsApp UMA VEZ por dia ao atingir o limite
+    if (remainingQuota === 0) {
+      const todayBRT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      const lastNotified = this.mediaLimitNotifiedDate.get(tenantId);
+      if (lastNotified !== todayBRT && instanceConfig?.billingPhone) {
+        this.mediaLimitNotifiedDate.set(tenantId, todayBRT);
+        // Usa BILLING_SENDER_TOKEN se configurado, senão cai no token do próprio tenant
+        const billingToken = this.configService.get<string>('BILLING_SENDER_TOKEN') || tenantToken;
+        const baseUrl = this.configService.get<string>('UAZAPI_BASE_URL') ?? '';
+        const tenantName = instanceConfig.displayName ?? 'seu negócio';
+        const alertMsg = `⚠️ *Limite diário de vídeos atingido!*\n\nOlá! O assistente virtual de *${tenantName}* atingiu o limite de *${dailyLimit} vídeos* enviados hoje.\n\nOs próximos pedidos de vídeo receberão apenas a descrição em texto. O envio volta automaticamente amanhã. 🎬\n\nEm caso de dúvidas, entre em contato com o suporte.`;
+        try {
+          await axios.post(`${baseUrl}/send/text`, { number: instanceConfig.billingPhone, text: alertMsg }, { headers: { token: billingToken } });
+          this.logger.warn(`[MEDIA-LIMIT] Notificação enviada para ${instanceConfig.billingPhone} (tenant ${tenantId})`);
+        } catch (err) {
+          this.logger.error(`[MEDIA-LIMIT] Falha ao notificar ${instanceConfig.billingPhone}: ${err.message}`);
+        }
+      }
+    }
+
+    let sentCount = 0;
+    for (let i = 0; i < names.length; i++) {
+      if (sentCount >= remainingQuota) {
+        this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
+        break;
+      }
+      const mediaFile = await this.mediaService.findByName(names[i], tenantId);
+      if (!mediaFile) {
+        this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
+        continue;
+      }
+      const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
+      // Legenda configurável por vídeo (MediaPage). Sem legenda cadastrada → usa padrão.
+      const caption = mediaFile.caption?.trim() || DEFAULT_CAPTION;
+      await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
+      await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`);
+      sentCount++;
+      // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.
+      if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+
+    return sentCount;
   }
 
   // Verificação de webhook exigida pela Meta
