@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import Stripe from 'stripe';
+import FormData = require('form-data');
 // Sob `module: nodenext` o Stripe resolve para os tipos CJS (export = StripeConstructor),
 // que não expõem o namespace rico (Stripe.Checkout, etc). Os objetos de evento do webhook
 // são tipados como `any` aqui — o runtime não é afetado.
@@ -290,23 +291,20 @@ export class PaymentsService {
     return { ok: true, phone };
   }
 
-  // Gera o QR na Efí Bank e envia pelo WhatsApp. Roda em background (pode levar ~2 min).
-  // Se falhar, limpa o tenant fantasma e avisa o cliente.
+  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template pix_mensal_v4).
+  // Roda em background (pode levar ~2 min). Se falhar, limpa o tenant fantasma e avisa o cliente.
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
+    const valor = '310,00';
     try {
-      const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`);
+      const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
 
-      const intro =
-        `Olá, ${name}! 👋\n\n` +
-        `Aqui está o PIX para ativar seu plano *Convert Hair*.\n\n` +
-        `💰 Valor: *R$ 310,00*\n\n` +
-        `📋 *PIX copia e cola:*`;
-      await this._sendText(phone, intro);
-      await this._sendText(phone, pix.pixCode); // mensagem separada = fácil de copiar
-      await this._sendImage(phone, pix.qrCode, 'Ou escaneie o QR code acima 📲');
-      await this._sendText(phone, `Assim que o pagamento for confirmado, você recebe aqui o login e a senha de acesso. ✅`);
+      const mediaId = await this._uploadMetaMedia(pix.qrCode);
+      await this._sendMetaTemplate(phone, 'pix_mensal_v4', [
+        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+        { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+      ]);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR de checkout (tenant ${tenantId}): ${err.message}`);
       // Limpa o tenant fantasma para liberar o e-mail e permitir nova tentativa
@@ -467,22 +465,20 @@ export class PaymentsService {
 
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
     if (!tenant.billingPhone) return;
+    const valor = '310,00'; // TODO: puxar de tenant.planValue quando existir valor variável por cliente
 
     try {
       const txid = tenant.id.replace(/-/g, '');
-      const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`);
+      const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id}`);
 
-      const intro =
-        `Olá! 👋 Seu plano *Convert Hair* vence em breve.\n\n` +
-        `💰 Valor: *R$ 310,00*\n\n` +
-        `📋 *PIX copia e cola:*`;
-      await this._sendText(tenant.billingPhone, intro);
-      await this._sendText(tenant.billingPhone, pix.pixCode);
-      await this._sendImage(tenant.billingPhone, pix.qrCode, 'Ou escaneie o QR code 📲');
+      const mediaId = await this._uploadMetaMedia(pix.qrCode);
+      await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_v3', [
+        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+        { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+      ]);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar QR mensal (tenant ${tenant.id}): ${err.message}`);
-      await this._sendText(tenant.billingPhone, `Olá! Seu plano *Convert Hair* vence em breve. Entre em contato para renovar.`);
     }
 
     tenant.lastPixSentAt = new Date();
@@ -593,6 +589,71 @@ export class PaymentsService {
       );
     } catch (err) {
       this.logger.error(`[PAYMENTS] Falha ao enviar imagem para ${phone} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
+    }
+  }
+
+  // ───────────────────────── API Oficial Meta (cobrança/lembrete) ─────────────────────────
+  // Número da Convert Hair na WhatsApp Cloud API — separado do WHATSAPP_PROVIDER por tenant
+  // (que continua uazapi pro atendimento normal dos clientes).
+
+  private readonly metaApiBase = 'https://graph.facebook.com/v20.0';
+
+  // Telefone da Efí/uazapi às vezes vem sem o "55" na frente — a Cloud API exige DDI completo.
+  private _normalizePhoneMeta(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('55')) return digits;
+    if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+    return digits;
+  }
+
+  // Sobe a imagem (base64 "data:image/png;base64,...") pra Meta e retorna o media_id.
+  private async _uploadMetaMedia(base64DataUrl: string): Promise<string> {
+    const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    const token = this.config.get<string>('WHATSAPP_TOKEN');
+    const match = /^data:(image\/\w+);base64,(.+)$/.exec(base64DataUrl);
+    if (!match) throw new Error('Formato de imagem base64 inválido');
+    const [, mimeType, b64] = match;
+    const buffer = Buffer.from(b64, 'base64');
+
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mimeType);
+    form.append('file', buffer, { filename: 'qrcode.png', contentType: mimeType });
+
+    const res = await firstValueFrom(
+      this.http.post(`${this.metaApiBase}/${phoneNumberId}/media`, form, {
+        headers: { Authorization: `Bearer ${token}`, ...form.getHeaders() },
+      }),
+    );
+    return (res.data as any).id;
+  }
+
+  // Envia mensagem de template aprovado pela Meta (mensagem iniciada pela empresa).
+  private async _sendMetaTemplate(
+    phone: string,
+    templateName: string,
+    components: any[],
+  ): Promise<void> {
+    const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    const token = this.config.get<string>('WHATSAPP_TOKEN');
+    const to = this._normalizePhoneMeta(phone);
+    try {
+      await firstValueFrom(
+        this.http.post(
+          `${this.metaApiBase}/${phoneNumberId}/messages`,
+          {
+            messaging_product: 'whatsapp',
+            to,
+            type: 'template',
+            template: { name: templateName, language: { code: 'pt_BR' }, components },
+          },
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+        ),
+      );
+    } catch (err) {
+      this.logger.error(
+        `[PAYMENTS] Falha ao enviar template "${templateName}" para ${to} [HTTP ${err?.response?.status ?? 'N/A'}]: ${JSON.stringify(err?.response?.data ?? err.message)}`,
+      );
     }
   }
 

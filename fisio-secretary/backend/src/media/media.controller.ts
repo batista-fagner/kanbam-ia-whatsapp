@@ -43,6 +43,11 @@ export class MediaController {
   ) {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     if (!name?.trim()) throw new BadRequestException('Nome é obrigatório');
+    // WhatsApp só aceita vídeo em MP4 (H.264) — outros formatos (MOV, AVI, WEBM...)
+    // sobem com sucesso mas falham silenciosamente na hora de enviar pro cliente.
+    if (file.mimetype.startsWith('video/') && file.mimetype !== 'video/mp4') {
+      throw new BadRequestException('Vídeo precisa estar no formato MP4. Esse arquivo está em outro formato (ex: MOV do iPhone) e o WhatsApp não consegue enviá-lo — converta pra MP4 antes de subir.');
+    }
     return this.mediaService.upload(file, name.trim(), tenantId);
   }
 
