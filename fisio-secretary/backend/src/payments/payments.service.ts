@@ -291,7 +291,7 @@ export class PaymentsService {
     return { ok: true, phone };
   }
 
-  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template pix_mensal_v4).
+  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template pix_mensal_v7).
   // Roda em background (pode levar ~2 min). Se falhar, limpa o tenant fantasma e avisa o cliente.
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
@@ -301,7 +301,7 @@ export class PaymentsService {
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
 
       const mediaId = await this._uploadMetaMedia(pix.qrCode);
-      await this._sendMetaTemplate(phone, 'pix_mensal_v4', [
+      await this._sendMetaTemplate(phone, 'pix_mensal_v7', [
         { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
         { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
       ]);
