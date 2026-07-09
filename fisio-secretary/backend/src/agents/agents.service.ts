@@ -10,6 +10,12 @@ type AgentInput = Partial<Pick<Agent,
   'name' | 'description' | 'respondsTo' | 'handoffWhen' | 'systemPrompt' | 'isActive' | 'isDefault' | 'sortOrder'
   | 'canSchedule' | 'canSendMedia' | 'canvasX' | 'canvasY'>>;
 
+// Limite de caracteres do system_prompt por agente. Agentes com canSendMedia=true
+// (hoje: Catálogo & Vídeos) recebem limite maior por carregarem o catálogo de mídias
+// no próprio prompt. Valores fixos por enquanto — devem virar por-plano no futuro.
+const AGENT_PROMPT_LIMIT_DEFAULT = 10_000;
+const AGENT_PROMPT_LIMIT_MEDIA = 17_000;
+
 @Injectable()
 export class AgentsService {
   private readonly logger = new Logger(AgentsService.name);
@@ -26,6 +32,7 @@ export class AgentsService {
 
   async create(tenantId: string, body: AgentInput) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
+    this.validatePromptLength(body.systemPrompt ?? '', body.canSendMedia ?? true);
     // Só um agente de entrada por tenant.
     if (body.isDefault) await this.clearDefault(tenantId);
     const agent = this.repo.create({
@@ -49,6 +56,9 @@ export class AgentsService {
   async update(tenantId: string, id: string, body: AgentInput) {
     const agent = await this.repo.findOne({ where: { id, tenantId } });
     if (!agent) throw new NotFoundException('Agente não encontrado');
+    const resultingPrompt = body.systemPrompt !== undefined ? body.systemPrompt : agent.systemPrompt;
+    const resultingCanSendMedia = body.canSendMedia !== undefined ? body.canSendMedia : agent.canSendMedia;
+    this.validatePromptLength(resultingPrompt ?? '', resultingCanSendMedia);
     if (body.isDefault === true && !agent.isDefault) await this.clearDefault(tenantId);
     if (body.name !== undefined) agent.name = body.name.trim();
     if (body.description !== undefined) agent.description = body.description.trim();
@@ -63,6 +73,18 @@ export class AgentsService {
     if (body.canvasX !== undefined) agent.canvasX = body.canvasX;
     if (body.canvasY !== undefined) agent.canvasY = body.canvasY;
     return this.repo.save(agent);
+  }
+
+  // Trava o tamanho do system_prompt por agente. Limite maior pra quem manda mídia
+  // (carrega catálogo de vídeos no próprio prompt) — valores fixos por enquanto,
+  // devem virar por-plano no futuro (ver memória project_shared_agent_rules_plan).
+  private validatePromptLength(systemPrompt: string, canSendMedia: boolean): void {
+    const limit = canSendMedia ? AGENT_PROMPT_LIMIT_MEDIA : AGENT_PROMPT_LIMIT_DEFAULT;
+    if (systemPrompt.length > limit) {
+      throw new BadRequestException(
+        `O prompt deste agente tem ${systemPrompt.length} caracteres — o limite é ${limit}. Reduza o texto pra salvar.`,
+      );
+    }
   }
 
   async remove(tenantId: string, id: string) {

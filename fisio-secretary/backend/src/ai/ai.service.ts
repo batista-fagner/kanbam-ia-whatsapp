@@ -314,14 +314,16 @@ export class AiService {
   // (cota/rate limit), o próximo assume na mesma requisição — cliente não vê erro.
   private readonly providers: LlmProvider[];
   // Cliente "lite" dedicado para tarefas auxiliares (ex: sugestão de follow-up).
-  // Usa o modelo mais barato (gemini-2.5-flash-lite). Cai pro pool principal se ausente.
+  // gemini-2.5-flash/2.5-flash-lite/2.0-flash foram desligados pelo Google em
+  // 2026-07 (rollout gradual, sem aviso) — migrado pra gemini-3.1-flash-lite,
+  // que ficou mais barato que o 2.5-flash principal no input/output (ver
+  // memória project_gemini_model_deprecation_2026_07).
   private readonly liteClient: OpenAI | null = null;
-  private readonly liteModel = 'gemini-2.5-flash-lite';
+  private readonly liteModel = 'gemini-3.1-flash-lite';
 
-  // Cliente do supervisor — gemini-2.5-flash (confiável, JSON sempre válido).
-  // Flash-lite é instável com JSON parsing. Flash normal é mais robusto.
+  // Cliente do supervisor.
   private readonly supervisorClient: OpenAI | null = null;
-  private readonly supervisorModel = 'gemini-2.5-flash';
+  private readonly supervisorModel = 'gemini-3.1-flash-lite';
 
   constructor(
     private config: ConfigService,
@@ -337,7 +339,7 @@ export class AiService {
     if (geminiKey) {
       providers.push({
         name: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         isGemini: true,
         client: new OpenAI({
           apiKey: geminiKey,
@@ -375,14 +377,15 @@ export class AiService {
   }
 
   // Sugere uma mensagem de follow-up para reengajar o lead, baseada na conversa.
-  // Usa o modelo lite (gemini-2.5-flash-lite) — tarefa leve, sem JSON.
+  // Usa o modelo lite (gemini-3.1-flash-lite) — tarefa leve, sem JSON.
   // Retorna apenas o texto da mensagem (o operador revisa/aprova antes de agendar).
-  async generateFollowupSuggestion(leadName: string | null, transcript: string): Promise<string> {
+  async generateFollowupSuggestion(leadName: string | null, transcript: string, businessName: string, agentType?: string): Promise<string> {
     const client = this.liteClient ?? this.providers[0]?.client;
     const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
     if (!client) throw new Error('Nenhum provedor LLM configurado');
 
-    const systemPrompt = `Vc é a Lindona, consultora de Mega Hair da Cabelô.
+    const persona = agentType === 'megahair' ? 'consultora de Mega Hair' : 'secretária virtual';
+    const systemPrompt = `Vc é a assistente de atendimento da ${businessName}, atuando como ${persona}.
 A operadora quer reengajar uma cliente que parou de responder.
 Escreva UMA mensagem de follow-up curta (máximo 2-3 linhas), calorosa e natural, em português do Brasil, usando "vc".
 Continue de onde a conversa parou — referencie o contexto real da conversa.
@@ -429,7 +432,7 @@ Escreva a mensagem de follow-up:`;
       return { agentId: fallback.id, reason: `Único agente conectado (${fallback.name}).` };
     }
 
-    // Supervisor usa gemini-2.0-flash: estável, rápido (~0.5s), 1500 RPM.
+    // Supervisor usa gemini-3.1-flash-lite (gemini-2.0-flash foi desligado pelo Google).
     // Sem retry — falha rápido pro fallback (melhor que esperar 3s em rate limit).
     const client = this.supervisorClient ?? this.providers[0]?.client;
     const model = this.supervisorClient ? this.supervisorModel : this.providers[0]?.model;

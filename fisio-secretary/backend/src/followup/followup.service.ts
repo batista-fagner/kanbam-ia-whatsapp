@@ -57,9 +57,11 @@ export class FollowupService {
     const lead = await this.leadsService.findOne(leadId, tenantId);
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
+    const config = await this.configRepo.findOne({ where: { id: tenantId } });
+    const businessName = config?.displayName?.trim() || 'a empresa';
     const conversation = await this.leadsService.getConversationWithMessages(leadId, tenantId);
     const transcript = this.buildTranscript(conversation?.messages ?? []);
-    const text = await this.aiService.generateFollowupSuggestion(lead.name, transcript);
+    const text = await this.aiService.generateFollowupSuggestion(lead.name, transcript, businessName, config?.agentType);
     return { text };
   }
 
