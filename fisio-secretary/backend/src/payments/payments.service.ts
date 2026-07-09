@@ -325,22 +325,22 @@ export class PaymentsService {
     return { ok: true, phone };
   }
 
+  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template implantacao_v1).
   private async _sendImplantacaoPix(paymentId: string, name: string, phone: string): Promise<void> {
     const txid = paymentId.replace(/-/g, '');
     try {
       const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, '400.00');
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
 
-      const intro =
-        `Bem-vindo(a) à *Convert Hair*, ${name}! 🎉\n\n` +
-        `Que privilégio ter você conosco! 🙌\n\n` +
-        `Para dar início ao seu sistema de inteligência artificial de conversão, precisamos confirmar a taxa de implantação.\n\n` +
-        `💰 Valor: *R$ 400,00* (pagamento único)\n\n` +
-        `📋 *PIX copia e cola:*`;
-      await this._sendText(phone, intro);
-      await this._sendText(phone, pix.pixCode);
-      await this._sendImage(phone, pix.qrCode, 'Ou escaneie o QR code acima 📲');
-      await this._sendText(phone, `Após a confirmação do pagamento, nossa equipe entrará em contato para dar início ao seu sistema. ✅`);
+      const mediaId = await this._uploadMetaMedia(pix.qrCode);
+      await this._sendMetaTemplate(phone, 'implantacao_v1', [
+        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+        { type: 'body', parameters: [
+          { type: 'text', text: name },
+          { type: 'text', text: '400,00' },
+          { type: 'text', text: pix.pixCode },
+        ] },
+      ]);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR implantação (payment ${paymentId}): ${err.message}`);
       await this.implantacaoRepo.update(paymentId, { status: 'expired' });
