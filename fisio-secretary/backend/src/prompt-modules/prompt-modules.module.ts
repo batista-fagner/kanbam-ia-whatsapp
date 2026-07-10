@@ -5,9 +5,10 @@ import { PromptModulesController } from './prompt-modules.controller';
 import { PromptModulesService } from './prompt-modules.service';
 import { AuthModule } from '../auth/auth.module';
 import { AiModule } from '../ai/ai.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PromptModuleEntity]), AuthModule, AiModule],
+  imports: [TypeOrmModule.forFeature([PromptModuleEntity]), AuthModule, AiModule, MediaModule],
   controllers: [PromptModulesController],
   providers: [PromptModulesService],
   exports: [PromptModulesService],

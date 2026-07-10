@@ -34,6 +34,13 @@ export class PromptModule {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  // Quando true, o catálogo de mídias do tenant (media_files.name) é injetado
+  // dinamicamente no final do content deste módulo a cada chamada — evita que
+  // a lista fique desatualizada quando o cliente cadastra/renomeia mídia
+  // (o texto salvo em `content` nunca acompanharia isso sozinho).
+  @Column({ name: 'injects_media_catalog', type: 'boolean', default: false })
+  injectsMediaCatalog: boolean;
+
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 

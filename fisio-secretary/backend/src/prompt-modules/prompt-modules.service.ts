@@ -4,8 +4,9 @@ import { Repository } from 'typeorm';
 import { PromptModule } from '../common/entities/prompt-module.entity';
 import { AiService, AiResponse } from '../ai/ai.service';
 import { Lead } from '../common/entities/lead.entity';
+import { MediaService } from '../media/media.service';
 
-type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder'>>;
+type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog'>>;
 
 // Schema JSON compartilhado por todo módulo/tenant deste motor — não tem campo
 // "handoff" (não existe mais o conceito) nem capacidades condicionais por
@@ -49,6 +50,7 @@ export class PromptModulesService {
   constructor(
     @InjectRepository(PromptModule) private readonly repo: Repository<PromptModule>,
     private readonly aiService: AiService,
+    private readonly mediaService: MediaService,
   ) {}
 
   findAll(tenantId: string) {
@@ -69,6 +71,7 @@ export class PromptModulesService {
       content: body.content ?? '',
       isActive: body.isActive ?? true,
       sortOrder: body.sortOrder ?? 0,
+      injectsMediaCatalog: body.injectsMediaCatalog ?? false,
     });
     return this.repo.save(module);
   }
@@ -82,6 +85,7 @@ export class PromptModulesService {
     if (body.content !== undefined) module.content = body.content;
     if (body.isActive !== undefined) module.isActive = body.isActive;
     if (body.sortOrder !== undefined) module.sortOrder = body.sortOrder;
+    if (body.injectsMediaCatalog !== undefined) module.injectsMediaCatalog = body.injectsMediaCatalog;
     return this.repo.save(module);
   }
 
@@ -115,8 +119,20 @@ export class PromptModulesService {
     return candidates.filter((m) => prevSet.has(m.name));
   }
 
-  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[]): string {
-    const parts = [core?.content ?? '', ...selected.map((m) => m.content), JSON_SCHEMA];
+  // Catálogo de mídia sempre fresco (não fica salvo no `content` do módulo,
+  // que ficaria desatualizado assim que o cliente cadastrasse/renomeasse
+  // vídeo — ver bug real encontrado em 2026-07-10 no alex_teste).
+  private buildMediaCatalogBlock(mediaNames: string[]): string {
+    if (!mediaNames.length) return 'CATÁLOGO DE MÍDIAS: nenhuma mídia cadastrada ainda. Não ofereça vídeos.';
+    return `CATÁLOGO DE MÍDIAS DISPONÍVEIS (lista atual, sempre atualizada):\n${mediaNames.map((n) => `- "${n}"`).join('\n')}\n\nUse em "mediaName" EXATAMENTE um dos nomes acima, copiado letra por letra (maiúsculas/minúsculas/espaços/acentos). NUNCA invente um nome fora desta lista. Se a cliente pedir algo que não bate exatamente, escolha o mais próximo (mesma textura, tamanho mais parecido) dentre os nomes acima.`;
+  }
+
+  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], mediaNames: string[]): string {
+    const moduleBlocks = selected.map((m) => {
+      if (!m.injectsMediaCatalog) return m.content;
+      return [m.content, this.buildMediaCatalogBlock(mediaNames)].filter(Boolean).join('\n\n');
+    });
+    const parts = [core?.content ?? '', ...moduleBlocks, JSON_SCHEMA];
     return parts.filter((p) => p?.trim()).join('\n\n');
   }
 
@@ -134,7 +150,10 @@ export class PromptModulesService {
     if (!allModules.length) return null;
     const core = allModules.find((m) => m.isCore);
     const selected = this.selectModules(message, allModules, lead.activeModules ?? []);
-    const systemPrompt = this.buildSystemPrompt(core, selected);
+    const mediaNames = selected.some((m) => m.injectsMediaCatalog)
+      ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
+      : [];
+    const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
 
     const history = slimHistory((lead.aiContext as any[]) ?? []);
     const messages = [...history, { role: 'user', content: message }];
@@ -160,7 +179,10 @@ export class PromptModulesService {
     if (!allModules.length) throw new BadRequestException('Nenhum módulo cadastrado pra este tenant');
     const core = allModules.find((m) => m.isCore);
     const selected = this.selectModules(message, allModules, previousModuleNames ?? []);
-    const systemPrompt = this.buildSystemPrompt(core, selected);
+    const mediaNames = selected.some((m) => m.injectsMediaCatalog)
+      ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
+      : [];
+    const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
 
     const history = slimHistory(aiContext ?? []);
     const messages = [...history, { role: 'user', content: message }];
