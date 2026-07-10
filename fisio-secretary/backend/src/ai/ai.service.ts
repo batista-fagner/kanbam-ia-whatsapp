@@ -123,7 +123,7 @@ RESPONDA SEMPRE em JSON com este formato exato:
   }
 }`;
 
-function buildDateBlock(): string {
+export function buildDateBlock(): string {
   // Usa timezone de São Paulo para evitar bug em servidor UTC (Railway).
   const TZ = 'America/Sao_Paulo';
   const dayNames = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
@@ -204,7 +204,7 @@ REGRAS ABSOLUTAS:
 
 // Versão enxuta do bloco de datas — só hoje + saudação (~150 chars). Usada por
 // agentes que NÃO agendam (não precisam da tabela de lookup completa).
-function buildMiniDateBlock(): string {
+export function buildMiniDateBlock(): string {
   const TZ = 'America/Sao_Paulo';
   const now = new Date();
   const parts = new Intl.DateTimeFormat('pt-BR', {
@@ -227,7 +227,7 @@ const AGENT_STAGE_RULES = `════════ REGRAS DE STAGE E TAGS (reav
 - stage="novo_lead" — só na 1ª mensagem, antes de qualquer qualificação.
 - tags=["qualificado"] quando confirmar que JÁ USA / JÁ USOU o produto. tags=[] nos demais casos.`;
 
-const AGENT_SCHEDULING_RULES = `════════ AGENDAMENTO (quando a cliente disser que vai à loja) ════════
+export const AGENT_SCHEDULING_RULES = `════════ AGENDAMENTO (quando a cliente disser que vai à loja) ════════
 Agende DIRETO, sem pedir horário (padrão 09:00). Consulte a TABELA DE DATAS abaixo — NUNCA calcule.
 - DATA ESPECÍFICA ("amanhã","sexta","dia 25"): action="schedule", appointmentDateTime="YYYY-MM-DDT09:00:00", stage="agendado", tags=[].
 - DATA VAGA ("semana que vem","mês que vem"): copie a data pronta da seção EXPRESSÕES VAGAS da tabela; action="schedule", stage="agendado", tags=["data-aproximada"].

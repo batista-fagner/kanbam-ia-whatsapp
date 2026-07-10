@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PromptModule } from '../common/entities/prompt-module.entity';
-import { AiService, AiResponse } from '../ai/ai.service';
+import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDULING_RULES } from '../ai/ai.service';
 import { Lead } from '../common/entities/lead.entity';
 import { MediaService } from '../media/media.service';
 
@@ -18,7 +18,9 @@ const JSON_SCHEMA = `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua
   "temperature": "quente|morno|frio",
   "action": "none|schedule|send_media",
   "mediaName": "id exato do catálogo (ou array de ids p/ vários vídeos) — só com action=send_media",
-  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS — só com action=schedule",
+  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS — só com action=schedule, SEMPRE usando a TABELA DE DATAS (nunca calcule de cabeça)",
+  "appointmentService": "mega_hair|manutencao|null",
+  "appointmentValue": null,
   "tags": [],
   "shouldIgnore": false,
   "fields": { "name": "nome se coletado ou null" }
@@ -132,7 +134,18 @@ export class PromptModulesService {
       if (!m.injectsMediaCatalog) return m.content;
       return [m.content, this.buildMediaCatalogBlock(mediaNames)].filter(Boolean).join('\n\n');
     });
-    const parts = [core?.content ?? '', ...moduleBlocks, JSON_SCHEMA];
+    // Bloco de data SEMPRE por último — é a única parte variável do prompt
+    // (calculada em código, muda a cada dia/hora), então mantê-la no final
+    // preserva o cache do resto do prefixo entre chamadas (mesmo padrão do
+    // multiagente/monólito). Tabela completa (+ regras de agendamento) só
+    // quando algum módulo selecionado precisa converter datas relativas
+    // ("amanhã") num appointmentDateTime real — senão só a versão enxuta
+    // (dia de hoje + saudação), que toda conversa precisa de qualquer forma.
+    const needsFullDateTable = selected.some((m) => m.injectsDateTable);
+    const dateTail = needsFullDateTable
+      ? [AGENT_SCHEDULING_RULES, buildDateBlock()].join('\n\n')
+      : buildMiniDateBlock();
+    const parts = [core?.content ?? '', ...moduleBlocks, JSON_SCHEMA, dateTail];
     return parts.filter((p) => p?.trim()).join('\n\n');
   }
 
@@ -201,6 +214,7 @@ export class PromptModulesService {
       temperature: aiResponse.temperature,
       action: aiResponse.action,
       mediaName: aiResponse.mediaName,
+      appointmentDateTime: aiResponse.appointmentDateTime,
       tags: aiResponse.tags,
       shouldIgnore: aiResponse.shouldIgnore,
       aiContext: updatedContext,

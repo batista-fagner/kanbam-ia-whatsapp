@@ -41,6 +41,13 @@ export class PromptModule {
   @Column({ name: 'injects_media_catalog', type: 'boolean', default: false })
   injectsMediaCatalog: boolean;
 
+  // Quando true, injeta a TABELA DE DATAS completa (calculada em código, nunca
+  // pelo modelo) + as regras de agendamento — necessário pra converter "amanhã"
+  // num appointmentDateTime real. Sem isso a IA "confirma" um agendamento em
+  // texto mas nunca cria o evento de verdade (falta appointmentDateTime válido).
+  @Column({ name: 'injects_date_table', type: 'boolean', default: false })
+  injectsDateTable: boolean;
+
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 
