@@ -47,9 +47,10 @@ function AgentModal({ agent, onSave, onClose }) {
         body: JSON.stringify(form),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data?.message || 'Erro ao salvar agente')
       onSave(data)
-    } catch {
-      setError('Erro ao salvar agente')
+    } catch (e) {
+      setError(e.message || 'Erro ao salvar agente')
     } finally {
       setSaving(false)
     }
