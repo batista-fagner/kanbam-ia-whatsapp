@@ -94,6 +94,13 @@ export class Lead {
   @Column({ name: 'current_agent_id', type: 'uuid', nullable: true })
   currentAgentId: string | null;
 
+  // Nomes dos módulos carregados no turno anterior (protótipo "agente único +
+  // módulos dinâmicos" — só usado quando prompt_engine='dynamic_modules'). Serve
+  // pra continuidade: resposta curta sem palavra-chave ("100", "sim") mantém os
+  // módulos do turno anterior em vez de perder o contexto.
+  @Column({ name: 'active_modules', type: 'jsonb', default: [] })
+  activeModules: string[];
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

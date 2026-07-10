@@ -16,6 +16,7 @@ import { TokenUsage } from './common/entities/token-usage.entity';
 import { ImplantacaoPayment } from './common/entities/implantacao-payment.entity';
 import { PromptTemplate } from './common/entities/prompt-template.entity';
 import { Agent } from './common/entities/agent.entity';
+import { PromptModule as PromptModuleEntity } from './common/entities/prompt-module.entity';
 import { InitialSchema1780170753448 } from './migrations/1780170753448-InitialSchema';
 import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
 import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
@@ -38,6 +39,7 @@ import { AddFollowupLimitPerDay1782932396574 } from './migrations/1782932396574-
 import { AddAgentCapabilities1783000000000 } from './migrations/1783000000000-AddAgentCapabilities';
 import { AddAgentCanvasPosition1784000000000 } from './migrations/1784000000000-AddAgentCanvasPosition';
 import { AddTokenUsageEngine1784100000000 } from './migrations/1784100000000-AddTokenUsageEngine';
+import { AddPromptModules1784200000000 } from './migrations/1784200000000-AddPromptModules';
 import { EvolutionModule } from './evolution/evolution.module';
 import { LeadsModule } from './leads/leads.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -50,6 +52,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { FollowupModule } from './followup/followup.module';
 import { TemplatesModule } from './templates/templates.module';
 import { AgentsModule } from './agents/agents.module';
+import { PromptModulesModule } from './prompt-modules/prompt-modules.module';
 
 @Module({
   imports: [
@@ -62,12 +65,12 @@ import { AgentsModule } from './agents/agents.module';
         url: config.get('SUPABASE_DATABASE_URL'),
         // Postgres local (dev) não usa SSL; Supabase (prod) exige. Controlado por DATABASE_SSL.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000, AddPromptModules1784200000000],
         migrationsRun: true,
         logging: false,
       }),
@@ -84,6 +87,7 @@ import { AgentsModule } from './agents/agents.module';
     FollowupModule,
     TemplatesModule,
     AgentsModule,
+    PromptModulesModule,
   ],
 })
 export class AppModule {}

@@ -16,6 +16,7 @@ import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
+import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -40,6 +41,7 @@ export class EvolutionController {
     private readonly configService: ConfigService,
     private readonly appointmentsService: AppointmentsService,
     private readonly agentsService: AgentsService,
+    private readonly promptModulesService: PromptModulesService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -333,13 +335,33 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
+    // ── AGENTE ÚNICO + MÓDULOS DINÂMICOS (protótipo, 2026-07) ──────────────
+    // Gate por tenant (whatsapp_config.prompt_engine='dynamic_modules') — hoje
+    // só ligado pro alex_teste. Mesma resposta JSON, mesmo pós-processamento
+    // abaixo; a diferença é que não há handoff/agentId, só o registro de quais
+    // módulos foram carregados (persistido pra continuidade no próximo turno).
+    let aiResponse: AiResponse | null = null;
+    if (instanceConfig?.promptEngine === 'dynamic_modules') {
+      try {
+        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText);
+        if (result) {
+          aiResponse = result.aiResponse;
+          await this.leadsService.update(lead.id, { activeModules: result.moduleNames } as any);
+          this.logger.log(`[DYNAMIC-MODULES] módulos=[${result.moduleNames.join(',') || '-'}] (${phone})`);
+        } else {
+          this.logger.warn(`[DYNAMIC-MODULES] Tenant ${tenantId} sem módulos cadastrados — usando fluxo single-prompt`);
+        }
+      } catch (err) {
+        this.logger.error(`[DYNAMIC-MODULES] Erro ao processar (${phone}): ${err?.message} — fallback pro fluxo single-prompt`);
+      }
+    }
+
     // ── MULTI-AGENTE ──────────────────────────────────────────────────────
     // O agente atual do lead responde com o MESMO contrato JSON do single-prompt;
     // a resposta cai no MESMO pós-processamento abaixo (loop, tags, agendamento,
     // mídia, envio). Handoff entre agentes é resolvido dentro do chatForLead.
     // Falha ou tenant sem agentes ativos → fallback pro fluxo single-prompt.
-    let aiResponse: AiResponse | null = null;
-    if (instanceConfig?.multiAgentEnabled) {
+    if (!aiResponse && instanceConfig?.multiAgentEnabled) {
       try {
         const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext);
         if (result) {

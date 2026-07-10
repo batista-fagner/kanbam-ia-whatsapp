@@ -545,7 +545,7 @@ Escolha o melhor agente:`;
     throw lastErr ?? new Error('Todos os provedores LLM falharam');
   }
 
-  private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number, engine: 'monolith' | 'multi_agent' = 'monolith'): Promise<void> {
+  private async _trackUsage(tenantId: string, inputTokens: number, cachedTokens: number, outputTokens: number, engine: 'monolith' | 'multi_agent' | 'dynamic_modules' = 'monolith'): Promise<void> {
     try {
       // Data no fuso de Brasília (en-CA → 'YYYY-MM-DD'). UTC adiantaria o dia à noite.
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
@@ -889,6 +889,23 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
       return parsed;
     } catch (err) {
       this.logger.error(`❌ [AGENT:${agent.name}] Erro ao chamar IA: ${err.message}`);
+      return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
+    }
+  }
+
+  // Protótipo "agente único + módulos dinâmicos" (ver PromptModule/DynamicPromptService).
+  // Recebe o systemPrompt já montado (bloco fixo + módulos selecionados) — não
+  // monta nada aqui, só chama o LLM (com o mesmo pool de failover Gemini→OpenAI
+  // do resto do sistema) e faz o parse do JSON de resposta.
+  async processDynamicPrompt(tenantId: string, systemPrompt: string, messages: any[], modelOverride?: string): Promise<AiResponse> {
+    try {
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, modelOverride);
+      void this._trackUsage(tenantId, inputTokens, cachedTokens, outputTokens, 'dynamic_modules');
+      const parsed = this.parseAiJson(rawText);
+      parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
+      return parsed;
+    } catch (err) {
+      this.logger.error(`❌ [DYNAMIC] Erro ao chamar IA: ${err.message}`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
     }
   }

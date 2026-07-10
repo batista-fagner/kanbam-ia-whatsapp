@@ -24,6 +24,7 @@ import { AudioModule } from '../audio/audio.module';
 import { MediaModule } from '../media/media.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
 import { AgentsModule } from '../agents/agents.module';
+import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { AgentsModule } from '../agents/agents.module';
     MediaModule,
     AppointmentsModule,
     AgentsModule,
+    PromptModulesModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [

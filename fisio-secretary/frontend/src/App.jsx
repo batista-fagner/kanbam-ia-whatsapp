@@ -14,6 +14,7 @@ import AdminPromptsPage from './pages/AdminPromptsPage'
 import MonitoringPage from './pages/MonitoringPage'
 import TemplatesPage from './pages/TemplatesPage'
 import AgentBuilderPage from './pages/AgentBuilderPage'
+import ModulesTestPage from './pages/ModulesTestPage'
 import ProfilePage from './pages/ProfilePage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
@@ -56,6 +57,7 @@ function Routing() {
         <Route path="/alert-rules" element={<AlertRulesPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/agents" element={<AgentBuilderPage />} />
+        <Route path="/modules-test" element={<ModulesTestPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
     </Routes>

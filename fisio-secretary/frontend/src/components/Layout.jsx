@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -14,6 +14,10 @@ export default function Layout({ onLogout }) {
   // multiAgentEnabled por tenant, default false — aqui é só a aba do simulador).
   const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com']
   const canSeeMultiAgent = isLocalDev || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
+  // Protótipo "agente único + módulos dinâmicos" (2026-07) — só o tenant de
+  // teste do Alex (prompt_engine='dynamic_modules' no backend, só nesse tenant).
+  const DYNAMIC_MODULES_BETA_EMAILS = ['alex_teste@hotmail.com']
+  const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email)
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },
@@ -25,6 +29,7 @@ export default function Layout({ onLogout }) {
     { icon: Settings, label: 'Configurações', path: '/settings' },
     // Multi-agente em rollout controlado — localhost + conta beta
     ...(canSeeMultiAgent ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
+    ...(canSeeModulesTest ? [{ icon: Boxes, label: 'Módulos (beta)', path: '/modules-test' }] : []),
     // { icon: BookOpen, label: 'Templates', path: '/templates' }, // TODO: ativar depois
     // Painel admin — só para o admin da plataforma
     ...(user?.role === 'admin' ? [

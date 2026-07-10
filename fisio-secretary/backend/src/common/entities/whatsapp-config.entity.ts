@@ -55,6 +55,12 @@ export class WhatsappConfig {
   @Column({ name: 'multi_agent_enabled', type: 'boolean', default: false })
   multiAgentEnabled: boolean;
 
+  // 'legacy' = multi-agente com handoff (agents/AgentsService, padrão).
+  // 'dynamic_modules' = protótipo agente único + módulos por palavra-chave
+  // (PromptModule/DynamicPromptService) — em teste, só habilitado tenant a tenant.
+  @Column({ name: 'prompt_engine', type: 'varchar', length: 30, default: 'legacy' })
+  promptEngine: string;
+
   // Palavra que o operador digita no WhatsApp (fromMe) para desativar a IA daquele lead. Padrão: 'opa'.
   @Column({ name: 'deactivation_keyword', type: 'varchar', default: 'opa' })
   deactivationKeyword: string;
