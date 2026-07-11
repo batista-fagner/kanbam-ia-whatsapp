@@ -28,17 +28,32 @@ const JSON_SCHEMA = `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua
 
 const HISTORY_WINDOW = 16;
 
+// O modelo às vezes imita no reply as anotações internas de histórico
+// ("[sistema: vídeo enviado ...]") — nunca podem chegar na cliente.
+function stripInternalMarkers(reply: string | undefined): string {
+  return (reply ?? '').replace(/\[sistema:[^\]]*\]/gi, '').replace(/ {2,}/g, ' ').trim();
+}
+
 // Remove o JSON bruto do histórico de turnos do assistente, deixando só o
 // texto da resposta (mesmo tratamento que o multi-agente já faz em
 // slimHistoryForLlm — o modelo não deve ver o próprio JSON como se fosse
-// texto natural que ele "falou").
+// texto natural que ele "falou"). Exceção: quando o turno enviou mídia,
+// preserva um marcador — sem ele o modelo não tem como saber que o vídeo
+// já foi mostrado (causava reenvio do mesmo vídeo e quebrava a regra
+// "vídeo antes do preço", que depende de conferir o histórico).
 function slimHistory(history: any[]): any[] {
   const slimmed = history.map((m) => {
     if (m?.role !== 'assistant') return m;
     let content = typeof m.content === 'string' ? m.content : '';
     try {
       const parsed = JSON.parse(content);
-      if (parsed && typeof parsed.reply === 'string') content = parsed.reply;
+      if (parsed && typeof parsed.reply === 'string') {
+        content = parsed.reply;
+        if (parsed.action === 'send_media' && parsed.mediaName) {
+          const names = Array.isArray(parsed.mediaName) ? parsed.mediaName : [parsed.mediaName];
+          content += `\n[sistema: vídeo enviado nesta conversa: ${names.join(', ')}]`;
+        }
+      }
     } catch { /* já é texto puro */ }
     return { role: 'assistant', content };
   });
@@ -172,6 +187,7 @@ export class PromptModulesService {
     const messages = [...history, { role: 'user', content: message }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
+    aiResponse.reply = stripInternalMarkers(aiResponse.reply);
     const moduleNames = selected.map((m) => m.name);
     this.logger.log(`[DYNAMIC] módulos=[${moduleNames.join(',') || '-'}] tenant=${tenantId}`);
     return { aiResponse, moduleNames };
@@ -201,6 +217,7 @@ export class PromptModulesService {
     const messages = [...history, { role: 'user', content: message }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages, modelOverride);
+    aiResponse.reply = stripInternalMarkers(aiResponse.reply);
     const updatedContext = [
       ...(aiContext ?? []),
       { role: 'user', content: message },
