@@ -42,7 +42,15 @@ export class MediaService {
     // 2. Case-insensitive fallback (Gemini pode retornar caixa diferente)
     const all = await this.repo.find({ where: tenantId ? { tenantId } : {} });
     const lower = name.toLowerCase();
-    return all.find(m => m.name.toLowerCase() === lower) ?? null;
+    const byCase = all.find(m => m.name.toLowerCase() === lower);
+    if (byCase) return byCase;
+
+    // 3. Fallback ignorando espaços (o Gemini "normaliza" nomes sozinho, ex:
+    // "58 cm" → "58cm", mesmo vendo o nome exato no catálogo). Só dispara
+    // quando 1 e 2 já falharam, então nunca quebra um match que hoje funciona.
+    const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+    const target = squash(name);
+    return all.find(m => squash(m.name) === target) ?? null;
   }
 
   // Extrai códigos de reel/post de uma mensagem (instagram.com/reel/CODE ou /p/CODE)
