@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import Stripe from 'stripe';
+import { Resend } from 'resend';
 import FormData = require('form-data');
 // Sob `module: nodenext` o Stripe resolve para os tipos CJS (export = StripeConstructor),
 // que não expõem o namespace rico (Stripe.Checkout, etc). Os objetos de evento do webhook
@@ -25,6 +26,7 @@ export interface CheckoutResult {
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   private readonly stripe: any;
+  private readonly resend: Resend | null;
   private _efiTokenCache: { token: string; expiresAt: number } | null = null;
 
   constructor(
@@ -38,6 +40,8 @@ export class PaymentsService {
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     this.stripe = stripeKey ? new Stripe(stripeKey) : null;
+    const resendKey = this.config.get<string>('RESEND_API_KEY');
+    this.resend = resendKey ? new Resend(resendKey) : null;
   }
 
   // ───────────────────────── Checkout (público) ─────────────────────────
@@ -434,7 +438,7 @@ export class PaymentsService {
     if (user) {
       const password = this._generatePassword();
       await this.usersService.resetPassword(user.id, password);
-      if (tenant.billingPhone) await this._sendCredentials(tenant.billingPhone, user.email, password);
+      await this._sendCredentials(tenant.billingPhone, user.email, password, tenant.displayName ?? 'Cliente');
     }
     this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO + credenciais enviadas`);
   }
@@ -533,10 +537,16 @@ export class PaymentsService {
 
     this.logger.log(`[PAYMENTS] Conta criada → tenant ${saved.id} (${email}, ${paymentMethod})`);
 
-    if (phone) await this._sendCredentials(phone, email, password);
+    await this._sendCredentials(phone || null, email, password, name);
   }
 
-  private async _sendCredentials(phone: string, email: string, password: string): Promise<void> {
+  // Envia as credenciais de acesso pelos dois canais disponíveis: WhatsApp (se houver telefone) e e-mail.
+  private async _sendCredentials(phone: string | null, email: string, password: string, name: string): Promise<void> {
+    if (phone) await this._sendCredentialsWhatsapp(phone, email, password);
+    await this._sendCredentialsEmail(email, name, password);
+  }
+
+  private async _sendCredentialsWhatsapp(phone: string, email: string, password: string): Promise<void> {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
     const msg =
       `🎉 Sua conta *Convert Hair* foi criada com sucesso!\n\n` +
@@ -545,6 +555,147 @@ export class PaymentsService {
       `🔑 Senha: ${password}\n\n` +
       `Recomendamos trocar a senha após o primeiro acesso. 🙏`;
     await this._sendText(phone, msg);
+  }
+
+  private async _sendCredentialsEmail(email: string, name: string, password: string): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn('[EMAIL] RESEND_API_KEY não configurada — pulando envio de e-mail de credenciais');
+      return;
+    }
+    const from = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'Convert Hair <onboarding@resend.dev>';
+    try {
+      await this.resend.emails.send({
+        from,
+        to: email,
+        subject: 'Seu acesso ao Convert Hair 🎉',
+        html: this._credentialsEmailHtml(name, email, password),
+      });
+      this.logger.log(`[EMAIL] Credenciais enviadas para ${email}`);
+    } catch (err) {
+      this.logger.error(`[EMAIL] Falha ao enviar e-mail de credenciais para ${email}: ${err.message}`);
+    }
+  }
+
+  private _credentialsEmailHtml(name: string, email: string, password: string): string {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+    const loginUrl = `${frontendUrl}/login`;
+    const logoUrl = 'https://app.converthair.com.br/assets/logo_hair-sAAWCMjs.png';
+    const tutorialUrl = 'https://www.youtube.com/channel/UCf_2s3svRszXEKFJsq5FXAw/';
+
+    const button = (label: string, url: string) => `
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 20px auto;">
+        <tr>
+          <td style="border-radius: 10px; background: linear-gradient(135deg, #db2777, #7c3aed);">
+            <a href="${url}" target="_blank"
+              style="display: inline-block; padding: 14px 28px; font-size: 14px; font-weight: bold;
+                     color: #ffffff; text-decoration: none; border-radius: 10px;">
+              ${label}
+            </a>
+          </td>
+        </tr>
+      </table>`;
+
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<body style="margin:0; padding:0; background-color:#f9fafb; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; padding: 24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0"
+          style="background-color:#ffffff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
+
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding: 28px 24px 8px;">
+              <img src="${logoUrl}" alt="Convert Hair" height="40" style="height:40px; object-fit:contain;" />
+            </td>
+          </tr>
+
+          <!-- Boas-vindas -->
+          <tr>
+            <td align="center" style="padding: 8px 32px 4px;">
+              <h2 style="margin:0; color:#db2777; font-size:20px;">🎉 Bem-vindo(a) ao Convert Hair!</h2>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding: 4px 32px 8px; color:#4b5563; font-size:14px; line-height:1.5;">
+              Sua conta foi criada com sucesso, ${name}.<br/>
+              Agora é só fazer seu primeiro acesso.
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom: 8px;">
+              ${button('🚀 ACESSAR O PAINEL', loginUrl)}
+            </td>
+          </tr>
+
+          <tr><td style="border-top: 1px solid #f1f1f4;"></td></tr>
+
+          <!-- Credenciais -->
+          <tr>
+            <td style="padding: 20px 32px 4px;">
+              <p style="margin:0 0 12px; color:#1f2937; font-weight:bold; font-size:14px;">🔐 Seus dados de acesso</p>
+              <p style="margin:0 0 4px; color:#6b7280; font-size:13px;">📧 E-mail</p>
+              <p style="margin:0 0 12px; color:#1f2937; font-size:14px; font-weight:bold;">${email}</p>
+              <p style="margin:0 0 4px; color:#6b7280; font-size:13px;">🔑 Senha provisória</p>
+              <p style="margin:0; color:#1f2937; font-size:14px; font-weight:bold;">${password}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 32px 20px; color:#9ca3af; font-size:12px; line-height:1.5;">
+              ℹ️ Por segurança, recomendamos alterar sua senha após o primeiro acesso.
+            </td>
+          </tr>
+
+          <tr><td style="border-top: 1px solid #f1f1f4;"></td></tr>
+
+          <!-- Próximo passo -->
+          <tr>
+            <td style="padding: 20px 32px 4px;">
+              <p style="margin:0 0 8px; color:#1f2937; font-weight:bold; font-size:14px;">📱 Próximo passo</p>
+              <p style="margin:0; color:#4b5563; font-size:13px; line-height:1.5;">
+                Conecte seu WhatsApp ao Convert Hair para começar a atender seus clientes e usar
+                todas as funcionalidades da plataforma. Você faz isso direto de dentro do painel,
+                após o primeiro acesso.
+              </p>
+            </td>
+          </tr>
+
+          <tr><td style="border-top: 1px solid #f1f1f4;"></td></tr>
+
+          <!-- Tutorial -->
+          <tr>
+            <td style="padding: 20px 32px 4px;">
+              <p style="margin:0 0 8px; color:#1f2937; font-weight:bold; font-size:14px;">🎬 Tutorial de configuração</p>
+              <p style="margin:0; color:#4b5563; font-size:13px; line-height:1.5;">
+                Confira nosso canal com vídeos rápidos mostrando como conectar seu WhatsApp e
+                configurar a plataforma em poucos minutos.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom: 8px;">
+              ${button('▶ ASSISTIR TUTORIAIS', tutorialUrl)}
+            </td>
+          </tr>
+
+          <tr><td style="border-top: 1px solid #f1f1f4;"></td></tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding: 20px 32px 28px; color:#9ca3af; font-size:12px; line-height:1.6;">
+              Equipe Convert Hair<br/>
+              Transformando atendimento em vendas.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
   }
 
   private _generatePassword(): string {
