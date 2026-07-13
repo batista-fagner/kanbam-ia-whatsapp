@@ -3,6 +3,9 @@ import { CreditCard, QrCode, Loader2, User, Mail, Phone, CheckCircle2, MessageCi
 import { createCheckout, createImplantacaoCheckout } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
+// Desligado temporariamente — reativar trocando pra true quando for cobrar implantação de novo.
+const SHOW_IMPLANTACAO = false
+
 const CHECKOUT_TYPES = {
   implantacao: { label: 'Implantação', price: 'R$ 400,00', subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
   plano: { label: 'Plano Mensal', price: 'R$ 490,00/mês', subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
@@ -109,24 +112,26 @@ export default function CheckoutPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
 
           {/* Seletor de tipo */}
-          <div className="grid grid-cols-2 gap-2 mb-6">
-            <button type="button" onClick={() => setCheckoutType('implantacao')}
-              className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
-                isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-              }`}>
-              <Wrench className="w-4 h-4" />
-              <span>Implantação</span>
-              <span className={`text-xs font-bold ${isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 400,00</span>
-            </button>
-            <button type="button" onClick={() => setCheckoutType('plano')}
-              className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
-                !isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-              }`}>
-              <QrCode className="w-4 h-4" />
-              <span>Plano Mensal</span>
-              <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 490,00/mês</span>
-            </button>
-          </div>
+          {SHOW_IMPLANTACAO && (
+            <div className="grid grid-cols-2 gap-2 mb-6">
+              <button type="button" onClick={() => setCheckoutType('implantacao')}
+                className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
+                  isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}>
+                <Wrench className="w-4 h-4" />
+                <span>Implantação</span>
+                <span className={`text-xs font-bold ${isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 400,00</span>
+              </button>
+              <button type="button" onClick={() => setCheckoutType('plano')}
+                className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
+                  !isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}>
+                <QrCode className="w-4 h-4" />
+                <span>Plano Mensal</span>
+                <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 490,00/mês</span>
+              </button>
+            </div>
+          )}
 
           {/* Destaque do tipo selecionado */}
           <div className="bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl p-4 mb-6 text-white text-center">
