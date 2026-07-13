@@ -210,7 +210,7 @@ export class PaymentsService {
 
   // Gera cobrança PIX e retorna imagem QR (base64) + código copia-e-cola.
   // txid = UUID sem hífens (32 chars, dentro do limite 26-35 da Efí).
-  private async _efiCreateCob(txid: string, descricao: string, amount = '310.00'): Promise<{ qrCode: string; pixCode: string }> {
+  private async _efiCreateCob(txid: string, descricao: string, amount = '490.00'): Promise<{ qrCode: string; pixCode: string }> {
     const pixKey = this.config.get<string>('EFI_PIX_KEY');
     if (!pixKey) throw new BadRequestException('EFI_PIX_KEY não configurada');
 
@@ -295,7 +295,7 @@ export class PaymentsService {
   // Roda em background (pode levar ~2 min). Se falhar, limpa o tenant fantasma e avisa o cliente.
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
-    const valor = '310,00';
+    const valor = '490,00';
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
@@ -465,7 +465,7 @@ export class PaymentsService {
 
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
     if (!tenant.billingPhone) return;
-    const valor = '310,00'; // TODO: puxar de tenant.planValue quando existir valor variável por cliente
+    const valor = '490,00'; // TODO: puxar de tenant.planValue quando existir valor variável por cliente
 
     try {
       const txid = tenant.id.replace(/-/g, '');
