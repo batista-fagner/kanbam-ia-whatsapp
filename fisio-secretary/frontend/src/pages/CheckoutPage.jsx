@@ -5,7 +5,7 @@ import logo from '../assets/logo_hair.png'
 
 const CHECKOUT_TYPES = {
   implantacao: { label: 'Implantação', price: 'R$ 400,00', subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
-  plano: { label: 'Plano Mensal', price: 'R$ 310,00/mês', subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
+  plano: { label: 'Plano Mensal', price: 'R$ 490,00/mês', subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
 }
 
 // Formata só dígitos em algo legível: 27996972230 → (27) 99697-2230
@@ -124,7 +124,7 @@ export default function CheckoutPage() {
               }`}>
               <QrCode className="w-4 h-4" />
               <span>Plano Mensal</span>
-              <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 310,00/mês</span>
+              <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 490,00/mês</span>
             </button>
           </div>
 
