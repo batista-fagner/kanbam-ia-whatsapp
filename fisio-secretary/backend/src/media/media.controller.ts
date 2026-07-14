@@ -9,6 +9,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 const MAX_FILE_SIZE_MB = 50;
+// Vídeos pesados demoram/falham no envio pelo WhatsApp e pesam no custo de storage.
+// Limite vale só pra uploads novos — vídeos já existentes ficam como estão.
+const MAX_VIDEO_SIZE_MB = 10;
 
 // Multer rejeita arquivo grande antes do controller rodar — o erro chega em inglês
 // ("File too large"), por isso captura aqui e devolve uma mensagem em pt clara.
@@ -47,6 +50,12 @@ export class MediaController {
     // sobem com sucesso mas falham silenciosamente na hora de enviar pro cliente.
     if (file.mimetype.startsWith('video/') && file.mimetype !== 'video/mp4') {
       throw new BadRequestException('Vídeo precisa estar no formato MP4. Esse arquivo está em outro formato (ex: MOV do iPhone) e o WhatsApp não consegue enviá-lo — converta pra MP4 antes de subir.');
+    }
+    if (file.mimetype.startsWith('video/') && file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      throw new BadRequestException(
+        `Vídeo muito grande (${sizeMb}MB). O limite para vídeos é ${MAX_VIDEO_SIZE_MB}MB — vídeos maiores demoram/falham no envio pelo WhatsApp. Comprima o vídeo antes de subir.`,
+      );
     }
     return this.mediaService.upload(file, name.trim(), tenantId);
   }
