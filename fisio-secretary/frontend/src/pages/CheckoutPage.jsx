@@ -1,14 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CreditCard, QrCode, Loader2, User, Mail, Phone, CheckCircle2, MessageCircle, Wrench } from 'lucide-react'
-import { createCheckout, createImplantacaoCheckout } from '../services/api'
+import { createCheckout, createImplantacaoCheckout, getCheckoutSettings } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
-// Desligado temporariamente — reativar trocando pra true quando for cobrar implantação de novo.
-const SHOW_IMPLANTACAO = true
-
-const CHECKOUT_TYPES = {
-  implantacao: { label: 'Implantação', price: 'R$ 400,00', subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
-  plano: { label: 'Plano Mensal', price: 'R$ 390,00/mês', subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
+function formatBRL(value) {
+  return `R$ ${Number(value).toFixed(2).replace('.', ',')}`
 }
 
 // Formata só dígitos em algo legível: 27996972230 → (27) 99697-2230
@@ -21,6 +17,8 @@ function formatPhone(digits) {
 }
 
 export default function CheckoutPage() {
+  const [settings, setSettings] = useState(null) // { pixEnabled, cardEnabled, implantacaoEnabled, implantacaoPrice, planoPrice }
+  const [settingsError, setSettingsError] = useState('')
   const [checkoutType, setCheckoutType] = useState('plano') // 'implantacao' | 'plano'
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
   const [method, setMethod] = useState('pix')
@@ -29,8 +27,22 @@ export default function CheckoutPage() {
   const [confirmOpen, setConfirmOpen] = useState(false) // modal de confirmação do número (PIX)
   const [done, setDone] = useState(false)               // tela de sucesso (PIX enviado)
 
+  useEffect(() => {
+    getCheckoutSettings()
+      .then(s => {
+        setSettings(s)
+        // Se só cartão estiver habilitado, PIX não faz sentido como default.
+        if (!s.pixEnabled && s.cardEnabled) setMethod('card')
+      })
+      .catch(e => setSettingsError(e.message))
+  }, [])
+
   const isImplantacao = checkoutType === 'implantacao'
-  const currentType = CHECKOUT_TYPES[checkoutType]
+  const checkoutTypes = settings ? {
+    implantacao: { label: 'Implantação', price: `${formatBRL(settings.implantacaoPrice)}`, subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
+    plano: { label: 'Plano Mensal', price: `${formatBRL(settings.planoPrice)}/mês`, subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
+  } : null
+  const currentType = checkoutTypes?.[checkoutType]
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -100,6 +112,18 @@ export default function CheckoutPage() {
     )
   }
 
+  if (!settings) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
+        {settingsError ? (
+          <p className="text-red-500 text-sm">{settingsError}</p>
+        ) : (
+          <Loader2 className="w-6 h-6 animate-spin text-pink-500" />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -112,7 +136,7 @@ export default function CheckoutPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
 
           {/* Seletor de tipo */}
-          {SHOW_IMPLANTACAO && (
+          {settings.implantacaoEnabled && (
             <div className="grid grid-cols-2 gap-2 mb-6">
               <button type="button" onClick={() => setCheckoutType('implantacao')}
                 className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
@@ -120,7 +144,7 @@ export default function CheckoutPage() {
                 }`}>
                 <Wrench className="w-4 h-4" />
                 <span>Implantação</span>
-                <span className={`text-xs font-bold ${isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 400,00</span>
+                <span className={`text-xs font-bold ${isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>{formatBRL(settings.implantacaoPrice)}</span>
               </button>
               <button type="button" onClick={() => setCheckoutType('plano')}
                 className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
@@ -128,7 +152,7 @@ export default function CheckoutPage() {
                 }`}>
                 <QrCode className="w-4 h-4" />
                 <span>Plano Mensal</span>
-                <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>R$ 390,00/mês</span>
+                <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>{formatBRL(settings.planoPrice)}/mês</span>
               </button>
             </div>
           )}
@@ -171,23 +195,32 @@ export default function CheckoutPage() {
             </div>
 
             {/* Método de pagamento (plano mensal) */}
-            {!isImplantacao && (
+            {!isImplantacao && (settings.pixEnabled || settings.cardEnabled) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" disabled
-                    title="Pagamento por cartão temporariamente indisponível"
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50">
+                  <button type="button" disabled={!settings.cardEnabled}
+                    onClick={() => settings.cardEnabled && setMethod('card')}
+                    title={!settings.cardEnabled ? 'Pagamento por cartão temporariamente indisponível' : undefined}
+                    className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition ${
+                      !settings.cardEnabled ? 'border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+                        : method === 'card' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}>
                     <CreditCard className="w-4 h-4" /> Cartão
                   </button>
-                  <button type="button" onClick={() => setMethod('pix')}
+                  <button type="button" disabled={!settings.pixEnabled}
+                    onClick={() => settings.pixEnabled && setMethod('pix')}
+                    title={!settings.pixEnabled ? 'Pagamento por PIX temporariamente indisponível' : undefined}
                     className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition ${
-                      method === 'pix' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                      !settings.pixEnabled ? 'border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50'
+                        : method === 'pix' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}>
                     <QrCode className="w-4 h-4" /> PIX
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Enviamos o código PIX no seu WhatsApp.</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {method === 'pix' ? 'Enviamos o código PIX no seu WhatsApp.' : 'Você será redirecionado para o pagamento seguro.'}
+                </p>
               </div>
             )}
 

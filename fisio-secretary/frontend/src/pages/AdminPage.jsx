@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2 } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue } from '../services/api'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard } from 'lucide-react'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -31,6 +31,11 @@ export default function AdminPage() {
   const [usageFrom, setUsageFrom] = useState(today)
   const [usageTo, setUsageTo] = useState(today)
   const [loadingUsage, setLoadingUsage] = useState(false)
+  const [checkoutSettings, setCheckoutSettings] = useState(null)
+  const [checkoutForm, setCheckoutForm] = useState(null)
+  const [loadingCheckout, setLoadingCheckout] = useState(false)
+  const [savingCheckout, setSavingCheckout] = useState(false)
+  const [checkoutSaved, setCheckoutSaved] = useState(false)
 
   const load = async () => {
     try {
@@ -58,6 +63,34 @@ export default function AdminPage() {
   }
 
   useEffect(() => { if (activeTab === 'usage') loadUsage(usageFrom, usageTo) }, [activeTab, usageFrom, usageTo])
+
+  const loadCheckoutSettings = async () => {
+    setLoadingCheckout(true)
+    try {
+      const s = await getAdminCheckoutSettings()
+      setCheckoutSettings(s)
+      setCheckoutForm({
+        pixEnabled: s.pixEnabled,
+        cardEnabled: s.cardEnabled,
+        implantacaoEnabled: s.implantacaoEnabled,
+        implantacaoPrice: Number(s.implantacaoPrice),
+        planoPrice: Number(s.planoPrice),
+      })
+    } catch (e) { setError(e.message) } finally { setLoadingCheckout(false) }
+  }
+
+  useEffect(() => { if (activeTab === 'checkout' && !checkoutSettings) loadCheckoutSettings() }, [activeTab])
+
+  async function handleSaveCheckout(e) {
+    e.preventDefault()
+    setError(''); setSavingCheckout(true); setCheckoutSaved(false)
+    try {
+      const updated = await updateAdminCheckoutSettings(checkoutForm)
+      setCheckoutSettings(updated)
+      setCheckoutSaved(true)
+      setTimeout(() => setCheckoutSaved(false), 2500)
+    } catch (e) { setError(e.message) } finally { setSavingCheckout(false) }
+  }
 
   async function handleCreate(e) {
     e.preventDefault()
@@ -141,6 +174,10 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('usage')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'usage' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
             <BarChart2 className="w-4 h-4" /> Uso de Tokens
+          </button>
+          <button onClick={() => setActiveTab('checkout')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'checkout' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <CreditCard className="w-4 h-4" /> Checkout
           </button>
         </div>
         {activeTab === 'clients' && (
@@ -227,6 +264,71 @@ export default function AdminPage() {
               )}
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Aba: Checkout */}
+      {activeTab === 'checkout' && (
+        <div className="max-w-lg">
+          {loadingCheckout && !checkoutForm && (
+            <div className="flex items-center gap-2 text-gray-400 text-sm py-8"><Loader2 className="w-4 h-4 animate-spin" /> Carregando configurações...</div>
+          )}
+          {checkoutForm && (
+            <form onSubmit={handleSaveCheckout} className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Formas de pagamento</h3>
+                <p className="text-xs text-gray-400 mb-3">Controla o que aparece disponível na página de checkout.</p>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">PIX</span>
+                    <input type="checkbox" checked={checkoutForm.pixEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, pixEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">Cartão</span>
+                    <input type="checkbox" checked={checkoutForm.cardEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, cardEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">Implantação (taxa única)</span>
+                    <input type="checkbox" checked={checkoutForm.implantacaoEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Valores</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Plano mensal (R$)</label>
+                    <input type="number" min="0.01" step="0.01" value={checkoutForm.planoPrice}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, planoPrice: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Implantação (R$)</label>
+                    <input type="number" min="0.01" step="0.01" value={checkoutForm.implantacaoPrice}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoPrice: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button type="submit" disabled={savingCheckout}
+                  className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+                  {savingCheckout ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : 'Salvar'}
+                </button>
+                {checkoutSaved && (
+                  <span className="flex items-center gap-1 text-green-600 text-sm"><Check className="w-4 h-4" /> Salvo</span>
+                )}
+              </div>
+            </form>
+          )}
         </div>
       )}
 

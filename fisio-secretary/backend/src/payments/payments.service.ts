@@ -14,6 +14,7 @@ import FormData = require('form-data');
 // são tipados como `any` aqui — o runtime não é afetado.
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { ImplantacaoPayment } from '../common/entities/implantacao-payment.entity';
+import { CheckoutSettings } from '../common/entities/checkout-settings.entity';
 import { UsersService } from '../auth/users.service';
 
 const CURRENCY = 'brl';
@@ -34,6 +35,8 @@ export class PaymentsService {
     private readonly configRepo: Repository<WhatsappConfig>,
     @InjectRepository(ImplantacaoPayment)
     private readonly implantacaoRepo: Repository<ImplantacaoPayment>,
+    @InjectRepository(CheckoutSettings)
+    private readonly checkoutSettingsRepo: Repository<CheckoutSettings>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly usersService: UsersService,
@@ -44,9 +47,44 @@ export class PaymentsService {
     this.resend = resendKey ? new Resend(resendKey) : null;
   }
 
+  // ───────────────────────── Configurações do checkout (admin) ─────────────────────────
+
+  // Linha única (id=1) — cria com defaults se ainda não existir (proteção extra além da migration).
+  async getCheckoutSettings(): Promise<CheckoutSettings> {
+    let settings = await this.checkoutSettingsRepo.findOne({ where: { id: 1 } });
+    if (!settings) {
+      settings = await this.checkoutSettingsRepo.save(this.checkoutSettingsRepo.create({ id: 1 }));
+    }
+    return settings;
+  }
+
+  async updateCheckoutSettings(body: {
+    pixEnabled?: boolean;
+    cardEnabled?: boolean;
+    implantacaoEnabled?: boolean;
+    implantacaoPrice?: number;
+    planoPrice?: number;
+  }): Promise<CheckoutSettings> {
+    const settings = await this.getCheckoutSettings();
+    if (body.pixEnabled !== undefined) settings.pixEnabled = body.pixEnabled;
+    if (body.cardEnabled !== undefined) settings.cardEnabled = body.cardEnabled;
+    if (body.implantacaoEnabled !== undefined) settings.implantacaoEnabled = body.implantacaoEnabled;
+    if (body.implantacaoPrice !== undefined) {
+      if (body.implantacaoPrice <= 0) throw new BadRequestException('Valor da implantação deve ser maior que zero');
+      settings.implantacaoPrice = body.implantacaoPrice.toFixed(2);
+    }
+    if (body.planoPrice !== undefined) {
+      if (body.planoPrice <= 0) throw new BadRequestException('Valor do plano deve ser maior que zero');
+      settings.planoPrice = body.planoPrice.toFixed(2);
+    }
+    return this.checkoutSettingsRepo.save(settings);
+  }
+
   // ───────────────────────── Checkout (público) ─────────────────────────
 
   async createCardCheckout(name: string, email: string, phone: string): Promise<CheckoutResult> {
+    const settings = await this.getCheckoutSettings();
+    if (!settings.cardEnabled) throw new BadRequestException('Pagamento por cartão está desabilitado no momento.');
     if (!this.stripe) throw new BadRequestException('Checkout por cartão não configurado (STRIPE_SECRET_KEY ausente)');
     const priceId = this.config.get<string>('STRIPE_PRICE_ID_MONTHLY');
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
@@ -267,6 +305,8 @@ export class PaymentsService {
   // Responde IMEDIATAMENTE — não espera a Efí Bank. O QR chega no WhatsApp em até ~2 min.
   // A confirmação do pagamento é feita por polling (pollPendingPix), não por webhook → sem mTLS.
   async createPixCheckout(name: string, email: string, phone: string): Promise<{ ok: true; phone: string }> {
+    const settings = await this.getCheckoutSettings();
+    if (!settings.pixEnabled) throw new BadRequestException('Pagamento por PIX está desabilitado no momento.');
     if (await this.usersService.findByEmail(email)) {
       throw new BadRequestException('E-mail já cadastrado. Entre em contato ou use outro e-mail.');
     }
@@ -299,7 +339,8 @@ export class PaymentsService {
   // Roda em background (pode levar ~2 min). Se falhar, limpa o tenant fantasma e avisa o cliente.
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
-    const valor = '390,00';
+    const settings = await this.getCheckoutSettings();
+    const valor = Number(settings.planoPrice).toFixed(2).replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
@@ -322,6 +363,8 @@ export class PaymentsService {
   // ───────────────────────── Implantação (taxa única R$400, sem conta) ─────────────────────────
 
   async createImplantacaoCheckout(name: string, phone: string): Promise<{ ok: true; phone: string }> {
+    const settings = await this.getCheckoutSettings();
+    if (!settings.implantacaoEnabled) throw new BadRequestException('Cobrança de implantação está desabilitada no momento.');
     if (!phone) throw new BadRequestException('WhatsApp é obrigatório');
 
     const payment = await this.implantacaoRepo.save(this.implantacaoRepo.create({ name, phone, status: 'pending' }));
@@ -332,8 +375,11 @@ export class PaymentsService {
   // Gera o QR na Efí Bank e envia pela API oficial da Meta (template implantacao_v1).
   private async _sendImplantacaoPix(paymentId: string, name: string, phone: string): Promise<void> {
     const txid = paymentId.replace(/-/g, '');
+    const settings = await this.getCheckoutSettings();
+    const valorNum = Number(settings.implantacaoPrice).toFixed(2);
+    const valorTexto = valorNum.replace('.', ',');
     try {
-      const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, '400.00');
+      const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, valorNum);
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
 
       const mediaId = await this._uploadMetaMedia(pix.qrCode);
@@ -341,7 +387,7 @@ export class PaymentsService {
         { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
         { type: 'body', parameters: [
           { type: 'text', text: name },
-          { type: 'text', text: '400,00' },
+          { type: 'text', text: valorTexto },
           { type: 'text', text: pix.pixCode },
         ] },
       ]);

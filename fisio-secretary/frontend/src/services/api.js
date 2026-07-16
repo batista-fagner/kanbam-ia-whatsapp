@@ -240,6 +240,21 @@ export const createImplantacaoCheckout = (payload) => // { name, phone }
     body: JSON.stringify(payload),
   }).then(json)
 
+// --- Checkout: settings públicas (o que exibir na página) ---
+export const getCheckoutSettings = () =>
+  fetch(`${BASE}/payments/checkout-settings`).then(json)
+
+// --- Admin: configurações do checkout (habilitar métodos, valores) ---
+export const getAdminCheckoutSettings = () =>
+  authFetch(`${BASE}/admin/checkout-settings`).then(json)
+
+export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEnabled?, implantacaoEnabled?, implantacaoPrice?, planoPrice? }
+  authFetch(`${BASE}/admin/checkout-settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)

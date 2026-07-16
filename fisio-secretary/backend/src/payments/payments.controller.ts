@@ -57,6 +57,38 @@ export class PaymentsController {
     return this.payments.listOverdue();
   }
 
+  // Público: o que exibir no checkout (métodos habilitados + valores) — sem dado sensível.
+  @Get('payments/checkout-settings')
+  async checkoutSettingsPublic() {
+    const s = await this.payments.getCheckoutSettings();
+    return {
+      pixEnabled: s.pixEnabled,
+      cardEnabled: s.cardEnabled,
+      implantacaoEnabled: s.implantacaoEnabled,
+      implantacaoPrice: Number(s.implantacaoPrice),
+      planoPrice: Number(s.planoPrice),
+    };
+  }
+
+  // Admin: configurações completas do checkout (edição)
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('admin/checkout-settings')
+  async checkoutSettingsAdmin() {
+    return this.payments.getCheckoutSettings();
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('admin/checkout-settings')
+  async updateCheckoutSettings(@Body() body: {
+    pixEnabled?: boolean;
+    cardEnabled?: boolean;
+    implantacaoEnabled?: boolean;
+    implantacaoPrice?: number;
+    planoPrice?: number;
+  }) {
+    return this.payments.updateCheckoutSettings(body);
+  }
+
   // Público: recebe confirmações de pagamento da Efí Bank (fallback — exige mTLS).
   // A confirmação principal é por polling (PaymentsService.pollPendingPix).
   @Post('webhooks/efi')
