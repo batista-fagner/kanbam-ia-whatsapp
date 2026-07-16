@@ -85,7 +85,11 @@ export default function AdminPage() {
     e.preventDefault()
     setError(''); setSavingCheckout(true); setCheckoutSaved(false)
     try {
-      const updated = await updateAdminCheckoutSettings(checkoutForm)
+      const updated = await updateAdminCheckoutSettings({
+        ...checkoutForm,
+        implantacaoPrice: Number(checkoutForm.implantacaoPrice),
+        planoPrice: Number(checkoutForm.planoPrice),
+      })
       setCheckoutSettings(updated)
       setCheckoutSaved(true)
       setTimeout(() => setCheckoutSaved(false), 2500)

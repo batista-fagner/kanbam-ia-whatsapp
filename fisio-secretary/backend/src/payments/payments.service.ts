@@ -70,12 +70,14 @@ export class PaymentsService {
     if (body.cardEnabled !== undefined) settings.cardEnabled = body.cardEnabled;
     if (body.implantacaoEnabled !== undefined) settings.implantacaoEnabled = body.implantacaoEnabled;
     if (body.implantacaoPrice !== undefined) {
-      if (body.implantacaoPrice <= 0) throw new BadRequestException('Valor da implantação deve ser maior que zero');
-      settings.implantacaoPrice = body.implantacaoPrice.toFixed(2);
+      const implantacaoPrice = Number(body.implantacaoPrice);
+      if (!Number.isFinite(implantacaoPrice) || implantacaoPrice <= 0) throw new BadRequestException('Valor da implantação deve ser maior que zero');
+      settings.implantacaoPrice = implantacaoPrice.toFixed(2);
     }
     if (body.planoPrice !== undefined) {
-      if (body.planoPrice <= 0) throw new BadRequestException('Valor do plano deve ser maior que zero');
-      settings.planoPrice = body.planoPrice.toFixed(2);
+      const planoPrice = Number(body.planoPrice);
+      if (!Number.isFinite(planoPrice) || planoPrice <= 0) throw new BadRequestException('Valor do plano deve ser maior que zero');
+      settings.planoPrice = planoPrice.toFixed(2);
     }
     return this.checkoutSettingsRepo.save(settings);
   }
