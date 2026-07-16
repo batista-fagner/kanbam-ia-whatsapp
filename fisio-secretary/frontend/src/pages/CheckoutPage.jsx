@@ -4,7 +4,7 @@ import { createCheckout, createImplantacaoCheckout } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
 // Desligado temporariamente — reativar trocando pra true quando for cobrar implantação de novo.
-const SHOW_IMPLANTACAO = false
+const SHOW_IMPLANTACAO = true
 
 const CHECKOUT_TYPES = {
   implantacao: { label: 'Implantação', price: 'R$ 400,00', subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
