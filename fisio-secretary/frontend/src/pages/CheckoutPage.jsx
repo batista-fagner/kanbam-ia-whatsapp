@@ -33,6 +33,9 @@ export default function CheckoutPage() {
         setSettings(s)
         // Se só cartão estiver habilitado, PIX não faz sentido como default.
         if (!s.pixEnabled && s.cardEnabled) setMethod('card')
+        // Se só um dos dois planos estiver ligado, entra direto nele (sem seletor).
+        if (!s.planoEnabled && s.implantacaoEnabled) setCheckoutType('implantacao')
+        else if (s.planoEnabled && !s.implantacaoEnabled) setCheckoutType('plano')
       })
       .catch(e => setSettingsError(e.message))
   }, [])
@@ -124,6 +127,14 @@ export default function CheckoutPage() {
     )
   }
 
+  if (!settings.planoEnabled && !settings.implantacaoEnabled) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <p className="text-gray-500 text-sm">Checkout temporariamente indisponível.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -136,7 +147,7 @@ export default function CheckoutPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
 
           {/* Seletor de tipo */}
-          {settings.implantacaoEnabled && (
+          {settings.implantacaoEnabled && settings.planoEnabled && (
             <div className="grid grid-cols-2 gap-2 mb-6">
               <button type="button" onClick={() => setCheckoutType('implantacao')}
                 className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${

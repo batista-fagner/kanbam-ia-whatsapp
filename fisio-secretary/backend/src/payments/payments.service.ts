@@ -62,6 +62,7 @@ export class PaymentsService {
     pixEnabled?: boolean;
     cardEnabled?: boolean;
     implantacaoEnabled?: boolean;
+    planoEnabled?: boolean;
     implantacaoPrice?: number;
     planoPrice?: number;
   }): Promise<CheckoutSettings> {
@@ -69,6 +70,7 @@ export class PaymentsService {
     if (body.pixEnabled !== undefined) settings.pixEnabled = body.pixEnabled;
     if (body.cardEnabled !== undefined) settings.cardEnabled = body.cardEnabled;
     if (body.implantacaoEnabled !== undefined) settings.implantacaoEnabled = body.implantacaoEnabled;
+    if (body.planoEnabled !== undefined) settings.planoEnabled = body.planoEnabled;
     if (body.implantacaoPrice !== undefined) {
       const implantacaoPrice = Number(body.implantacaoPrice);
       if (!Number.isFinite(implantacaoPrice) || implantacaoPrice <= 0) throw new BadRequestException('Valor da implantação deve ser maior que zero');
@@ -86,6 +88,7 @@ export class PaymentsService {
 
   async createCardCheckout(name: string, email: string, phone: string): Promise<CheckoutResult> {
     const settings = await this.getCheckoutSettings();
+    if (!settings.planoEnabled) throw new BadRequestException('Plano mensal está desabilitado no momento.');
     if (!settings.cardEnabled) throw new BadRequestException('Pagamento por cartão está desabilitado no momento.');
     if (!this.stripe) throw new BadRequestException('Checkout por cartão não configurado (STRIPE_SECRET_KEY ausente)');
     const priceId = this.config.get<string>('STRIPE_PRICE_ID_MONTHLY');
@@ -308,6 +311,7 @@ export class PaymentsService {
   // A confirmação do pagamento é feita por polling (pollPendingPix), não por webhook → sem mTLS.
   async createPixCheckout(name: string, email: string, phone: string): Promise<{ ok: true; phone: string }> {
     const settings = await this.getCheckoutSettings();
+    if (!settings.planoEnabled) throw new BadRequestException('Plano mensal está desabilitado no momento.');
     if (!settings.pixEnabled) throw new BadRequestException('Pagamento por PIX está desabilitado no momento.');
     if (await this.usersService.findByEmail(email)) {
       throw new BadRequestException('E-mail já cadastrado. Entre em contato ou use outro e-mail.');

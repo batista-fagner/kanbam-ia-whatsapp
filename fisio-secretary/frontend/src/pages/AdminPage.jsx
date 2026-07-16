@@ -73,6 +73,7 @@ export default function AdminPage() {
         pixEnabled: s.pixEnabled,
         cardEnabled: s.cardEnabled,
         implantacaoEnabled: s.implantacaoEnabled,
+        planoEnabled: s.planoEnabled,
         implantacaoPrice: Number(s.implantacaoPrice),
         planoPrice: Number(s.planoPrice),
       })
@@ -83,7 +84,12 @@ export default function AdminPage() {
 
   async function handleSaveCheckout(e) {
     e.preventDefault()
-    setError(''); setSavingCheckout(true); setCheckoutSaved(false)
+    setError('')
+    if (!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled) {
+      setError('Pelo menos um plano (Mensal ou Implantação) precisa ficar ligado.')
+      return
+    }
+    setSavingCheckout(true); setCheckoutSaved(false)
     try {
       const updated = await updateAdminCheckoutSettings({
         ...checkoutForm,
@@ -280,8 +286,32 @@ export default function AdminPage() {
           {checkoutForm && (
             <form onSubmit={handleSaveCheckout} className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">Formas de pagamento</h3>
-                <p className="text-xs text-gray-400 mb-3">Controla o que aparece disponível na página de checkout.</p>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Planos disponíveis</h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  Se só um estiver ligado, o checkout mostra direto essa opção (sem seletor).
+                </p>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">Plano Mensal</span>
+                    <input type="checkbox" checked={checkoutForm.planoEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, planoEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">Implantação (taxa única)</span>
+                    <input type="checkbox" checked={checkoutForm.implantacaoEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
+                </div>
+                {!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled && (
+                  <p className="text-xs text-red-500 mt-2">Pelo menos um dos dois precisa ficar ligado.</p>
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Formas de pagamento (Plano Mensal)</h3>
+                <p className="text-xs text-gray-400 mb-3">A implantação é sempre via PIX.</p>
                 <div className="space-y-2">
                   <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
                     <span className="text-sm text-gray-700">PIX</span>
@@ -293,12 +323,6 @@ export default function AdminPage() {
                     <span className="text-sm text-gray-700">Cartão</span>
                     <input type="checkbox" checked={checkoutForm.cardEnabled}
                       onChange={e => setCheckoutForm({ ...checkoutForm, cardEnabled: e.target.checked })}
-                      className="w-4 h-4 accent-teal-700" />
-                  </label>
-                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
-                    <span className="text-sm text-gray-700">Implantação (taxa única)</span>
-                    <input type="checkbox" checked={checkoutForm.implantacaoEnabled}
-                      onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoEnabled: e.target.checked })}
                       className="w-4 h-4 accent-teal-700" />
                   </label>
                 </div>

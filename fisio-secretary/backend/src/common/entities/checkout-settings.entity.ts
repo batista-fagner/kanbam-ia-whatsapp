@@ -16,6 +16,9 @@ export class CheckoutSettings {
   @Column({ name: 'implantacao_enabled', type: 'boolean', default: true })
   implantacaoEnabled: boolean;
 
+  @Column({ name: 'plano_enabled', type: 'boolean', default: true })
+  planoEnabled: boolean;
+
   @Column({ name: 'implantacao_price', type: 'numeric', precision: 10, scale: 2, default: 400 })
   implantacaoPrice: string;
 

@@ -65,6 +65,7 @@ export class PaymentsController {
       pixEnabled: s.pixEnabled,
       cardEnabled: s.cardEnabled,
       implantacaoEnabled: s.implantacaoEnabled,
+      planoEnabled: s.planoEnabled,
       implantacaoPrice: Number(s.implantacaoPrice),
       planoPrice: Number(s.planoPrice),
     };
@@ -83,6 +84,7 @@ export class PaymentsController {
     pixEnabled?: boolean;
     cardEnabled?: boolean;
     implantacaoEnabled?: boolean;
+    planoEnabled?: boolean;
     implantacaoPrice?: number;
     planoPrice?: number;
   }) {
