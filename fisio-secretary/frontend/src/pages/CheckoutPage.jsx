@@ -64,7 +64,7 @@ export default function CheckoutPage() {
     try {
       let res
       if (isImplantacao) {
-        res = await createImplantacaoCheckout({ name: form.name, phone: form.phone })
+        res = await createImplantacaoCheckout({ name: form.name, phone: form.phone, email: form.email })
       } else {
         res = await createCheckout({ ...form, method })
       }
@@ -184,16 +184,15 @@ export default function CheckoutPage() {
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500" />
               </div>
             </div>
-            {!isImplantacao && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">E-mail de acesso</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500" />
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{isImplantacao ? 'E-mail' : 'E-mail de acesso'}</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500" />
               </div>
-            )}
+              {isImplantacao && <p className="text-xs text-gray-400 mt-1">O código PIX também será enviado para este e-mail.</p>}
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
               <div className="relative">

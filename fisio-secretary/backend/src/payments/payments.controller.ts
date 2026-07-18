@@ -10,12 +10,14 @@ export class PaymentsController {
 
   // Público: taxa de implantação (R$400 único, apenas PIX, sem criar conta)
   @Post('payments/implantacao')
-  async implantacao(@Body() body: { name: string; phone: string }) {
+  async implantacao(@Body() body: { name: string; phone: string; email: string }) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
     if (!body?.phone?.trim()) throw new BadRequestException('WhatsApp é obrigatório');
+    if (!body?.email?.trim()) throw new BadRequestException('E-mail é obrigatório');
     const name = body.name.trim();
     const phone = body.phone.replace(/\D/g, '');
-    return this.payments.createImplantacaoCheckout(name, phone);
+    const email = body.email.trim().toLowerCase();
+    return this.payments.createImplantacaoCheckout(name, phone, email);
   }
 
   // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank enviado no WhatsApp)

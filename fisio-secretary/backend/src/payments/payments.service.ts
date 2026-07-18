@@ -351,11 +351,17 @@ export class PaymentsService {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
 
-      const mediaId = await this._uploadMetaMedia(pix.qrCode);
-      await this._sendMetaTemplate(phone, 'pix_mensal_v7', [
-        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
-        { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
-      ]);
+      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
+      try {
+        const mediaId = await this._uploadMetaMedia(pix.qrCode);
+        await this._sendMetaTemplate(phone, 'pix_mensal_v7', [
+          { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+          { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+        ]);
+      } catch (waErr) {
+        this.logger.error(`[EFI] Falha ao enviar PIX de checkout por WhatsApp (tenant ${tenantId}): ${waErr.message}`);
+      }
+      await this._sendPixEmail(email, name, 'Plano Mensal', valor, pix, 'Assinatura mensal do plano Convert Hair.');
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR de checkout (tenant ${tenantId}): ${err.message}`);
       // Limpa o tenant fantasma para liberar o e-mail e permitir nova tentativa
@@ -368,18 +374,19 @@ export class PaymentsService {
 
   // ───────────────────────── Implantação (taxa única R$400, sem conta) ─────────────────────────
 
-  async createImplantacaoCheckout(name: string, phone: string): Promise<{ ok: true; phone: string }> {
+  async createImplantacaoCheckout(name: string, phone: string, email: string): Promise<{ ok: true; phone: string }> {
     const settings = await this.getCheckoutSettings();
     if (!settings.implantacaoEnabled) throw new BadRequestException('Cobrança de implantação está desabilitada no momento.');
     if (!phone) throw new BadRequestException('WhatsApp é obrigatório');
+    if (!email) throw new BadRequestException('E-mail é obrigatório');
 
-    const payment = await this.implantacaoRepo.save(this.implantacaoRepo.create({ name, phone, status: 'pending' }));
-    void this._sendImplantacaoPix(payment.id, name, phone);
+    const payment = await this.implantacaoRepo.save(this.implantacaoRepo.create({ name, phone, email, status: 'pending' }));
+    void this._sendImplantacaoPix(payment.id, name, phone, email);
     return { ok: true, phone };
   }
 
-  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template implantacao_v1).
-  private async _sendImplantacaoPix(paymentId: string, name: string, phone: string): Promise<void> {
+  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template implantacao_v1) + e-mail (Resend).
+  private async _sendImplantacaoPix(paymentId: string, name: string, phone: string, email: string | null): Promise<void> {
     const txid = paymentId.replace(/-/g, '');
     const settings = await this.getCheckoutSettings();
     const valorNum = Number(settings.implantacaoPrice).toFixed(2);
@@ -388,15 +395,23 @@ export class PaymentsService {
       const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, valorNum);
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
 
-      const mediaId = await this._uploadMetaMedia(pix.qrCode);
-      await this._sendMetaTemplate(phone, 'implantacao_v1', [
-        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
-        { type: 'body', parameters: [
-          { type: 'text', text: name },
-          { type: 'text', text: valorTexto },
-          { type: 'text', text: pix.pixCode },
-        ] },
-      ]);
+      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
+      try {
+        const mediaId = await this._uploadMetaMedia(pix.qrCode);
+        await this._sendMetaTemplate(phone, 'implantacao_v1', [
+          { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+          { type: 'body', parameters: [
+            { type: 'text', text: name },
+            { type: 'text', text: valorTexto },
+            { type: 'text', text: pix.pixCode },
+          ] },
+        ]);
+      } catch (waErr) {
+        this.logger.error(`[EFI] Falha ao enviar PIX implantação por WhatsApp (payment ${paymentId}): ${waErr.message}`);
+      }
+      if (email) {
+        await this._sendPixEmail(email, name, 'Taxa de Implantação', valorTexto, pix, 'Pagamento único para iniciar seu sistema Convert Hair.');
+      }
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR implantação (payment ${paymentId}): ${err.message}`);
       await this.implantacaoRepo.update(paymentId, { status: 'expired' });
@@ -626,6 +641,113 @@ export class PaymentsService {
     } catch (err) {
       this.logger.error(`[EMAIL] Falha ao enviar e-mail de credenciais para ${email}: ${err.message}`);
     }
+  }
+
+  // Envia a cobrança PIX (QR + copia-e-cola) por e-mail — canal alternativo ao WhatsApp,
+  // usado tanto na implantação quanto no plano mensal. Falha silenciosamente (só loga):
+  // o WhatsApp já é o canal principal e não deve ser bloqueado por um problema no Resend.
+  private async _sendPixEmail(
+    email: string,
+    name: string,
+    title: string,
+    valorTexto: string,
+    pix: { qrCode: string; pixCode: string },
+    description: string,
+  ): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn('[EMAIL] RESEND_API_KEY não configurada — pulando envio de PIX por e-mail');
+      return;
+    }
+    const from = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'Convert Hair <onboarding@resend.dev>';
+    const match = /^data:image\/\w+;base64,(.+)$/.exec(pix.qrCode);
+    const qrBuffer = match ? Buffer.from(match[1], 'base64') : null;
+    try {
+      await this.resend.emails.send({
+        from,
+        to: email,
+        subject: `💳 Seu PIX — ${title} Convert Hair`,
+        html: this._pixEmailHtml(name, title, valorTexto, pix.pixCode, description, !!qrBuffer),
+        attachments: qrBuffer ? [{ filename: 'qrcode.png', content: qrBuffer, contentType: 'image/png', contentId: 'qrcode' }] : undefined,
+      });
+      this.logger.log(`[EMAIL] PIX (${title}) enviado para ${email}`);
+    } catch (err) {
+      this.logger.error(`[EMAIL] Falha ao enviar PIX (${title}) para ${email}: ${err.message}`);
+    }
+  }
+
+  private _pixEmailHtml(name: string, title: string, valorTexto: string, pixCode: string, description: string, hasQrCode: boolean): string {
+    const logoUrl = 'https://app.converthair.com.br/assets/logo_hair-sAAWCMjs.png';
+
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<body style="margin:0; padding:0; background-color:#f9fafb; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; padding: 24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0"
+          style="background-color:#ffffff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
+
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding: 28px 24px 8px;">
+              <img src="${logoUrl}" alt="Convert Hair" height="40" style="height:40px; object-fit:contain;" />
+            </td>
+          </tr>
+
+          <!-- Título -->
+          <tr>
+            <td align="center" style="padding: 8px 32px 4px;">
+              <h2 style="margin:0; color:#db2777; font-size:20px;">💳 ${title}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding: 4px 32px 16px; color:#4b5563; font-size:14px; line-height:1.5;">
+              Olá, ${name}! ${description}
+            </td>
+          </tr>
+
+          <!-- Valor -->
+          <tr>
+            <td align="center" style="padding-bottom: 16px;">
+              <p style="margin:0; color:#9ca3af; font-size:12px;">Valor</p>
+              <p style="margin:0; color:#1f2937; font-size:28px; font-weight:bold;">R$ ${valorTexto}</p>
+            </td>
+          </tr>
+
+          ${hasQrCode ? `
+          <!-- QR Code -->
+          <tr>
+            <td align="center" style="padding-bottom: 16px;">
+              <img src="cid:qrcode" alt="QR Code PIX" width="220" height="220" style="width:220px; height:220px; border: 1px solid #f1f1f4; border-radius: 8px;" />
+            </td>
+          </tr>` : ''}
+
+          <!-- Copia e cola -->
+          <tr>
+            <td style="padding: 0 32px 8px;">
+              <p style="margin:0 0 8px; color:#1f2937; font-weight:bold; font-size:13px;">📋 PIX copia e cola</p>
+              <p style="margin:0; padding:12px; background:#f9fafb; border:1px solid #f1f1f4; border-radius:8px; color:#4b5563; font-size:12px; word-break:break-all; font-family: monospace;">${pixCode}</p>
+              <p style="margin:8px 0 0; color:#9ca3af; font-size:12px;">Copie o código acima e cole na área "Pix Copia e Cola" do app do seu banco.</p>
+            </td>
+          </tr>
+
+          <tr><td style="border-top: 1px solid #f1f1f4;"></td></tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding: 20px 32px 28px; color:#9ca3af; font-size:12px; line-height:1.6;">
+              Equipe Convert Hair<br/>
+              Transformando atendimento em vendas.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
   }
 
   private _credentialsEmailHtml(name: string, email: string, password: string): string {

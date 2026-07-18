@@ -233,7 +233,7 @@ export const createCheckout = (payload) => // { name, email, phone, method: 'car
   }).then(json)
 
 // --- Implantação (R$400, PIX único, sem conta) ---
-export const createImplantacaoCheckout = (payload) => // { name, phone }
+export const createImplantacaoCheckout = (payload) => // { name, phone, email }
   fetch(`${BASE}/payments/implantacao`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

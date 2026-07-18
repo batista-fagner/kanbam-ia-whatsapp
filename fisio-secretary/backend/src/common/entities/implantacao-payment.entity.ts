@@ -13,6 +13,9 @@ export class ImplantacaoPayment {
   @Column()
   phone: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  email: string | null;
+
   @Column({ type: 'varchar', default: 'pending' })
   status: ImplantacaoStatus;
 
