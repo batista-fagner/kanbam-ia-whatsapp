@@ -17,6 +17,7 @@ export default function ModulesTestPage() {
   const [aiContext, setAiContext] = useState([])
   const [loading, setLoading] = useState(false)
   const [tokenTotals, setTokenTotals] = useState({ inputTokens: 0, cachedTokens: 0, outputTokens: 0 })
+  const [limitReached, setLimitReached] = useState(false)
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -52,7 +53,12 @@ export default function ModulesTestPage() {
         body: JSON.stringify({ message: text, previousModuleNames, aiContext }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.message || 'erro')
+      if (!res.ok) {
+        if (res.status === 400 && /limite de teste atingido/i.test(data?.message || '')) {
+          setLimitReached(true)
+        }
+        throw new Error(data?.message || 'erro')
+      }
 
       setMessages((prev) => [...prev, {
         type: 'agent',
@@ -194,6 +200,8 @@ export default function ModulesTestPage() {
         <div className="px-4 py-3 border-t border-gray-100 bg-white">
           {modules.length === 0
             ? <p className="text-xs text-gray-400 text-center">Nenhum módulo cadastrado pra este tenant ainda.</p>
+            : limitReached
+            ? <p className="text-xs text-red-500 text-center font-medium">🔒 Limite de teste atingido — envio de mensagens bloqueado.</p>
             : (
               <div className="flex gap-2">
                 <input
