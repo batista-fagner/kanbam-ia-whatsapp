@@ -2,25 +2,36 @@ import { Injectable, Logger, ConflictException, NotFoundException } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { MediaFile } from '../common/entities/media-file.entity';
 
 @Injectable()
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
-  private readonly supabase: SupabaseClient;
+  private readonly s3: S3Client;
   private readonly bucket: string;
+  private readonly publicUrl: string;
 
   constructor(
     @InjectRepository(MediaFile)
     private readonly repo: Repository<MediaFile>,
     private readonly config: ConfigService,
   ) {
-    this.supabase = createClient(
-      config.get('SUPABASE_URL') ?? '',
-      config.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-    this.bucket = config.get('SUPABASE_STORAGE_BUCKET') ?? 'fisio-media';
+    // Cloudflare R2 é compatível com S3 — mesmo cliente, só troca o endpoint.
+    // Migrado do Supabase Storage porque o egress (bandwidth) estourava a cota
+    // grátis do Supabase todo mês (vídeo é reenviado muitas vezes/dia via WhatsApp);
+    // R2 não cobra egress.
+    this.s3 = new S3Client({
+      region: 'auto',
+      endpoint: `https://${config.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: config.get('R2_ACCESS_KEY_ID') ?? '',
+        secretAccessKey: config.get('R2_SECRET_ACCESS_KEY') ?? '',
+      },
+    });
+    this.bucket = config.get('R2_BUCKET') ?? 'fisio-media';
+    // Domínio custom conectado ao bucket (Cloudflare R2 → bucket → Custom Domains).
+    this.publicUrl = (config.get('R2_PUBLIC_URL') ?? '').replace(/\/$/, '');
   }
 
   async listAll(tenantId?: string): Promise<MediaFile[]> {
@@ -106,26 +117,22 @@ export class MediaService {
     const ext = file.originalname.split('.').pop();
     const storagePath = `${Date.now()}-${name.replace(/\s+/g, '-')}.${ext}`;
 
-    const { error } = await this.supabase.storage
-      .from(this.bucket)
-      .upload(storagePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false,
-      });
-
-    if (error) {
-      this.logger.error(`Erro ao fazer upload para Supabase Storage: ${error.message}`);
-      throw new Error(`Falha no upload: ${error.message}`);
+    try {
+      await this.s3.send(new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: storagePath,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      }));
+    } catch (err: any) {
+      this.logger.error(`Erro ao fazer upload para R2: ${err.message}`);
+      throw new Error(`Falha no upload: ${err.message}`);
     }
-
-    const { data: publicUrlData } = this.supabase.storage
-      .from(this.bucket)
-      .getPublicUrl(storagePath);
 
     const record = this.repo.create();
     record.name = name;
     record.tenantId = tenantId as string; // controller sempre passa o tenant do token
-    record.url = publicUrlData.publicUrl;
+    record.url = `${this.publicUrl}/${storagePath}`;
     record.storagePath = storagePath;
     record.mimeType = file.mimetype;
     record.size = file.size;
@@ -158,12 +165,10 @@ export class MediaService {
     const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');
 
-    const { error } = await this.supabase.storage
-      .from(this.bucket)
-      .remove([record.storagePath]);
-
-    if (error) {
-      this.logger.warn(`Erro ao remover do Storage (continuando): ${error.message}`);
+    try {
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: record.storagePath }));
+    } catch (err: any) {
+      this.logger.warn(`Erro ao remover do Storage (continuando): ${err.message}`);
     }
 
     await this.repo.remove(record);
