@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
@@ -57,6 +57,14 @@ export class PaymentsController {
   @Get('payments/overdue')
   async overdue() {
     return this.payments.listOverdue();
+  }
+
+  // Admin: reenvia o PIX mensal na hora (útil quando a janela automática de 2 dias já passou)
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('admin/clients/:id/resend-monthly-pix')
+  async resendMonthlyPix(@Param('id') id: string) {
+    await this.payments.resendMonthlyPix(id);
+    return { ok: true };
   }
 
   // Público: o que exibir no checkout (métodos habilitados + valores) — sem dado sensível.

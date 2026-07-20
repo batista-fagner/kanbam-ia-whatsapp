@@ -24,8 +24,8 @@ export class BillingReminderService {
   ) {}
 
   // Roda todo dia às 9h (Brasília). Trata cobrança conforme o método do cliente:
-  //  - 'pix'    → gera/reenvia QR PIX (Stripe) na janela de 5 dias antes até o vencimento
-  //  - 'manual' → lembrete de texto exatamente 5 dias antes (legado, sem Stripe)
+  //  - 'pix'    → gera/reenvia QR PIX (Efí) + e-mail, na janela de 2 dias antes até o vencimento
+  //  - 'manual' → lembrete de texto exatamente 2 dias antes (legado, sem PIX real)
   //  - 'card'   → nada (cobrança recorrente automática no cartão)
   @Cron('0 9 * * *', { timeZone: TZ })
   async sendPaymentReminders() {
@@ -53,8 +53,8 @@ export class BillingReminderService {
         } else if (tenant.paymentMethod === 'card') {
           // cobrança automática — nada a fazer aqui
         } else {
-          // 'manual' (legado): lembrete em texto 5 dias antes
-          if (daysBefore === 5) {
+          // 'manual' (legado): lembrete em texto 2 dias antes
+          if (daysBefore === 2) {
             const msg = this.buildManualReminder(tenant, dueDate);
             const sent = await this.sendWhatsApp(tenant.billingPhone, msg, senderToken);
             if (sent) this.logger.log(`[BILLING] Lembrete (manual) enviado → ${tenant.billingPhone} (${tenant.displayName ?? 'Cliente'})`);
@@ -66,9 +66,9 @@ export class BillingReminderService {
     }
   }
 
-  // Janela PIX: 0..5 dias antes do vencimento. Reenvia diariamente até pagar (webhook → 'active').
+  // Janela PIX: 0..2 dias antes do vencimento. Reenvia diariamente até pagar (webhook → 'active').
   private async handlePixCycle(tenant: WhatsappConfig, now: Date, daysBefore: number) {
-    if (daysBefore < 0 || daysBefore > 5) return;
+    if (daysBefore < 0 || daysBefore > 2) return;
 
     const recentlyBilled = tenant.lastPixSentAt && this.daysBetween(new Date(tenant.lastPixSentAt), now) <= 6;
     const alreadyPaidThisCycle = tenant.planStatus === 'active' && recentlyBilled;
@@ -96,7 +96,7 @@ export class BillingReminderService {
     const due = dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     return (
       `Olá, ${clientName}! 👋\n\n` +
-      `Seu plano vence em *5 dias* (${due}).\n\n` +
+      `Seu plano vence em *2 dias* (${due}).\n\n` +
       `Entre em contato para renovar e manter seu acesso ao sistema. 🙏`
     );
   }

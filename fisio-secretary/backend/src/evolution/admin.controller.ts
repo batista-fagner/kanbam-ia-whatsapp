@@ -87,6 +87,7 @@ export class AdminController {
         agentType: t.agentType,
         paymentMethod: t.paymentMethod,
         planStatus: t.planStatus,
+        planValue: t.planValue,
         leadsCount,
         usersCount: users.length,
       });
@@ -134,9 +135,9 @@ export class AdminController {
     return { ok: true };
   }
 
-  // Atualiza dados de cobrança (data de vencimento + telefone de contato)
+  // Atualiza dados de cobrança (data de vencimento + telefone de contato + valor do plano)
   @Patch('clients/:id/billing')
-  async updateBilling(@Param('id') id: string, @Body() body: { nextPaymentDate?: string | null; billingPhone?: string | null }) {
+  async updateBilling(@Param('id') id: string, @Body() body: { nextPaymentDate?: string | null; billingPhone?: string | null; planValue?: number | null }) {
     const updated = await this.whatsappConfigService.updateBilling(id, body);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true };

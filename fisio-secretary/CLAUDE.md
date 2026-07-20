@@ -143,7 +143,7 @@ POST /webhooks/uazapi/:tenantId
 | Envio em massa com filtro por etiqueta | `BulkMessagePage.jsx` + `bulk-message.service.ts` |
 | Checkout PIX (Efí Bank) ✅ prod | `payments/` — `POST /payments/checkout` |
 | Checkout Cartão (Stripe) ⏳ aguarda live creds | `payments/` — `createCardCheckout()` |
-| Lembrete vencimento (cron 9h, 5 dias antes) | `BillingReminderService` — `BILLING_SENDER_TOKEN` |
+| Lembrete vencimento (cron 9h, 2 dias antes; PIX manda WhatsApp + e-mail com valor por cliente) | `BillingReminderService` — `BILLING_SENDER_TOKEN` |
 | Painel admin (criar/suspender/reset senha) | `admin.controller.ts` + `AdminPage.jsx` |
 | Mídias (upload Supabase, IA usa por nome) | `media/` + `MediaPage.jsx` |
 | Busca de lead no Kanban | `KanbanPage.jsx` |

@@ -534,27 +534,50 @@ export class PaymentsService {
 
   // ───────────────────────── PIX mensal (chamado pelo BillingReminderService) ─────────────────────────
 
+  // Admin: dispara o PIX mensal na hora (fora da janela automática 0..2 dias, ex: janela já passou).
+  async resendMonthlyPix(tenantId: string): Promise<void> {
+    const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) throw new BadRequestException('Cliente não encontrado');
+    if (tenant.paymentMethod !== 'pix') throw new BadRequestException('Cliente não usa PIX');
+    if (!tenant.billingPhone) throw new BadRequestException('Cliente sem telefone de cobrança cadastrado');
+    await this.generateAndSendMonthlyPix(tenant);
+  }
+
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
     if (!tenant.billingPhone) return;
-    const valor = '390,00'; // TODO: puxar de tenant.planValue quando existir valor variável por cliente
+    // Sem plan_value cadastrado (cliente antigo) → cai no valor histórico fixo.
+    const valorNum = Number(tenant.planValue ?? '390.00');
+    const valor = valorNum.toFixed(2).replace('.', ',');
 
     try {
       const txid = tenant.id.replace(/-/g, '');
-      const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valor.replace(',', '.'));
+      const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valorNum.toFixed(2));
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id}`);
 
-      const mediaId = await this._uploadMetaMedia(pix.qrCode);
-      await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_v3', [
-        { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
-        { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
-      ]);
+      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro,
+      // nem impedir a marcação de lastPixSentAt (o QR já foi gerado com sucesso na Efí).
+      try {
+        const mediaId = await this._uploadMetaMedia(pix.qrCode);
+        await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_v3', [
+          { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
+          { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+        ]);
+      } catch (waErr) {
+        this.logger.error(`[EFI] Falha ao enviar PIX mensal por WhatsApp (tenant ${tenant.id}): ${waErr.message}`);
+      }
+
+      const users = await this.usersService.findByTenant(tenant.id);
+      const email = users[0]?.email;
+      if (email) {
+        await this._sendPixEmail(email, tenant.displayName ?? 'Cliente', 'Plano Mensal', valor, pix, 'Renovação mensal do plano Convert Hair.');
+      }
+
+      tenant.lastPixSentAt = new Date();
+      await this.configRepo.save(tenant);
+      this.logger.log(`[EFI] PIX mensal enviado → ${tenant.billingPhone} (tenant ${tenant.id})`);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar QR mensal (tenant ${tenant.id}): ${err.message}`);
     }
-
-    tenant.lastPixSentAt = new Date();
-    await this.configRepo.save(tenant);
-    this.logger.log(`[EFI] PIX mensal enviado → ${tenant.billingPhone} (tenant ${tenant.id})`);
   }
 
   // ───────────────────────── Helpers ─────────────────────────

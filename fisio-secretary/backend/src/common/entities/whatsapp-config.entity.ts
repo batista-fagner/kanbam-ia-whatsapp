@@ -109,6 +109,10 @@ export class WhatsappConfig {
   @Column({ name: 'last_pix_sent_at', type: 'date', nullable: true })
   lastPixSentAt: Date | null;
 
+  // Valor mensal cobrado deste cliente (planos variados: 310, 490, ...). Sem valor cadastrado → fallback fixo no PaymentsService.
+  @Column({ name: 'plan_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
+  planValue: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

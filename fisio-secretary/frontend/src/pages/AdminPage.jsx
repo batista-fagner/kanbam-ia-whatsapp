@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send } from 'lucide-react'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [loadingCheckout, setLoadingCheckout] = useState(false)
   const [savingCheckout, setSavingCheckout] = useState(false)
   const [checkoutSaved, setCheckoutSaved] = useState(false)
+  const [pixSendingId, setPixSendingId] = useState(null)
 
   const load = async () => {
     try {
@@ -135,6 +136,19 @@ export default function AdminPage() {
   async function toggleActive(c) {
     await setClientActive(c.id, !c.isActive)
     await load()
+  }
+
+  async function handleResendPix(c) {
+    if (!confirm(`Reenviar o PIX mensal agora para ${c.displayName || 'este cliente'} (${c.planValue ? `R$ ${c.planValue}` : 'valor padrão'})?`)) return
+    setPixSendingId(c.id)
+    try {
+      await resendMonthlyPix(c.id)
+      alert('PIX enviado (WhatsApp + e-mail).')
+    } catch (e) {
+      alert(`Falha ao enviar: ${e.message}`)
+    } finally {
+      setPixSendingId(null)
+    }
   }
 
   async function handleReset(e) {
@@ -447,6 +461,22 @@ export default function AdminPage() {
                     className="text-xs border border-gray-200 rounded px-2 py-1 w-14 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
                   <span className="text-xs text-gray-400">de cada mês</span>
+                  {c.paymentMethod === 'pix' && (
+                    <>
+                      <span className="text-xs text-gray-400 ml-2">R$</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        defaultValue={c.planValue ?? ''}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          const value = v === '' ? null : parseFloat(v)
+                          if (value !== (c.planValue != null ? parseFloat(c.planValue) : null)) updateClientBilling(c.id, { planValue: value }).then(load)
+                        }}
+                        placeholder="390,00"
+                        className="text-xs border border-gray-200 rounded px-2 py-1 w-20 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </>
+                  )}
                   {due && (
                     <span className={`text-xs px-2 py-0.5 rounded-full ${dueSoon ? 'bg-amber-100 text-amber-700 font-medium' : 'bg-gray-100 text-gray-500'}`}>
                       {due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
@@ -456,6 +486,16 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {c.paymentMethod === 'pix' && (
+                  <button
+                    onClick={() => handleResendPix(c)}
+                    disabled={pixSendingId === c.id}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-teal-600 hover:bg-teal-50 transition disabled:opacity-50"
+                    title="Reenviar PIX mensal agora"
+                  >
+                    {pixSendingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  </button>
+                )}
                 <button
                   onClick={() => { setResetModal({ id: c.id, name: c.displayName }); setNewPassword('') }}
                   className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
