@@ -207,6 +207,11 @@ export const clearClientPastDue = (id) =>
 export const resendMonthlyPix = (id) =>
   authFetch(`${BASE}/admin/clients/${id}/resend-monthly-pix`, { method: 'POST' }).then(json)
 
+export const getBillingEvents = (tenantId) => {
+  const qs = tenantId ? `?tenantId=${tenantId}` : ''
+  return authFetch(`${BASE}/admin/billing-events${qs}`).then(json)
+}
+
 export const deleteClient = (id) =>
   authFetch(`${BASE}/admin/clients/${id}`, { method: 'DELETE' }).then(json)
 

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
@@ -65,6 +65,13 @@ export class PaymentsController {
   async resendMonthlyPix(@Param('id') id: string) {
     await this.payments.resendMonthlyPix(id);
     return { ok: true };
+  }
+
+  // Admin: histórico de tentativas de cobrança PIX (auditoria/monitoramento de envios)
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('admin/billing-events')
+  async billingEvents(@Query('tenantId') tenantId?: string, @Query('limit') limit?: string) {
+    return this.payments.listBillingEvents(tenantId, limit ? parseInt(limit, 10) : 100);
   }
 
   // Público: o que exibir no checkout (métodos habilitados + valores) — sem dado sensível.

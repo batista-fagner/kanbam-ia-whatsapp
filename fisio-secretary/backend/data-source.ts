@@ -16,6 +16,7 @@ import { Appointment } from './src/common/entities/appointment.entity';
 import { DeletedLead } from './src/common/entities/deleted-lead.entity';
 import { User } from './src/common/entities/user.entity';
 import { Followup } from './src/common/entities/followup.entity';
+import { BillingEvent } from './src/common/entities/billing-event.entity';
 
 // DataSource usado SOMENTE pelo CLI do TypeORM (migration:generate/run/revert).
 // O app em runtime usa a config do app.module.ts.
@@ -25,7 +26,7 @@ export default new DataSource({
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
   entities: [
     Lead, Conversation, Message, LeadStageHistory, Campaign,
-    WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup,
+    WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, BillingEvent,
   ],
   migrations: ['src/migrations/*.ts'],
   synchronize: false,

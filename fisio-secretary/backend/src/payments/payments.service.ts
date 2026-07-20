@@ -16,6 +16,7 @@ import FormData = require('form-data');
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { ImplantacaoPayment } from '../common/entities/implantacao-payment.entity';
 import { CheckoutSettings } from '../common/entities/checkout-settings.entity';
+import { BillingEvent } from '../common/entities/billing-event.entity';
 import { UsersService } from '../auth/users.service';
 
 const CURRENCY = 'brl';
@@ -38,6 +39,8 @@ export class PaymentsService {
     private readonly implantacaoRepo: Repository<ImplantacaoPayment>,
     @InjectRepository(CheckoutSettings)
     private readonly checkoutSettingsRepo: Repository<CheckoutSettings>,
+    @InjectRepository(BillingEvent)
+    private readonly billingEventRepo: Repository<BillingEvent>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly usersService: UsersService,
@@ -579,6 +582,7 @@ export class PaymentsService {
       const txid = randomUUID().replace(/-/g, '');
       const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valorNum.toFixed(2));
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
+      await this._logBillingEvent(tenant.id, 'pix', 'sent', valorNum, txid);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro,
       // nem impedir a marcação de lastPixSentAt/lastPixTxid (o QR já foi gerado com sucesso na Efí).
@@ -588,14 +592,17 @@ export class PaymentsService {
           { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
           { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
         ]);
+        await this._logBillingEvent(tenant.id, 'whatsapp', 'sent', valorNum, txid);
       } catch (waErr) {
         this.logger.error(`[EFI] Falha ao enviar PIX mensal por WhatsApp (tenant ${tenant.id}): ${waErr.message}`);
+        await this._logBillingEvent(tenant.id, 'whatsapp', 'failed', valorNum, txid, waErr.message);
       }
 
       const users = await this.usersService.findByTenant(tenant.id);
       const email = users[0]?.email;
       if (email) {
-        await this._sendPixEmail(email, tenant.displayName ?? 'Cliente', 'Plano Mensal', valor, pix, 'Renovação mensal do plano Convert Hair.');
+        const result = await this._sendPixEmail(email, tenant.displayName ?? 'Cliente', 'Plano Mensal', valor, pix, 'Renovação mensal do plano Convert Hair.');
+        await this._logBillingEvent(tenant.id, 'email', result.ok ? 'sent' : 'failed', valorNum, txid, result.error);
       }
 
       tenant.lastPixSentAt = new Date();
@@ -604,7 +611,43 @@ export class PaymentsService {
       this.logger.log(`[EFI] PIX mensal enviado → ${tenant.billingPhone} (tenant ${tenant.id})`);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar QR mensal (tenant ${tenant.id}): ${err.message}`);
+      await this._logBillingEvent(tenant.id, 'pix', 'failed', valorNum, null, err.message);
     }
+  }
+
+  // Admin: histórico de tentativas de cobrança (auditoria/monitoramento de envios no painel)
+  async listBillingEvents(tenantId?: string, limit = 100): Promise<any[]> {
+    const qb = this.billingEventRepo
+      .createQueryBuilder('be')
+      .leftJoin(WhatsappConfig, 'wc', 'wc.id = be.tenant_id')
+      .select([
+        'be.id AS id',
+        'be.tenant_id AS "tenantId"',
+        'COALESCE(wc.display_name, wc.profile_name) AS "tenantName"',
+        'be.channel AS channel',
+        'be.status AS status',
+        'be.amount AS amount',
+        'be.txid AS txid',
+        'be.error_message AS "errorMessage"',
+        'be.created_at AS "createdAt"',
+      ])
+      .orderBy('be.created_at', 'DESC')
+      .limit(limit);
+    if (tenantId) qb.where('be.tenant_id = :tenantId', { tenantId });
+    return qb.getRawMany();
+  }
+
+  private async _logBillingEvent(
+    tenantId: string,
+    channel: 'pix' | 'whatsapp' | 'email',
+    status: 'sent' | 'failed',
+    amount: number,
+    txid: string | null,
+    errorMessage?: string,
+  ): Promise<void> {
+    await this.billingEventRepo.save(this.billingEventRepo.create({
+      tenantId, channel, status, amount: amount.toFixed(2), txid, errorMessage: errorMessage ?? null,
+    }));
   }
 
   // ───────────────────────── Helpers ─────────────────────────
@@ -703,10 +746,10 @@ export class PaymentsService {
     valorTexto: string,
     pix: { qrCode: string; pixCode: string },
     description: string,
-  ): Promise<void> {
+  ): Promise<{ ok: boolean; error?: string }> {
     if (!this.resend) {
       this.logger.warn('[EMAIL] RESEND_API_KEY não configurada — pulando envio de PIX por e-mail');
-      return;
+      return { ok: false, error: 'RESEND_API_KEY não configurada' };
     }
     const from = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'Convert Hair <onboarding@resend.dev>';
     const match = /^data:image\/\w+;base64,(.+)$/.exec(pix.qrCode);
@@ -720,8 +763,10 @@ export class PaymentsService {
         attachments: qrBuffer ? [{ filename: 'qrcode.png', content: qrBuffer, contentType: 'image/png', contentId: 'qrcode' }] : undefined,
       });
       this.logger.log(`[EMAIL] PIX (${title}) enviado para ${email}`);
+      return { ok: true };
     } catch (err) {
       this.logger.error(`[EMAIL] Falha ao enviar PIX (${title}) para ${email}: ${err.message}`);
+      return { ok: false, error: err.message };
     }
   }
 

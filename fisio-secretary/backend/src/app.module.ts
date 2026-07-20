@@ -18,6 +18,7 @@ import { PromptTemplate } from './common/entities/prompt-template.entity';
 import { Agent } from './common/entities/agent.entity';
 import { PromptModule as PromptModuleEntity } from './common/entities/prompt-module.entity';
 import { CheckoutSettings } from './common/entities/checkout-settings.entity';
+import { BillingEvent } from './common/entities/billing-event.entity';
 import { InitialSchema1780170753448 } from './migrations/1780170753448-InitialSchema';
 import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
 import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
@@ -70,7 +71,7 @@ import { PromptModulesModule } from './prompt-modules/prompt-modules.module';
         url: config.get('SUPABASE_DATABASE_URL'),
         // Postgres local (dev) não usa SSL; Supabase (prod) exige. Controlado por DATABASE_SSL.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings, BillingEvent],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).

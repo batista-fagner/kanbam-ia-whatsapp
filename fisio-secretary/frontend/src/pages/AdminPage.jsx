@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send } from 'lucide-react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -37,6 +37,9 @@ export default function AdminPage() {
   const [savingCheckout, setSavingCheckout] = useState(false)
   const [checkoutSaved, setCheckoutSaved] = useState(false)
   const [pixSendingId, setPixSendingId] = useState(null)
+  const [billingEvents, setBillingEvents] = useState([])
+  const [loadingBilling, setLoadingBilling] = useState(false)
+  const [billingFilter, setBillingFilter] = useState('')
 
   const load = async () => {
     try {
@@ -82,6 +85,18 @@ export default function AdminPage() {
   }
 
   useEffect(() => { if (activeTab === 'checkout' && !checkoutSettings) loadCheckoutSettings() }, [activeTab])
+
+  async function loadBillingEvents(tenantId) {
+    setLoadingBilling(true)
+    try {
+      setBillingEvents(await getBillingEvents(tenantId || undefined))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoadingBilling(false)
+    }
+  }
+  useEffect(() => { if (activeTab === 'billing') loadBillingEvents(billingFilter) }, [activeTab, billingFilter])
 
   async function handleSaveCheckout(e) {
     e.preventDefault()
@@ -202,6 +217,10 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('checkout')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'checkout' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
             <CreditCard className="w-4 h-4" /> Checkout
+          </button>
+          <button onClick={() => setActiveTab('billing')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'billing' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <Send className="w-4 h-4" /> Cobranças
           </button>
         </div>
         {activeTab === 'clients' && (
@@ -370,6 +389,60 @@ export default function AdminPage() {
                 )}
               </div>
             </form>
+          )}
+        </div>
+      )}
+
+      {/* Aba: Cobranças (histórico de envios PIX) */}
+      {activeTab === 'billing' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <select
+              value={billingFilter}
+              onChange={e => setBillingFilter(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="">Todos os clientes</option>
+              {clients.filter(c => c.paymentMethod === 'pix').map(c => (
+                <option key={c.id} value={c.id}>{c.displayName || c.email || c.id}</option>
+              ))}
+            </select>
+            <button onClick={() => loadBillingEvents(billingFilter)} className="text-xs text-teal-600 hover:underline">Atualizar</button>
+          </div>
+
+          {loadingBilling && <div className="flex items-center gap-2 text-gray-400 text-sm py-8"><Loader2 className="w-4 h-4 animate-spin" /> Carregando...</div>}
+
+          {!loadingBilling && billingEvents.length === 0 && (
+            <div className="text-center text-gray-400 text-sm py-8">Nenhum envio registrado ainda.</div>
+          )}
+
+          {!loadingBilling && billingEvents.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {billingEvents.map(ev => (
+                <div key={ev.id} className="p-3 flex items-center justify-between gap-3 text-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {ev.status === 'sent'
+                      ? <Check className="w-4 h-4 text-green-600 shrink-0" />
+                      : <X className="w-4 h-4 text-red-600 shrink-0" />}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-700 truncate">{ev.tenantName || ev.tenantId}</span>
+                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                          {ev.channel === 'pix' ? '⚡ geração QR' : ev.channel === 'whatsapp' ? '💬 whatsapp' : '📧 e-mail'}
+                        </span>
+                      </div>
+                      {ev.status === 'failed' && ev.errorMessage && (
+                        <p className="text-xs text-red-500 truncate max-w-md" title={ev.errorMessage}>{ev.errorMessage}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-400 shrink-0">
+                    {ev.amount && <span>R$ {Number(ev.amount).toFixed(2)}</span>}
+                    <span>{new Date(ev.createdAt).toLocaleString('pt-BR')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
