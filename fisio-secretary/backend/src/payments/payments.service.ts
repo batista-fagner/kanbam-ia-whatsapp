@@ -560,6 +560,11 @@ export class PaymentsService {
     if (tenant.paymentMethod !== 'pix') throw new BadRequestException('Cliente não usa PIX');
     if (!tenant.billingPhone) throw new BadRequestException('Cliente sem telefone de cobrança cadastrado');
     await this.generateAndSendMonthlyPix(tenant);
+    // Marca como 'pending' pra entrar no polling (pollPendingPix) e confirmar sozinho quando pagar.
+    if (tenant.planStatus === 'active') {
+      tenant.planStatus = 'pending';
+      await this.configRepo.save(tenant);
+    }
   }
 
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
