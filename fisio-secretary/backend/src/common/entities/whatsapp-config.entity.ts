@@ -109,6 +109,12 @@ export class WhatsappConfig {
   @Column({ name: 'last_pix_sent_at', type: 'date', nullable: true })
   lastPixSentAt: Date | null;
 
+  // txid da cobrança PIX do ciclo de renovação atual. A Efí não permite reusar um txid já criado
+  // (mesmo pago ou vencido) — cada ciclo de renovação precisa de um txid novo. Usado pelo polling
+  // (pollPendingPix) e pelo webhook pra achar a cobrança certa. Nulo = ainda na 1ª cobrança (usa tenant.id).
+  @Column({ name: 'last_pix_txid', type: 'varchar', nullable: true })
+  lastPixTxid: string | null;
+
   // Valor mensal cobrado deste cliente (planos variados: 310, 490, ...). Sem valor cadastrado → fallback fixo no PaymentsService.
   @Column({ name: 'plan_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
   planValue: string | null;

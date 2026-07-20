@@ -1,4 +1,5 @@
 import * as https from 'https';
+import { randomUUID } from 'crypto';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -450,7 +451,11 @@ export class PaymentsService {
       where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
     });
     for (const tenant of pendings) {
-      const txid = tenant.id.replace(/-/g, '');
+      // lastPixTxid = txid do ciclo de renovação atual. Sem ele (cliente ainda na 1ª cobrança,
+      // nunca renovou) cai no txid = tenant.id, usado no checkout inicial.
+      // NUNCA usar tenant.id como fallback se lastPixTxid já existe: a cobrança de tenant.id é a
+      // do cadastro, sempre CONCLUIDA — usá-la aqui reativaria o tenant sem a renovação ser paga.
+      const txid = tenant.lastPixTxid ?? tenant.id.replace(/-/g, '');
       let status: string | null;
       try {
         status = await this._efiGetCobStatus(txid);
@@ -490,6 +495,7 @@ export class PaymentsService {
   // Ativa o tenant após pagamento confirmado.
   // Usa UPDATE atômico (pending → active) para evitar duplicação em múltiplas instâncias.
   private async _activatePaidTenant(tenant: WhatsappConfig): Promise<void> {
+    const wasAlreadyActivatedBefore = tenant.isActive; // false só na 1ª cobrança (checkout); true em renovação
     const claim = await this.configRepo
       .createQueryBuilder()
       .update(WhatsappConfig)
@@ -499,15 +505,23 @@ export class PaymentsService {
 
     if (claim.affected !== 1) return; // já ativado por outra instância
 
-    // Primeira ativação: gera senha definitiva e envia credenciais
-    const users = await this.usersService.findByTenant(tenant.id);
-    const user = users[0];
-    if (user) {
-      const password = this._generatePassword();
-      await this.usersService.resetPassword(user.id, password);
-      await this._sendCredentials(tenant.billingPhone, user.email, password, tenant.displayName ?? 'Cliente');
+    if (!wasAlreadyActivatedBefore) {
+      // Primeira ativação: gera senha definitiva e envia credenciais
+      const users = await this.usersService.findByTenant(tenant.id);
+      const user = users[0];
+      if (user) {
+        const password = this._generatePassword();
+        await this.usersService.resetPassword(user.id, password);
+        await this._sendCredentials(tenant.billingPhone, user.email, password, tenant.displayName ?? 'Cliente');
+      }
+      this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO (1ª vez) + credenciais enviadas`);
+    } else {
+      // Renovação: só confirma o pagamento, não mexe em senha/credenciais
+      if (tenant.billingPhone) {
+        await this._sendText(tenant.billingPhone, `🎉 Pagamento confirmado! Seu plano *Convert Hair* foi renovado com sucesso. Obrigado! 🙏`);
+      }
+      this.logger.log(`[EFI] Renovação confirmada → tenant ${tenant.id} reativado (sem reset de credenciais)`);
     }
-    this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO + credenciais enviadas`);
   }
 
   // ───────────────────────── Efí Bank PIX — Webhook (fallback, exige mTLS) ─────────────────────────
@@ -521,8 +535,13 @@ export class PaymentsService {
     for (const pix of pixList) {
       if (!pix.txid || pix.txid.length !== 32) continue;
       const raw = pix.txid;
-      const tenantId = `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
-      const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+      // Renovação (txid aleatório) → busca por lastPixTxid. 1ª cobrança (txid = tenant.id sem hífens,
+      // legado) → decodifica o tenantId direto do txid.
+      let tenant = await this.configRepo.findOne({ where: { lastPixTxid: raw } });
+      if (!tenant) {
+        const tenantId = `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
+        tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+      }
       if (!tenant) {
         this.logger.warn(`[EFI] Tenant não encontrado para txid=${raw}`);
         continue;
@@ -550,12 +569,14 @@ export class PaymentsService {
     const valor = valorNum.toFixed(2).replace('.', ',');
 
     try {
-      const txid = tenant.id.replace(/-/g, '');
+      // txid único por ciclo — a Efí rejeita (409) reuso de um txid já criado antes (pago ou vencido),
+      // então nunca reaproveita tenant.id (usado só na 1ª cobrança, no checkout).
+      const txid = randomUUID().replace(/-/g, '');
       const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valorNum.toFixed(2));
-      this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id}`);
+      this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro,
-      // nem impedir a marcação de lastPixSentAt (o QR já foi gerado com sucesso na Efí).
+      // nem impedir a marcação de lastPixSentAt/lastPixTxid (o QR já foi gerado com sucesso na Efí).
       try {
         const mediaId = await this._uploadMetaMedia(pix.qrCode);
         await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_v3', [
@@ -573,6 +594,7 @@ export class PaymentsService {
       }
 
       tenant.lastPixSentAt = new Date();
+      tenant.lastPixTxid = txid;
       await this.configRepo.save(tenant);
       this.logger.log(`[EFI] PIX mensal enviado → ${tenant.billingPhone} (tenant ${tenant.id})`);
     } catch (err) {
