@@ -350,10 +350,12 @@ export class PaymentsService {
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
     const settings = await this.getCheckoutSettings();
-    const valor = Number(settings.planoPrice).toFixed(2).replace('.', ',');
+    const valorNum = Number(settings.planoPrice);
+    const valor = valorNum.toFixed(2).replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
+      await this._logBillingEvent(tenantId, 'pix', 'sent', valorNum, txid, undefined, name);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
       try {
@@ -362,12 +364,16 @@ export class PaymentsService {
           { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
           { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
         ]);
+        await this._logBillingEvent(tenantId, 'whatsapp', 'sent', valorNum, txid, undefined, name);
       } catch (waErr) {
         this.logger.error(`[EFI] Falha ao enviar PIX de checkout por WhatsApp (tenant ${tenantId}): ${waErr.message}`);
+        await this._logBillingEvent(tenantId, 'whatsapp', 'failed', valorNum, txid, waErr.message, name);
       }
-      await this._sendPixEmail(email, name, 'Plano Mensal', valor, pix, 'Assinatura mensal do plano Convert Hair.');
+      const result = await this._sendPixEmail(email, name, 'Plano Mensal', valor, pix, 'Assinatura mensal do plano Convert Hair.');
+      await this._logBillingEvent(tenantId, 'email', result.ok ? 'sent' : 'failed', valorNum, txid, result.error, name);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR de checkout (tenant ${tenantId}): ${err.message}`);
+      await this._logBillingEvent(tenantId, 'pix', 'failed', valorNum, null, err.message, name);
       // Limpa o tenant fantasma para liberar o e-mail e permitir nova tentativa
       const users = await this.usersService.findByTenant(tenantId);
       for (const u of users) await this.usersService.resetPassword(u.id, '_disabled_');
@@ -393,11 +399,13 @@ export class PaymentsService {
   private async _sendImplantacaoPix(paymentId: string, name: string, phone: string, email: string | null): Promise<void> {
     const txid = paymentId.replace(/-/g, '');
     const settings = await this.getCheckoutSettings();
-    const valorNum = Number(settings.implantacaoPrice).toFixed(2);
+    const valorTextoNum = Number(settings.implantacaoPrice);
+    const valorNum = valorTextoNum.toFixed(2);
     const valorTexto = valorNum.replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, valorNum);
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
+      await this._logBillingEvent(null, 'pix', 'sent', valorTextoNum, txid, undefined, name);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
       try {
@@ -410,14 +418,18 @@ export class PaymentsService {
             { type: 'text', text: pix.pixCode },
           ] },
         ]);
+        await this._logBillingEvent(null, 'whatsapp', 'sent', valorTextoNum, txid, undefined, name);
       } catch (waErr) {
         this.logger.error(`[EFI] Falha ao enviar PIX implantação por WhatsApp (payment ${paymentId}): ${waErr.message}`);
+        await this._logBillingEvent(null, 'whatsapp', 'failed', valorTextoNum, txid, waErr.message, name);
       }
       if (email) {
-        await this._sendPixEmail(email, name, 'Taxa de Implantação', valorTexto, pix, 'Pagamento único para iniciar seu sistema Convert Hair.');
+        const result = await this._sendPixEmail(email, name, 'Taxa de Implantação', valorTexto, pix, 'Pagamento único para iniciar seu sistema Convert Hair.');
+        await this._logBillingEvent(null, 'email', result.ok ? 'sent' : 'failed', valorTextoNum, txid, result.error, name);
       }
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar/enviar QR implantação (payment ${paymentId}): ${err.message}`);
+      await this._logBillingEvent(null, 'pix', 'failed', valorTextoNum, null, err.message, name);
       await this.implantacaoRepo.update(paymentId, { status: 'expired' });
       await this._sendText(phone, `Ops! Tivemos um problema ao gerar seu PIX. 😕 Por favor, tente novamente em instantes.`);
     }
@@ -623,7 +635,8 @@ export class PaymentsService {
       .select([
         'be.id AS id',
         'be.tenant_id AS "tenantId"',
-        'COALESCE(wc.display_name, wc.profile_name) AS "tenantName"',
+        // Sem tenant (implantação, paga antes de existir conta) → usa be.label (nome/e-mail do pagador).
+        'COALESCE(wc.display_name, wc.profile_name, be.label) AS "tenantName"',
         'be.channel AS channel',
         'be.status AS status',
         'be.amount AS amount',
@@ -638,15 +651,16 @@ export class PaymentsService {
   }
 
   private async _logBillingEvent(
-    tenantId: string,
+    tenantId: string | null,
     channel: 'pix' | 'whatsapp' | 'email',
     status: 'sent' | 'failed',
     amount: number,
     txid: string | null,
     errorMessage?: string,
+    label?: string,
   ): Promise<void> {
     await this.billingEventRepo.save(this.billingEventRepo.create({
-      tenantId, channel, status, amount: amount.toFixed(2), txid, errorMessage: errorMessage ?? null,
+      tenantId, channel, status, amount: amount.toFixed(2), txid, errorMessage: errorMessage ?? null, label: label ?? null,
     }));
   }
 

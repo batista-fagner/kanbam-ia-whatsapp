@@ -7,8 +7,13 @@ export class BillingEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'tenant_id', type: 'uuid' })
-  tenantId: string;
+  // Nulo pra implantação (taxa única paga ANTES de existir tenant) — usa "label" no lugar.
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId: string | null;
+
+  // Nome/e-mail do pagador quando não há tenant ainda (implantação).
+  @Column({ type: 'varchar', nullable: true })
+  label: string | null;
 
   // 'pix' = geração da cobrança na Efí. 'whatsapp' / 'email' = canais de entrega do PIX gerado.
   @Column({ type: 'varchar' })
