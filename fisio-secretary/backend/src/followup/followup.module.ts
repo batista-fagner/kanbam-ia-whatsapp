@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
+import { Agent } from '../common/entities/agent.entity';
 import { FollowupService } from './followup.service';
 import { FollowupController } from './followup.controller';
 import { LeadsModule } from '../leads/leads.module';
@@ -17,7 +18,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     ConfigModule,
     ScheduleModule.forRoot(),
     HttpModule,
-    TypeOrmModule.forFeature([Followup, WhatsappConfig]),
+    TypeOrmModule.forFeature([Followup, WhatsappConfig, Agent]),
     LeadsModule,
     AiModule,
     AuthModule,

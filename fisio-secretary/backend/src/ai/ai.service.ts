@@ -417,6 +417,50 @@ Escreva a mensagem de follow-up:`;
     return text;
   }
 
+  // Follow-up "com conhecimento": usa o system_prompt REAL do agente que estava
+  // atendendo (voz + regras + base de conhecimento), em vez da persona genérica de
+  // generateFollowupSuggestion. Só usado em tenants habilitados (ver followup.service.ts).
+  async generateAgentAwareFollowup(agentSystemPrompt: string, leadName: string | null, transcript: string): Promise<string> {
+    const client = this.liteClient ?? this.providers[0]?.client;
+    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
+    if (!client) throw new Error('Nenhum provedor LLM configurado');
+
+    const systemPrompt = `${agentSystemPrompt}
+
+════════ VOCÊ ESTÁ ESCREVENDO UM FOLLOW-UP (não uma resposta ao vivo) ════════
+A pessoa parou de responder. Você vai escrever UMA mensagem de reengajamento curta (1-2 frases, no máximo 3 linhas), usando sua mesma voz e conhecimento de sempre, pra retomar a conversa de onde ela parou.
+- NÃO repita "oi, viu minha mensagem?" nem crie urgência falsa.
+- Retome algo real que ela disse (dor, objetivo, contexto) — NUNCA invente informação que não apareceu na conversa.
+- Aqui é SEMPRE uma mensagem única — NUNCA use o marcador "|||" (esse recurso é só pra respostas ao vivo, não pra follow-up).
+- Responda APENAS com o texto da mensagem, sem aspas, sem JSON, sem explicações, sem rótulo de remetente.`;
+
+    const userPrompt = `Nome da pessoa: ${leadName?.trim() || 'desconhecido'}
+
+Conversa até agora:
+${transcript || '(sem histórico de mensagens)'}
+
+Escreva a mensagem de follow-up:`;
+
+    const resp = await callWithRetry(
+      () => client.chat.completions.create({
+        model,
+        max_tokens: 400,
+        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any),
+      this.logger,
+    );
+
+    // Defesa extra: mesmo instruído a nunca usar "|||" aqui, se o modelo ignorar,
+    // remove o marcador — o envio de follow-up não faz split de bolhas.
+    const text = (resp.choices[0].message.content ?? '').trim().replace(/^["']|["']$/g, '').replace(/\x00/g, '').replace(/\|\|\|/g, ' ');
+    this.logger.log(`[FOLLOWUP-AGENT-AWARE] Sugestão gerada: "${text.substring(0, 60)}..."`);
+    return text;
+  }
+
   // Supervisor: escolhe qual agente deve responder uma mensagem do cliente.
   // Usa o modelo lite (barato). Recebe a lista de agentes ativos do tenant e a
   // mensagem; devolve o id escolhido + um motivo curto. Sempre retorna um agente

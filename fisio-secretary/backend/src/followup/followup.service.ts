@@ -7,6 +7,8 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
+import { Agent } from '../common/entities/agent.entity';
+import { Lead } from '../common/entities/lead.entity';
 import { LeadsService } from '../leads/leads.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
@@ -33,6 +35,13 @@ const DUE_POOL_SIZE = 200;
 // Teto diário padrão por tenant, usado se a config não tiver valor.
 const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 
+// Follow-up "com conhecimento": em vez do template fixo configurado na tela de
+// alertas, gera a mensagem com IA usando o system_prompt real do agente que
+// estava atendendo (voz + regras + base de conhecimento) + a conversa até onde
+// parou. Só pra tenants de teste habilitados — nos demais, comportamento
+// idêntico ao de sempre (template fixo + spin).
+const AGENT_AWARE_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29']; // claudia_teste@hotmail.com
+
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
@@ -42,6 +51,8 @@ export class FollowupService {
     private readonly followupRepo: Repository<Followup>,
     @InjectRepository(WhatsappConfig)
     private readonly configRepo: Repository<WhatsappConfig>,
+    @InjectRepository(Agent)
+    private readonly agentRepo: Repository<Agent>,
     private readonly leadsService: LeadsService,
     private readonly leadsGateway: LeadsGateway,
     private readonly aiService: AiService,
@@ -58,6 +69,12 @@ export class FollowupService {
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
     const config = await this.configRepo.findOne({ where: { id: tenantId } });
+
+    if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(tenantId) && config?.multiAgentEnabled) {
+      const agentAware = await this.buildAgentAwareFollowupMessage(tenantId, lead);
+      if (agentAware) return { text: agentAware };
+    }
+
     const businessName = config?.displayName?.trim() || 'a empresa';
     const conversation = await this.leadsService.getConversationWithMessages(leadId, tenantId);
     const transcript = this.buildTranscript(conversation?.messages ?? []);
@@ -305,7 +322,13 @@ export class FollowupService {
             const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
             if (!claimed) continue;
 
-            const message = this.interpolateName(rule.message, lead.name);
+            let message: string | null = null;
+            if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
+              message = await this.buildAgentAwareFollowupMessage(cfg.id, lead);
+            }
+            if (!message) {
+              message = this.interpolateName(rule.message, lead.name);
+            }
             await this.followupRepo.save(this.followupRepo.create({
               tenantId: cfg.id,
               leadId: lead.id,
@@ -410,6 +433,25 @@ export class FollowupService {
     const sc = await this.configRepo.findOne({ where: { id: tenantId } });
     if (sc?.instanceToken) return sc.instanceToken;
     return this.config.get<string>('UAZAPI_TOKEN') ?? '';
+  }
+
+  // Monta o follow-up "com conhecimento" (agente real + transcript). Retorna null
+  // se não achar agente ou se a geração falhar — o chamador cai pro template fixo.
+  private async buildAgentAwareFollowupMessage(tenantId: string, lead: Lead): Promise<string | null> {
+    try {
+      const agent = (lead.currentAgentId
+        ? await this.agentRepo.findOne({ where: { id: lead.currentAgentId, tenantId } })
+        : null) ?? await this.agentRepo.findOne({ where: { tenantId, isDefault: true } });
+      if (!agent) return null;
+
+      const conversation = await this.leadsService.getConversationWithMessages(lead.id, tenantId);
+      const transcript = this.buildTranscript(conversation?.messages ?? []);
+      const text = await this.aiService.generateAgentAwareFollowup(agent.systemPrompt, lead.name, transcript);
+      return text?.trim() || null;
+    } catch (err) {
+      this.logger.error(`[FOLLOWUP-AGENT-AWARE] Falha ao gerar p/ lead ${lead.id}: ${err?.message ?? err} — usando template fixo`);
+      return null;
+    }
   }
 
   private buildTranscript(messages: Array<{ direction: string; sender: string; content: string }>): string {
