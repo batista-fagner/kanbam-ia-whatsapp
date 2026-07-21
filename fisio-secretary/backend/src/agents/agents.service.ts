@@ -16,6 +16,11 @@ type AgentInput = Partial<Pick<Agent,
 const AGENT_PROMPT_LIMIT_DEFAULT = 10_000;
 const AGENT_PROMPT_LIMIT_MEDIA = 17_000;
 
+// Contas de teste liberadas do limite de caracteres — cliente enviou base de
+// conhecimento extensa (doc de 40 páginas) pra testar um agente de conhecimento
+// sem resumo. Só pra teste, não usar em tenant de produção real.
+const PROMPT_LIMIT_BYPASS_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29']; // claudia_teste@hotmail.com
+
 @Injectable()
 export class AgentsService {
   private readonly logger = new Logger(AgentsService.name);
@@ -32,7 +37,7 @@ export class AgentsService {
 
   async create(tenantId: string, body: AgentInput) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
-    this.validatePromptLength(body.systemPrompt ?? '', body.canSendMedia ?? true);
+    this.validatePromptLength(tenantId, body.systemPrompt ?? '', body.canSendMedia ?? true);
     // Só um agente de entrada por tenant.
     if (body.isDefault) await this.clearDefault(tenantId);
     const agent = this.repo.create({
@@ -58,7 +63,7 @@ export class AgentsService {
     if (!agent) throw new NotFoundException('Agente não encontrado');
     const resultingPrompt = body.systemPrompt !== undefined ? body.systemPrompt : agent.systemPrompt;
     const resultingCanSendMedia = body.canSendMedia !== undefined ? body.canSendMedia : agent.canSendMedia;
-    this.validatePromptLength(resultingPrompt ?? '', resultingCanSendMedia);
+    this.validatePromptLength(tenantId, resultingPrompt ?? '', resultingCanSendMedia);
     if (body.isDefault === true && !agent.isDefault) await this.clearDefault(tenantId);
     if (body.name !== undefined) agent.name = body.name.trim();
     if (body.description !== undefined) agent.description = body.description.trim();
@@ -78,7 +83,8 @@ export class AgentsService {
   // Trava o tamanho do system_prompt por agente. Limite maior pra quem manda mídia
   // (carrega catálogo de vídeos no próprio prompt) — valores fixos por enquanto,
   // devem virar por-plano no futuro (ver memória project_shared_agent_rules_plan).
-  private validatePromptLength(systemPrompt: string, canSendMedia: boolean): void {
+  private validatePromptLength(tenantId: string, systemPrompt: string, canSendMedia: boolean): void {
+    if (PROMPT_LIMIT_BYPASS_TENANT_IDS.includes(tenantId)) return;
     const limit = canSendMedia ? AGENT_PROMPT_LIMIT_MEDIA : AGENT_PROMPT_LIMIT_DEFAULT;
     if (systemPrompt.length > limit) {
       throw new BadRequestException(
