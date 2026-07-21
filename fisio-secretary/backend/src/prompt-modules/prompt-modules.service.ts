@@ -2,15 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PromptModule } from '../common/entities/prompt-module.entity';
-import { TokenUsage } from '../common/entities/token-usage.entity';
 import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDULING_RULES } from '../ai/ai.service';
 import { Lead } from '../common/entities/lead.entity';
 import { MediaService } from '../media/media.service';
-
-// Teto de tokens pro teste beta do motor de módulos dinâmicos (tenant alex_teste@hotmail.com,
-// S&A Cabelos Naturais) — cumulativo, não reseta com o simulador (soma direto do token_usage).
-const TEST_TOKEN_CAP_TENANT_ID = 'e624e817-5b6c-4840-b0ea-269eb78afe8d';
-const TEST_TOKEN_CAP = 650_000;
 
 type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog'>>;
 
@@ -72,7 +66,6 @@ export class PromptModulesService {
 
   constructor(
     @InjectRepository(PromptModule) private readonly repo: Repository<PromptModule>,
-    @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
     private readonly aiService: AiService,
     private readonly mediaService: MediaService,
   ) {}
@@ -211,12 +204,6 @@ export class PromptModulesService {
     modelOverride?: string,
   ) {
     if (!message?.trim()) throw new BadRequestException('Mensagem é obrigatória');
-    if (tenantId === TEST_TOKEN_CAP_TENANT_ID) {
-      const spent = await this._totalTokensSpent(tenantId, 'dynamic_modules');
-      if (spent >= TEST_TOKEN_CAP) {
-        throw new BadRequestException(`Limite de teste atingido (${TEST_TOKEN_CAP.toLocaleString('pt-BR')} tokens). Teste encerrado.`);
-      }
-    }
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) throw new BadRequestException('Nenhum módulo cadastrado pra este tenant');
     const core = allModules.find((m) => m.isCore);
@@ -251,17 +238,5 @@ export class PromptModulesService {
       tokenUsage: aiResponse.tokenUsage,
       systemPromptChars: systemPrompt.length,
     };
-  }
-
-  // Soma cumulativa (todas as datas) de input+output tokens pra um tenant/engine —
-  // usado pro teto do teste beta. Não reseta com o simulador de chat, só reflete
-  // o gasto real registrado em token_usage.
-  private async _totalTokensSpent(tenantId: string, engine: string): Promise<number> {
-    const row = await this.tokenUsageRepo
-      .createQueryBuilder('t')
-      .select('COALESCE(SUM(t.input_tokens + t.output_tokens), 0)', 'total')
-      .where('t.tenant_id = :tenantId AND t.engine = :engine', { tenantId, engine })
-      .getRawOne<{ total: string }>();
-    return Number(row?.total ?? 0);
   }
 }
