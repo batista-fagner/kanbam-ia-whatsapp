@@ -493,7 +493,7 @@ Escolha o melhor agente:`;
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
-  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
+  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string, temperature?: number): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
     if (this.providers.length === 0) {
       throw new Error('Nenhum provedor LLM configurado');
     }
@@ -509,7 +509,7 @@ Escolha o melhor agente:`;
           () => provider.client.chat.completions.create({
             model: modelToUse,
             max_tokens: 1024,
-            temperature: 0.3, // reduz alucinação (ex: preço inventado) sem engessar a resposta
+            ...(temperature != null ? { temperature } : {}),
             response_format: { type: 'json_object' },
             ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
             messages: [
@@ -883,7 +883,9 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
     ];
 
     try {
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride);
+      // temperature reduzida (só neste fluxo) pra mitigar alucinação de preço — ver
+      // project_alex_price_hallucination_fix na memória.
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride, 0.3);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'multi_agent');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
