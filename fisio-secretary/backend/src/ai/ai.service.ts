@@ -509,6 +509,7 @@ Escolha o melhor agente:`;
           () => provider.client.chat.completions.create({
             model: modelToUse,
             max_tokens: 1024,
+            temperature: 0.3, // reduz alucinação (ex: preço inventado) sem engessar a resposta
             response_format: { type: 'json_object' },
             ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
             messages: [
