@@ -472,14 +472,14 @@ function MonolithTestCard() {
 export default function SettingsPage() {
   const { user } = useAuth()
   // Multi-agente em rollout controlado: localhost + contas beta (resto segue no monólito).
-  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com']
+  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com', 'soraiadias2023@gmail.com']
   const canSeeMultiAgent = import.meta.env.VITE_API_URL?.includes('localhost')
     || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
     || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
   // Cliente real em teste do multi-agente: esconde ambos os painéis de teste
   // (monólito e multi-agente) — construtor ativo, mas análise via simulador reservada
   // só pra contas internas.
-  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com', 'claudia_temp@hotmail.com']
+  const HIDE_TEST_PANEL_EMAILS = ['alexcosta171@yahoo.com', 'claudia_temp@hotmail.com', 'soraiadias2023@gmail.com']
   const canSeeTestPanel = !HIDE_TEST_PANEL_EMAILS.includes(user?.email)
   const [bootstrapping, setBootstrapping] = useState(true)
   const [instanceConfig, setInstanceConfig] = useState(null) // null = não tem; objeto = tem

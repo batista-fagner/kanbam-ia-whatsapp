@@ -12,7 +12,7 @@ export default function Layout({ onLogout }) {
   // Multi-agente em rollout controlado: visível em localhost e para contas beta.
   // Todos os outros clientes seguem no monólito (o backend também só ativa via
   // multiAgentEnabled por tenant, default false — aqui é só a aba do simulador).
-  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com']
+  const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com', 'soraiadias2023@gmail.com']
   const canSeeMultiAgent = isLocalDev || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
   // Protótipo "agente único + módulos dinâmicos" (2026-07) — só o tenant de
   // teste do Alex (prompt_engine='dynamic_modules' no backend, só nesse tenant).
