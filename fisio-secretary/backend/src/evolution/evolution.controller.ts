@@ -622,8 +622,8 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       .slice(0, MAX_MEDIA);
 
-    // Limite diário de vídeos por tenant (BRT). Padrão: 41.
-    const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 41;
+    // Limite diário de vídeos por tenant (BRT). Padrão: 100.
+    const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 100;
     const alreadySentToday = await this.leadsService.countTodayOutboundMedia(tenantId);
     const remainingQuota = Math.max(0, dailyLimit - alreadySentToday);
 

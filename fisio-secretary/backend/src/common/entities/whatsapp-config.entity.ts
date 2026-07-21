@@ -43,8 +43,8 @@ export class WhatsappConfig {
   @Column({ name: 'appointment_reminder', type: 'jsonb', nullable: true })
   appointmentReminder: { enabled: boolean; message: string } | null;
 
-  // Limite de vídeos enviados pela IA por dia (contagem BRT). Padrão: 41.
-  @Column({ name: 'media_limit_per_day', type: 'integer', default: 41 })
+  // Limite de vídeos enviados pela IA por dia (contagem BRT). Padrão: 100.
+  @Column({ name: 'media_limit_per_day', type: 'integer', default: 100 })
   mediaLimitPerDay: number;
 
   // Limite de follow-ups automáticos enviados por dia (contagem BRT). Anti-bloqueio. Padrão: 40.

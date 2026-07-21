@@ -309,7 +309,7 @@ export default function MonitoringPage() {
             <Video className="w-4 h-4 text-orange-500" />
             <h2 className="text-sm font-semibold text-gray-800">Vídeos enviados por cliente ({periodLabel})</h2>
           </div>
-          <span className="text-xs text-gray-400">Limite: 41/dia</span>
+          <span className="text-xs text-gray-400">Limite: 100/dia</span>
         </div>
 
         {/* Gráfico histórico 14 dias de vídeos */}
@@ -340,13 +340,13 @@ export default function MonitoringPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {(media?.by_tenant ?? []).map(t => {
-                const pct = Math.min(100, Math.round((t.videos_sent / (t.daily_limit ?? 41)) * 100))
+                const pct = Math.min(100, Math.round((t.videos_sent / (t.daily_limit ?? 100)) * 100))
                 const barColor = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-orange-400' : 'bg-orange-300'
                 return (
                   <tr key={t.tenant_id} className={`hover:bg-gray-50 ${pct >= 100 ? 'bg-red-50' : ''}`}>
                     <td className="px-5 py-3 font-medium text-gray-800">{t.tenant_name}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-800">{t.videos_sent}</td>
-                    <td className="px-4 py-3 text-right text-gray-500">{t.daily_limit ?? 41}</td>
+                    <td className="px-4 py-3 text-right text-gray-500">{t.daily_limit ?? 100}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-gray-100 rounded-full h-2">
