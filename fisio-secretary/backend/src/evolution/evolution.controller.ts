@@ -488,7 +488,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         if (mediaSentCount > 0) await new Promise(r => setTimeout(r, 500));
         this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
         await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
       }
 
       // Aplica etiquetas na uazapi e salva no banco
@@ -581,7 +581,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
           await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
-          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
           this.logger.log(`✅ [TEXT REPLY] Resposta enviada para ${phone}`);
         }
         const updatedLead = await this.leadsService.findOne(lead.id);
@@ -598,7 +598,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
-    await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply);
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
