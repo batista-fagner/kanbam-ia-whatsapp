@@ -515,8 +515,9 @@ function TestPanel({ open, onClose, connected }) {
             onChange={(e) => { setModel(e.target.value); reset(); }}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-500"
           >
-            <option value="">Padrão (gemini-2.5-flash)</option>
+            <option value="">Padrão (gemini-3.1-flash-lite)</option>
             <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+            <option value="gemini-2.5-pro">gemini-2.5-pro</option>
           </select>
         </div>
 
