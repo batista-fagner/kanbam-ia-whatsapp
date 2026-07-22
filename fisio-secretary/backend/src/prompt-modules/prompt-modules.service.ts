@@ -117,18 +117,27 @@ export class PromptModulesService {
 
   // Seleciona módulos (não-core) cujo padrão de `keywords` (1 por linha, regex
   // ou texto simples — tenta regex, cai pra includes() se inválida) bate na
-  // mensagem atual. Se nada bater, mantém os módulos do turno anterior
-  // (continuidade — respostas curtas tipo "100"/"sim" não têm palavra-chave
-  // própria, mas o assunto continua o mesmo).
-  selectModules(message: string, allModules: PromptModule[], previousModuleNames: string[]): PromptModule[] {
+  // mensagem atual OU na última pergunta da própria IA (`priorAssistantText`).
+  // Isso cobre o caso de resposta curta a uma pergunta composta da IA — ex.:
+  // IA pergunta "quer ver outro vídeo ou saber o valor?" e a cliente responde
+  // só "sim": a palavra-chave "valor" não está na mensagem dela, mas está na
+  // pergunta que ela está respondendo. Sem isso, o módulo de preço nunca
+  // carrega e o modelo fica sem a tabela pra responder — e inventa um valor
+  // em vez de seguir a regra do Core (bug real: preço inventado em prod,
+  // 2026-07-22, tenant alexcosta171@yahoo.com).
+  // Se nada bater (nem na mensagem, nem na pergunta anterior), mantém os
+  // módulos do turno anterior (continuidade — respostas curtas tipo "100" não
+  // têm palavra-chave própria, mas o assunto continua o mesmo).
+  selectModules(message: string, allModules: PromptModule[], previousModuleNames: string[], priorAssistantText?: string): PromptModule[] {
     const candidates = allModules.filter((m) => !m.isCore && m.isActive);
+    const haystack = priorAssistantText ? `${priorAssistantText}\n${message}` : message;
     const matched = candidates.filter((m) => {
       const patterns = m.keywords.split('\n').map((k) => k.trim()).filter(Boolean);
       return patterns.some((p) => {
         try {
-          return new RegExp(p, 'i').test(message);
+          return new RegExp(p, 'i').test(haystack);
         } catch {
-          return message.toLowerCase().includes(p.toLowerCase());
+          return haystack.toLowerCase().includes(p.toLowerCase());
         }
       });
     });
@@ -179,13 +188,14 @@ export class PromptModulesService {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) return null;
     const core = allModules.find((m) => m.isCore);
-    const selected = this.selectModules(message, allModules, lead.activeModules ?? []);
+    const history = slimHistory((lead.aiContext as any[]) ?? []);
+    const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    const selected = this.selectModules(message, allModules, lead.activeModules ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
     const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
 
-    const history = slimHistory((lead.aiContext as any[]) ?? []);
     const messages = [...history, { role: 'user', content: message }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
@@ -209,13 +219,14 @@ export class PromptModulesService {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) throw new BadRequestException('Nenhum módulo cadastrado pra este tenant');
     const core = allModules.find((m) => m.isCore);
-    const selected = this.selectModules(message, allModules, previousModuleNames ?? []);
+    const history = slimHistory(aiContext ?? []);
+    const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    const selected = this.selectModules(message, allModules, previousModuleNames ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
     const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
 
-    const history = slimHistory(aiContext ?? []);
     const messages = [...history, { role: 'user', content: message }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages, modelOverride);
