@@ -363,7 +363,10 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // Falha ou tenant sem agentes ativos → fallback pro fluxo single-prompt.
     if (!aiResponse && instanceConfig?.multiAgentEnabled) {
       try {
-        const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext);
+        // Hardcode temporário: tenant da demo de prospecção ativa (claudia_teste@hotmail.com)
+        // usa gemini-2.5-pro em vez do default — pedido pontual do usuário, não generalizar.
+        const modelOverride = tenantId === '1ff3f0b3-52d1-4e89-b7bf-552d0556de29' ? 'gemini-2.5-pro' : undefined;
+        const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext, modelOverride);
         if (result) {
           aiResponse = result.aiResponse;
           // Persiste o agente atual no lead pra próxima mensagem continuar com ele
