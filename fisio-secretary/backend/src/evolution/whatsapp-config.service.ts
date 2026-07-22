@@ -185,6 +185,7 @@ export class WhatsappConfigService {
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;
       activationKeyword?: string | null;
+      promptEngine?: string;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -196,6 +197,9 @@ export class WhatsappConfigService {
     if ('multiAgentEnabled' in fields) record.multiAgentEnabled = !!fields.multiAgentEnabled;
     if ('deactivationKeyword' in fields) record.deactivationKeyword = this.sanitizeKeyword(fields.deactivationKeyword, 'opa');
     if ('activationKeyword' in fields) record.activationKeyword = this.sanitizeKeyword(fields.activationKeyword, 'volta');
+    if ('promptEngine' in fields && (fields.promptEngine === 'legacy' || fields.promptEngine === 'dynamic_modules')) {
+      record.promptEngine = fields.promptEngine;
+    }
     return this.repo.save(record);
   }
 

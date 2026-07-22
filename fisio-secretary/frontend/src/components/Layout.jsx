@@ -14,9 +14,10 @@ export default function Layout({ onLogout }) {
   // multiAgentEnabled por tenant, default false — aqui é só a aba do simulador).
   const MULTI_AGENT_BETA_EMAILS = ['bfagner@hotmail.com.br', 'claudia_teste@hotmail.com', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'claudia_temp@hotmail.com', 'soraiadias2023@gmail.com']
   const canSeeMultiAgent = isLocalDev || MULTI_AGENT_BETA_EMAILS.includes(user?.email)
-  // Protótipo "agente único + módulos dinâmicos" (2026-07) — só o tenant de
-  // teste do Alex (prompt_engine='dynamic_modules' no backend, só nesse tenant).
-  const DYNAMIC_MODULES_BETA_EMAILS = ['alex_teste@hotmail.com']
+  // Protótipo "agente único + módulos dinâmicos" (2026-07) — tenant de teste do
+  // Alex + conta oficial dele em migração (prompt_engine ainda 'legacy' até o
+  // conteúdo ser testado e aprovado, ver memória project_alex_dynamic_modules_migration).
+  const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com']
   const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email)
 
   const navItems = [

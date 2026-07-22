@@ -6,7 +6,7 @@ import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDU
 import { Lead } from '../common/entities/lead.entity';
 import { MediaService } from '../media/media.service';
 
-type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog'>>;
+type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog' | 'injectsDateTable'>>;
 
 // Schema JSON compartilhado por todo módulo/tenant deste motor — não tem campo
 // "handoff" (não existe mais o conceito) nem capacidades condicionais por
@@ -89,6 +89,7 @@ export class PromptModulesService {
       isActive: body.isActive ?? true,
       sortOrder: body.sortOrder ?? 0,
       injectsMediaCatalog: body.injectsMediaCatalog ?? false,
+      injectsDateTable: body.injectsDateTable ?? false,
     });
     return this.repo.save(module);
   }
@@ -103,6 +104,7 @@ export class PromptModulesService {
     if (body.isActive !== undefined) module.isActive = body.isActive;
     if (body.sortOrder !== undefined) module.sortOrder = body.sortOrder;
     if (body.injectsMediaCatalog !== undefined) module.injectsMediaCatalog = body.injectsMediaCatalog;
+    if (body.injectsDateTable !== undefined) module.injectsDateTable = body.injectsDateTable;
     return this.repo.save(module);
   }
 

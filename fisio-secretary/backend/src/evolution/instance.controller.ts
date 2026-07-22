@@ -78,6 +78,7 @@ export class InstanceController {
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;
       activationKeyword?: string | null;
+      promptEngine?: string;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {
