@@ -15,6 +15,8 @@ function normalizeReelInput(input) {
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+const MAX_VIDEO_SIZE_MB = 10
+const MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
 function formatSize(bytes) {
   if (!bytes) return ''
@@ -74,6 +76,10 @@ export default function MediaPage() {
   }
 
   const pickFile = (file) => {
+    if (file.type?.startsWith('video/') && file.size > MAX_VIDEO_SIZE_BYTES) {
+      setError(`Vídeo muito grande. O tamanho máximo permitido é ${MAX_VIDEO_SIZE_MB}MB.`)
+      return
+    }
     if (file.size > MAX_FILE_SIZE_BYTES) {
       setError(`Arquivo muito grande. O tamanho máximo permitido é ${MAX_FILE_SIZE_MB}MB.`)
       return
@@ -276,7 +282,7 @@ export default function MediaPage() {
               <div className="space-y-2">
                 <Upload className="w-8 h-8 text-gray-300 mx-auto" />
                 <p className="text-sm text-gray-500">Arraste um arquivo aqui ou <span className="text-teal-600 font-medium">clique para selecionar</span></p>
-                <p className="text-sm text-gray-400">Imagens e vídeos — máx. 50 MB</p>
+                <p className="text-sm text-gray-400">Imagens até 50 MB — vídeos até 10 MB</p>
               </div>
             )}
           </div>
