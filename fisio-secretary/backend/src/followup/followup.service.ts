@@ -350,6 +350,12 @@ export class FollowupService {
   // (nurture_step=0, next_nurture_at = agora + offset do 1º passo) toda vez que o
   // lead manda uma mensagem. Chamado pelo evolution.controller.ts logo após salvar
   // o inbound. Sem cadência configurada pra raia atual → apenas zera (idempotente).
+  // ⚠️ steps[0].offsetMinutes é o gatilho de RESET — dispara de novo depois desse
+  // tempo mesmo que o lead tenha acabado de responder normalmente numa conversa ativa.
+  // NUNCA configure um valor curto aqui (ex.: 2min) — uma pausa comum de "lendo e
+  // digitando" numa conversa de verdade passa disso fácil, e o follow-up cai por cima
+  // da conversa ao vivo, fora de contexto (bug real em prod, 2026-07-23, tenant
+  // claudia_teste). Mínimo recomendado: 20-30min mesmo em teste.
   async resetCadenceOnReply(tenantId: string, lead: Lead): Promise<void> {
     try {
       const cfg = await this.configRepo.findOne({ where: { id: tenantId } });

@@ -62,6 +62,11 @@ export class LeadsService implements OnApplicationBootstrap {
   // Cadência de follow-up (múltiplos toques): leads cujo próximo toque já venceu.
   // O relógio de ociosidade (next_nurture_at) reinicia toda vez que o lead responde
   // (ver FollowupService.resetCadenceOnReply) — aqui só pegamos quem já passou do prazo.
+  // last_message_direction = 'outbound': só dispara se a ÚLTIMA mensagem da conversa foi
+  // nossa (IA/operador) — se o lead falou por último (mesmo que o relógio já tenha vencido
+  // por algum motivo), NUNCA manda follow-up por cima de uma resposta ainda não processada.
+  // Mesma trava que o findIdleLeadsForAutoFollowup já usa (bug real em prod: 2026-07-23,
+  // follow-up caindo em cima de conversa ativa por causa de um offset de reset curto demais).
   async findDueCadenceLeads(tenantId: string, stage: LeadStage): Promise<Lead[]> {
     return this.leadsRepo
       .createQueryBuilder('l')
@@ -71,6 +76,7 @@ export class LeadsService implements OnApplicationBootstrap {
       .andWhere('l.nurture_paused = false')
       .andWhere('l.next_nurture_at IS NOT NULL')
       .andWhere('l.next_nurture_at <= now()')
+      .andWhere("l.last_message_direction = 'outbound'")
       .andWhere('c.ai_enabled = true')
       .andWhere("l.phone <> ''")
       .take(100)
