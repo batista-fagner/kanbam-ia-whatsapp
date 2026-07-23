@@ -544,7 +544,8 @@ export class FollowupService {
       if (!agent) return null;
 
       const conversation = await this.leadsService.getConversationWithMessages(lead.id, tenantId);
-      const transcript = this.buildTranscript(conversation?.messages ?? []);
+      const aiLabel = agent.name?.split('—')[0]?.trim() || 'IA';
+      const transcript = this.buildTranscript(conversation?.messages ?? [], aiLabel);
       const text = await this.aiService.generateAgentAwareFollowup(agent.systemPrompt, lead.name, transcript, angle);
       return text?.trim() || null;
     } catch (err) {
@@ -553,12 +554,15 @@ export class FollowupService {
     }
   }
 
-  private buildTranscript(messages: Array<{ direction: string; sender: string; content: string }>): string {
+  // aiLabel: nome do agente/persona pra rotular as falas da IA na transcrição (uso
+  // interno, nunca aparece pro cliente). Sem agente no contexto (fallback genérico
+  // de generateSuggestion), usa 'IA' — nunca mais hardcoded pra um tenant específico.
+  private buildTranscript(messages: Array<{ direction: string; sender: string; content: string }>, aiLabel = 'IA'): string {
     // Limita às últimas 30 mensagens p/ controlar tokens.
     const recent = messages.slice(-30);
     return recent
       .map((m) => {
-        const who = m.direction === 'inbound' ? 'Cliente' : (m.sender === 'ai' ? 'Lindona' : 'Operador');
+        const who = m.direction === 'inbound' ? 'Cliente' : (m.sender === 'ai' ? aiLabel : 'Operador');
         return `${who}: ${m.content}`;
       })
       .join('\n');

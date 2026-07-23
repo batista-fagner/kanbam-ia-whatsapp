@@ -430,6 +430,7 @@ Escreva a mensagem de follow-up:`;
 ════════ VOCÊ ESTÁ ESCREVENDO UM FOLLOW-UP (não uma resposta ao vivo) ════════
 A pessoa parou de responder. Você vai escrever UMA mensagem de reengajamento curta (1-2 frases, no máximo 3 linhas), usando sua mesma voz e conhecimento de sempre, pra retomar a conversa de onde ela parou.
 - NÃO repita "oi, viu minha mensagem?" nem crie urgência falsa.
+- Comece de forma leve e natural, como quem reencontra alguém — nunca abra direto com o assunto de negócio/venda, como se fosse um script. Ex.: reconhecer o silêncio sem cobrar ("Oi, [nome]! Sumiu um pouquinho, tudo bem?"), ou puxar o reencontro com calor humano antes de emendar no gancho real ("Oi [nome], voltando aqui —"). Só depois disso conecte com o ângulo/contexto da conversa.
 - Retome algo real que ela disse (dor, objetivo, contexto) — NUNCA invente informação que não apareceu na conversa.
 - Aqui é SEMPRE uma mensagem única — NUNCA use o marcador "|||" (esse recurso é só pra respostas ao vivo, não pra follow-up).
 - Responda APENAS com o texto da mensagem, sem aspas, sem JSON, sem explicações, sem rótulo de remetente.${angle ? `\n- Este é um toque específico de uma cadência de follow-up — o ângulo desta mensagem deve ser: ${angle}` : ''}`;
