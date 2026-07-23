@@ -77,15 +77,15 @@ export default function Layout({ onLogout }) {
         <nav className="flex-1 p-3 space-y-2">
           <Link
             to="/profile"
-            className={`flex items-center gap-3 px-3 py-2 rounded transition ${
+            className={`flex items-center gap-3 px-3 py-2 rounded transition min-w-0 ${
               isActive('/profile') ? 'bg-teal-700 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
-            title={collapsed ? (user?.name || 'Meu perfil') : ''}
+            title={user?.name || 'Meu perfil'}
           >
             <div className="w-8 h-8 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
               {initials}
             </div>
-            {!collapsed && <span className="text-sm font-medium">{user?.name || 'Meu perfil'}</span>}
+            {!collapsed && <span className="text-sm font-medium truncate min-w-0">{user?.name || 'Meu perfil'}</span>}
           </Link>
 
           {navItems.map(item => {
