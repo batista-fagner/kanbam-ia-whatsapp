@@ -25,6 +25,7 @@ import { MediaModule } from '../media/media.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
 import { AgentsModule } from '../agents/agents.module';
 import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
+import { FollowupModule } from '../followup/followup.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
     AppointmentsModule,
     AgentsModule,
     PromptModulesModule,
+    FollowupModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [

@@ -8,7 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { Agent } from '../common/entities/agent.entity';
-import { Lead } from '../common/entities/lead.entity';
+import { Lead, LeadStage } from '../common/entities/lead.entity';
 import { LeadsService } from '../leads/leads.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
@@ -346,6 +346,97 @@ export class FollowupService {
     }
   }
 
+  // Cadência de follow-up (múltiplos toques): reinicia o relógio de ociosidade
+  // (nurture_step=0, next_nurture_at = agora + offset do 1º passo) toda vez que o
+  // lead manda uma mensagem. Chamado pelo evolution.controller.ts logo após salvar
+  // o inbound. Sem cadência configurada pra raia atual → apenas zera (idempotente).
+  async resetCadenceOnReply(tenantId: string, lead: Lead): Promise<void> {
+    try {
+      const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
+      const steps = cfg?.followupCadence?.[lead.stage];
+      if (!steps?.length) {
+        if (lead.nurtureStep !== 0 || lead.nextNurtureAt) {
+          await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt: null } as any, tenantId);
+        }
+        return;
+      }
+      const nextNurtureAt = new Date(Date.now() + steps[0].offsetMinutes * 60_000);
+      await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt } as any, tenantId);
+    } catch (err) {
+      this.logger.error(`[CADENCE] Falha ao resetar p/ lead ${lead.id}: ${err?.message ?? err}`);
+    }
+  }
+
+  // A cada minuto: dispara os toques de cadência vencidos (next_nurture_at <= agora).
+  // Diferente do processAutoFollowups (1x por raia, pra sempre), aqui cada raia pode
+  // ter VÁRIOS toques configurados (followupCadence) — o relógio reinicia a cada
+  // resposta do lead (resetCadenceOnReply) e avança um passo por vez.
+  // Não envia direto — cria linhas Followup (status pending) que o processDue() envia,
+  // herdando automaticamente horário comercial / teto diário / espaçamento.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async processCadenceFollowups(): Promise<void> {
+    if (!this.isWithinBusinessHours()) return;
+
+    const configs = await this.configRepo.find();
+
+    for (const cfg of configs) {
+      const cadence = cfg.followupCadence;
+      if (!cadence || typeof cadence !== 'object') continue;
+
+      for (const stage of Object.keys(cadence) as LeadStage[]) {
+        const steps = cadence[stage];
+        if (!steps?.length) continue;
+
+        try {
+          const leads = await this.leadsService.findDueCadenceLeads(cfg.id, stage);
+          for (const lead of leads) {
+            const step = steps[lead.nurtureStep];
+            const expectedNextNurtureAt = lead.nextNurtureAt;
+
+            // Sem passo neste índice → cadência esgotada, encerra (sem reivindicar).
+            if (!step) {
+              await this.leadsService.update(lead.id, { nextNurtureAt: null } as any, cfg.id);
+              continue;
+            }
+
+            // Claim atômico: só segue quem conseguiu mover o next_nurture_at desta execução.
+            const claimed = await this.leadsService.claimCadenceStep(lead.id, expectedNextNurtureAt);
+            if (!claimed) continue;
+
+            let message: string | null = null;
+            if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
+              message = await this.buildAgentAwareFollowupMessage(cfg.id, lead, step.angle);
+            }
+            if (!message && step.fallbackMessage?.trim()) {
+              message = this.interpolateName(step.fallbackMessage, lead.name);
+            }
+
+            const nextStep = steps[lead.nurtureStep + 1];
+            const nextNurtureAt = nextStep ? new Date(Date.now() + nextStep.offsetMinutes * 60_000) : null;
+            await this.leadsService.update(lead.id, { nurtureStep: lead.nurtureStep + 1, nextNurtureAt } as any, cfg.id);
+
+            if (!message) {
+              this.logger.warn(`[CADENCE] Passo ${lead.nurtureStep} sem mensagem (agente falhou e sem fallbackMessage) — lead ${lead.id}, pulando envio`);
+              continue;
+            }
+
+            await this.followupRepo.save(this.followupRepo.create({
+              tenantId: cfg.id,
+              leadId: lead.id,
+              phone: lead.phone,
+              message,
+              scheduledAt: new Date(),
+              status: 'pending',
+            }));
+            this.logger.log(`[CADENCE] Toque ${lead.nurtureStep + 1}/${steps.length} [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
+          }
+        } catch (err) {
+          this.logger.error(`[CADENCE] Falha no tenant ${cfg.id} raia ${stage}: ${err?.message ?? err}`);
+        }
+      }
+    }
+  }
+
   // A cada hora: envia lembrete ~24h antes do agendamento (janela 22h–26h).
   // reminder_sent_at impede reenvio mesmo que o cron rode múltiplas vezes na janela.
   @Cron('0 * * * *')
@@ -437,7 +528,9 @@ export class FollowupService {
 
   // Monta o follow-up "com conhecimento" (agente real + transcript). Retorna null
   // se não achar agente ou se a geração falhar — o chamador cai pro template fixo.
-  private async buildAgentAwareFollowupMessage(tenantId: string, lead: Lead): Promise<string | null> {
+  // `angle`: instrução opcional do passo da cadência (ex.: "retoma a dor que ela
+  // relatou"), pra cada toque ter um ângulo diferente em vez de repetir a mesma ideia.
+  private async buildAgentAwareFollowupMessage(tenantId: string, lead: Lead, angle?: string): Promise<string | null> {
     try {
       const agent = (lead.currentAgentId
         ? await this.agentRepo.findOne({ where: { id: lead.currentAgentId, tenantId } })
@@ -446,7 +539,7 @@ export class FollowupService {
 
       const conversation = await this.leadsService.getConversationWithMessages(lead.id, tenantId);
       const transcript = this.buildTranscript(conversation?.messages ?? []);
-      const text = await this.aiService.generateAgentAwareFollowup(agent.systemPrompt, lead.name, transcript);
+      const text = await this.aiService.generateAgentAwareFollowup(agent.systemPrompt, lead.name, transcript, angle);
       return text?.trim() || null;
     } catch (err) {
       this.logger.error(`[FOLLOWUP-AGENT-AWARE] Falha ao gerar p/ lead ${lead.id}: ${err?.message ?? err} — usando template fixo`);

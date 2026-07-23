@@ -26,5 +26,6 @@ import { AppointmentsModule } from '../appointments/appointments.module';
   ],
   providers: [FollowupService],
   controllers: [FollowupController],
+  exports: [FollowupService],
 })
 export class FollowupModule {}

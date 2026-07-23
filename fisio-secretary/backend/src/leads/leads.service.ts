@@ -59,6 +59,38 @@ export class LeadsService implements OnApplicationBootstrap {
       .getMany();
   }
 
+  // Cadência de follow-up (múltiplos toques): leads cujo próximo toque já venceu.
+  // O relógio de ociosidade (next_nurture_at) reinicia toda vez que o lead responde
+  // (ver FollowupService.resetCadenceOnReply) — aqui só pegamos quem já passou do prazo.
+  async findDueCadenceLeads(tenantId: string, stage: LeadStage): Promise<Lead[]> {
+    return this.leadsRepo
+      .createQueryBuilder('l')
+      .innerJoin(Conversation, 'c', 'c.lead_id = l.id')
+      .where('l.tenant_id = :tenantId', { tenantId })
+      .andWhere('l.stage = :stage', { stage })
+      .andWhere('l.nurture_paused = false')
+      .andWhere('l.next_nurture_at IS NOT NULL')
+      .andWhere('l.next_nurture_at <= now()')
+      .andWhere('c.ai_enabled = true')
+      .andWhere("l.phone <> ''")
+      .take(100)
+      .getMany();
+  }
+
+  // Reivindica o toque de cadência atomicamente (evita duplo envio se o cron
+  // sobrepor execuções): só avança quem ESTA chamada conseguiu mover o passo — usa
+  // o next_nurture_at lido no SELECT como trava otimista.
+  async claimCadenceStep(leadId: string, expectedNextNurtureAt: Date): Promise<boolean> {
+    const result = await this.leadsRepo
+      .createQueryBuilder()
+      .update(Lead)
+      .set({ nextNurtureAt: null as any })
+      .where('id = :leadId', { leadId })
+      .andWhere('next_nurture_at = :expected', { expected: expectedNextNurtureAt })
+      .execute();
+    return result.affected === 1;
+  }
+
   // Reivindica a raia atomicamente: só retorna true se ESTA chamada marcou a raia
   // como enviada (evita duplicação entre execuções do cron / instâncias).
   async claimAutoFollowupStage(leadId: string, stage: string): Promise<boolean> {

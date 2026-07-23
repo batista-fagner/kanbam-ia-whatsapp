@@ -17,6 +17,7 @@ import { MediaService } from '../media/media.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
+import { FollowupService } from '../followup/followup.service';
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -42,6 +43,7 @@ export class EvolutionController {
     private readonly appointmentsService: AppointmentsService,
     private readonly agentsService: AgentsService,
     private readonly promptModulesService: PromptModulesService,
+    private readonly followupService: FollowupService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -255,6 +257,9 @@ export class EvolutionController {
 
     await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
+    // Lead respondeu → reinicia o relógio de ociosidade da cadência de follow-up
+    // (se houver cadência configurada pra raia atual do lead).
+    await this.followupService.resetCadenceOnReply(tenantId, lead);
 
     // Se IA desativada (etiquetado como inativo), apenas salva e notifica frontend — nunca responde
     const aiEnabled = await this.leadsService.getAiEnabled(lead.id);

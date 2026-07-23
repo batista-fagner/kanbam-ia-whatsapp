@@ -43,6 +43,12 @@ export class WhatsappConfig {
   @Column({ name: 'appointment_reminder', type: 'jsonb', nullable: true })
   appointmentReminder: { enabled: boolean; message: string } | null;
 
+  // Cadência de follow-up (múltiplos toques) por raia. Cada passo dispara depois de
+  // `offsetMinutes` de silêncio contados a partir da última mensagem do lead — reinicia
+  // toda vez que o lead responde. Ex: { lead_quente: [{ offsetMinutes: 5, angle: "..." }, ...] }
+  @Column({ name: 'followup_cadence', type: 'jsonb', nullable: true })
+  followupCadence: Record<string, { offsetMinutes: number; angle: string; fallbackMessage?: string }[]> | null;
+
   // Limite de vídeos enviados pela IA por dia (contagem BRT). Padrão: 100.
   @Column({ name: 'media_limit_per_day', type: 'integer', default: 100 })
   mediaLimitPerDay: number;

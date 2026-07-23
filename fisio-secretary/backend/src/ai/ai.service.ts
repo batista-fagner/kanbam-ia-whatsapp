@@ -420,7 +420,7 @@ Escreva a mensagem de follow-up:`;
   // Follow-up "com conhecimento": usa o system_prompt REAL do agente que estava
   // atendendo (voz + regras + base de conhecimento), em vez da persona genérica de
   // generateFollowupSuggestion. Só usado em tenants habilitados (ver followup.service.ts).
-  async generateAgentAwareFollowup(agentSystemPrompt: string, leadName: string | null, transcript: string): Promise<string> {
+  async generateAgentAwareFollowup(agentSystemPrompt: string, leadName: string | null, transcript: string, angle?: string): Promise<string> {
     const client = this.liteClient ?? this.providers[0]?.client;
     const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
     if (!client) throw new Error('Nenhum provedor LLM configurado');
@@ -432,7 +432,7 @@ A pessoa parou de responder. Você vai escrever UMA mensagem de reengajamento cu
 - NÃO repita "oi, viu minha mensagem?" nem crie urgência falsa.
 - Retome algo real que ela disse (dor, objetivo, contexto) — NUNCA invente informação que não apareceu na conversa.
 - Aqui é SEMPRE uma mensagem única — NUNCA use o marcador "|||" (esse recurso é só pra respostas ao vivo, não pra follow-up).
-- Responda APENAS com o texto da mensagem, sem aspas, sem JSON, sem explicações, sem rótulo de remetente.`;
+- Responda APENAS com o texto da mensagem, sem aspas, sem JSON, sem explicações, sem rótulo de remetente.${angle ? `\n- Este é um toque específico de uma cadência de follow-up — o ângulo desta mensagem deve ser: ${angle}` : ''}`;
 
     const userPrompt = `Nome da pessoa: ${leadName?.trim() || 'desconhecido'}
 
