@@ -19,6 +19,16 @@ import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
 import { FollowupService } from '../followup/followup.service';
 
+// Rede de segurança DETERMINÍSTICA (não depende da IA classificar certo) pro STOP
+// de follow-up do cliente Marcel (Pro Cleaning, tenant claudia_teste) — "nunca
+// devemos enviar follow-up" depois disso é requisito duro, então além da IA marcar
+// stage="perdido" (que já pausa nurture, ver abaixo), casa um regex direto na
+// mensagem crua. Falso positivo aqui só custa um follow-up a menos (não crítico);
+// falso negativo violaria o pedido do cliente — por isso o regex é intencionalmente
+// permissivo. Escopado só a esse tenant.
+const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
+const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
+
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
@@ -260,6 +270,13 @@ export class EvolutionController {
     // Lead respondeu → reinicia o relógio de ociosidade da cadência de follow-up
     // (se houver cadência configurada pra raia atual do lead).
     await this.followupService.resetCadenceOnReply(tenantId, lead);
+
+    // STOP determinístico: roda DEPOIS do reset acima (senão o reset re-ativaria
+    // a pausa desta mesma mensagem). Ver STOP_FOLLOWUP_REGEX.
+    if (STOP_FOLLOWUP_TENANT_IDS.includes(tenantId) && STOP_FOLLOWUP_REGEX.test(combinedText)) {
+      await this.leadsService.update(lead.id, { nurturePaused: true } as any, tenantId);
+      this.logger.warn(`[FOLLOWUP-STOP] Pedido de parar detectado (regex) — nurture pausado pro lead ${lead.id} (${phone})`);
+    }
 
     // Se IA desativada (etiquetado como inativo), apenas salva e notifica frontend — nunca responde
     const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
@@ -578,6 +595,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
       if (newOrder >= currentOrder || canRegress) {
         await this.leadsService.updateStage(lead.id, aiResponse.stage as any, 'ai');
+        // stage=perdido (desistiu/pediu pra parar) → pausa follow-up automático.
+        // Só pausa a cadência, NÃO desativa a IA — se o lead voltar a escrever,
+        // resetCadenceOnReply já limpa a pausa e a Clara responde normal.
+        if (aiResponse.stage === 'perdido') {
+          await this.leadsService.update(lead.id, { nurturePaused: true } as any, tenantId);
+        }
       } else {
         this.logger.warn(`Stage regressivo bloqueado: ${lead.stage} → ${aiResponse.stage}`);
       }

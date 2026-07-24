@@ -42,11 +42,19 @@ const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 // idêntico ao de sempre (template fixo + spin).
 const AGENT_AWARE_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29']; // claudia_teste@hotmail.com
 
-// Bypass TEMPORÁRIO da janela de horário comercial (9h-20h) — só pro tenant da demo
-// de prospecção ativa (claudia_teste@hotmail.com), pedido pontual pra deixar a
-// cadência testável a qualquer hora antes da apresentação do cliente dele
-// (2026-07-24, ele testa às 10h). Remover quando o usuário pedir — não generalizar.
-const BUSINESS_HOURS_BYPASS_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
+// Janela de horário customizada por tenant — especificação real do cliente Marcel
+// (Pro Cleaning, tenant claudia_teste): follow-up automático em horários diferentes
+// por dia da semana (não o padrão 9h-20h do resto do sistema). Só afeta o
+// FOLLOW-UP AUTOMÁTICO — a resposta ao vivo da IA no chat nunca é restrita por
+// horário, isso é intencional (confirmado com o usuário 2026-07-24).
+interface FollowupWindow { start: number; end: number }
+const TENANT_FOLLOWUP_WINDOW_OVERRIDES: Record<string, { weekday: FollowupWindow; saturday: FollowupWindow; sunday: FollowupWindow }> = {
+  '1ff3f0b3-52d1-4e89-b7bf-552d0556de29': {
+    weekday: { start: 18, end: 22 },
+    saturday: { start: 11, end: 17 },
+    sunday: { start: 15, end: 18 },
+  },
+};
 
 @Injectable()
 export class FollowupService {
@@ -139,13 +147,10 @@ export class FollowupService {
   // múltiplas instâncias sem depender de Redis.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
-    // PROTEÇÃO 1 — Janela de horário: fora de 9h–20h (BRT) não envia nada, EXCETO
-    // pros tenants em BUSINESS_HOURS_BYPASS_TENANT_IDS (checado por follow-up, não
-    // aqui — não pode ser um return global, senão bloqueia o bypass também).
-    // Os follow-ups vencidos ficam pending e saem quando a janela abrir.
-    const withinHours = this.isWithinBusinessHours();
-    if (!withinHours && BUSINESS_HOURS_BYPASS_TENANT_IDS.length === 0) return;
-
+    // PROTEÇÃO 1 — Janela de horário: cada tenant pode ter uma janela diferente
+    // (ver TENANT_FOLLOWUP_WINDOW_OVERRIDES), então a checagem é POR FOLLOW-UP
+    // (campo tenantId), não um return global no topo. Os vencidos ficam pending
+    // e saem quando a janela daquele tenant abrir.
     // PROTEÇÃO 2 — Puxa um pool de candidatos vencidos; o nº REAL de envios por
     // execução é limitado por SEND_BATCH_PER_RUN (sentThisRun). Pool amplo evita que
     // um tenant com backlog grande monopolize o lote e trave os demais.
@@ -165,8 +170,8 @@ export class FollowupService {
     for (const f of due) {
       if (sentThisRun >= SEND_BATCH_PER_RUN) break; // teto de envios por execução
 
-      if (!withinHours && !BUSINESS_HOURS_BYPASS_TENANT_IDS.includes(f.tenantId)) {
-        continue; // fora do horário e tenant não tem bypass — deixa pending
+      if (!this.isWithinBusinessHours(f.tenantId)) {
+        continue; // fora da janela desse tenant — deixa pending
       }
 
       // PROTEÇÃO 3 — Teto diário por tenant: ao atingir o limite, deixa pending pra amanhã.
@@ -247,9 +252,27 @@ export class FollowupService {
     return n === 24 ? 0 : n;
   }
 
-  private isWithinBusinessHours(): boolean {
+  // Dia da semana em Brasília (0=domingo ... 6=sábado, igual Date#getDay()).
+  private currentWeekdayBRT(): number {
+    const short = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo', weekday: 'short',
+    }).format(new Date());
+    const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return map[short] ?? new Date().getDay();
+  }
+
+  // tenantId opcional: se o tenant tiver uma janela customizada (ver
+  // TENANT_FOLLOWUP_WINDOW_OVERRIDES), usa ela — com janela própria pra sáb/dom —
+  // em vez do padrão 9h-20h (todo santo dia) do resto do sistema.
+  private isWithinBusinessHours(tenantId?: string): boolean {
     const h = this.currentHourBRT();
-    return h >= BUSINESS_START_HOUR && h < BUSINESS_END_HOUR;
+    const override = tenantId ? TENANT_FOLLOWUP_WINDOW_OVERRIDES[tenantId] : undefined;
+    if (!override) {
+      return h >= BUSINESS_START_HOUR && h < BUSINESS_END_HOUR;
+    }
+    const dow = this.currentWeekdayBRT();
+    const window = dow === 0 ? override.sunday : dow === 6 ? override.saturday : override.weekday;
+    return h >= window.start && h < window.end;
   }
 
   private sleep(ms: number): Promise<void> {
@@ -369,18 +392,22 @@ export class FollowupService {
   // digitando" numa conversa de verdade passa disso fácil, e o follow-up cai por cima
   // da conversa ao vivo, fora de contexto (bug real em prod, 2026-07-23, tenant
   // claudia_teste). Mínimo recomendado: 20-30min mesmo em teste.
+  // Qualquer resposta do lead também tira a pausa de follow-up (nurturePaused) —
+  // se ele voltou a falar, o "pare"/"não tenho interesse" anterior não vale mais
+  // pro ciclo novo (mas o STOP determinístico em evolution.controller.ts pode
+  // reativar a pausa de novo na MESMA mensagem, se ela também contiver um pedido de parar).
   async resetCadenceOnReply(tenantId: string, lead: Lead): Promise<void> {
     try {
       const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
       const steps = cfg?.followupCadence?.[lead.stage];
       if (!steps?.length) {
-        if (lead.nurtureStep !== 0 || lead.nextNurtureAt) {
-          await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt: null } as any, tenantId);
+        if (lead.nurtureStep !== 0 || lead.nextNurtureAt || lead.nurturePaused) {
+          await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt: null, nurturePaused: false } as any, tenantId);
         }
         return;
       }
       const nextNurtureAt = new Date(Date.now() + steps[0].offsetMinutes * 60_000);
-      await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt } as any, tenantId);
+      await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt, nurturePaused: false } as any, tenantId);
     } catch (err) {
       this.logger.error(`[CADENCE] Falha ao resetar p/ lead ${lead.id}: ${err?.message ?? err}`);
     }
@@ -394,13 +421,11 @@ export class FollowupService {
   // herdando automaticamente horário comercial / teto diário / espaçamento.
   @Cron(CronExpression.EVERY_MINUTE)
   async processCadenceFollowups(): Promise<void> {
-    const withinHours = this.isWithinBusinessHours();
-
     const configs = await this.configRepo.find();
 
     for (const cfg of configs) {
-      // Fora do horário: só segue pros tenants com bypass (ver BUSINESS_HOURS_BYPASS_TENANT_IDS).
-      if (!withinHours && !BUSINESS_HOURS_BYPASS_TENANT_IDS.includes(cfg.id)) continue;
+      // Cada tenant pode ter uma janela diferente (ver TENANT_FOLLOWUP_WINDOW_OVERRIDES).
+      if (!this.isWithinBusinessHours(cfg.id)) continue;
 
       const cadence = cfg.followupCadence;
       if (!cadence || typeof cadence !== 'object') continue;
