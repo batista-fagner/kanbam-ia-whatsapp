@@ -416,34 +416,56 @@ export default function AdminPage() {
             <div className="text-center text-gray-400 text-sm py-8">Nenhum envio registrado ainda.</div>
           )}
 
-          {!loadingBilling && billingEvents.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {billingEvents.map(ev => (
-                <div key={ev.id} className="p-3 flex items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {ev.status === 'sent'
-                      ? <Check className="w-4 h-4 text-green-600 shrink-0" />
-                      : <X className="w-4 h-4 text-red-600 shrink-0" />}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-700 truncate">{ev.tenantName || ev.tenantId}</span>
-                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
-                          {ev.channel === 'pix' ? '⚡ geração QR' : ev.channel === 'whatsapp' ? '💬 whatsapp' : '📧 e-mail'}
-                        </span>
+          {!loadingBilling && billingEvents.length > 0 && (() => {
+            const channelLabel = { pix: '⚡ QR', whatsapp: '💬 whatsapp', email: '📧 e-mail' }
+            const groups = new Map()
+            for (const ev of billingEvents) {
+              const bucket = Math.floor(new Date(ev.createdAt).getTime() / 60000)
+              const key = `${ev.tenantId}-${ev.amount}-${bucket}`
+              if (!groups.has(key)) groups.set(key, { ...ev, events: [] })
+              groups.get(key).events.push(ev)
+            }
+            const grouped = Array.from(groups.values()).sort(
+              (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+            )
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+                {grouped.map(g => {
+                  const allSent = g.events.every(e => e.status === 'sent')
+                  const failed = g.events.filter(e => e.status === 'failed')
+                  return (
+                    <div key={g.id} className="p-3 flex items-center justify-between gap-3 text-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {allSent
+                          ? <Check className="w-4 h-4 text-green-600 shrink-0" />
+                          : <X className="w-4 h-4 text-red-600 shrink-0" />}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-700 truncate">{g.tenantName || g.tenantId}</span>
+                            {g.events.map(e => (
+                              <span
+                                key={e.id}
+                                className={`text-xs px-1.5 py-0.5 rounded-full ${e.status === 'sent' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-500'}`}
+                              >
+                                {channelLabel[e.channel] || e.channel}
+                              </span>
+                            ))}
+                          </div>
+                          {failed.length > 0 && failed[0].errorMessage && (
+                            <p className="text-xs text-red-500 truncate max-w-md" title={failed[0].errorMessage}>{failed[0].errorMessage}</p>
+                          )}
+                        </div>
                       </div>
-                      {ev.status === 'failed' && ev.errorMessage && (
-                        <p className="text-xs text-red-500 truncate max-w-md" title={ev.errorMessage}>{ev.errorMessage}</p>
-                      )}
+                      <div className="flex items-center gap-3 text-xs text-gray-400 shrink-0">
+                        {g.amount && <span>R$ {Number(g.amount).toFixed(2)}</span>}
+                        <span>{new Date(g.createdAt).toLocaleString('pt-BR')}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400 shrink-0">
-                    {ev.amount && <span>R$ {Number(ev.amount).toFixed(2)}</span>}
-                    <span>{new Date(ev.createdAt).toLocaleString('pt-BR')}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       )}
 
