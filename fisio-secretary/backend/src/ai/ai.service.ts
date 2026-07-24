@@ -557,6 +557,10 @@ Escolha o melhor agente:`;
 
       for (let m = 0; m < modelsToTry.length; m++) {
         const modelToUse = modelsToTry[m];
+        // gemini-3.6-flash não aceita reasoning_effort:"none" (400 INVALID_ARGUMENT,
+        // testado direto na API) — só low/minimal/medium/high. Os demais modelos
+        // Gemini em uso (gemini-3.1-flash-lite, gemini-2.5-pro) aceitam "none" normalmente.
+        const reasoningEffort = modelToUse === 'gemini-3.6-flash' ? 'minimal' : 'none';
         try {
           const response = await callWithRetry(
             () => provider.client.chat.completions.create({
@@ -564,7 +568,7 @@ Escolha o melhor agente:`;
               max_tokens: 1024,
               ...(temperature != null ? { temperature } : {}),
               response_format: { type: 'json_object' },
-              ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
+              ...(provider.isGemini ? { reasoning_effort: reasoningEffort } : {}),
               messages: [
                 { role: 'system', content: systemPrompt },
                 ...messages,
@@ -590,7 +594,12 @@ Escolha o melhor agente:`;
           };
         } catch (err) {
           lastErr = err;
-          this.logger.error(`[LINDONA] Provedor "${provider.name}" (modelo "${modelToUse}") falhou: ${err.message}`);
+          // err.message do SDK OpenAI costuma vir sem corpo ("404 status code (no
+          // body)") — err.error/err.response.data guarda o payload real da API
+          // (ex.: {"error":{"message":"...","status":"INVALID_ARGUMENT"}}), essencial
+          // pra diagnosticar 400s sem precisar reproduzir a chamada manualmente.
+          const detail = err?.error ?? err?.response?.data ?? null;
+          this.logger.error(`[LINDONA] Provedor "${provider.name}" (modelo "${modelToUse}") falhou: ${err.message}${detail ? ` — detalhe: ${JSON.stringify(detail)}` : ''}`);
           if (m < modelsToTry.length - 1) {
             this.logger.warn(`[LINDONA] → tentando modelo de fallback "${modelsToTry[m + 1]}" no mesmo provedor`);
           } else if (i < this.providers.length - 1) {
