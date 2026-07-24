@@ -538,7 +538,7 @@ Escolha o melhor agente:`;
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
-  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string, temperature?: number): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
+  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string, temperature?: number, fallbackModelOverride?: string): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
     if (this.providers.length === 0) {
       throw new Error('Nenhum provedor LLM configurado');
     }
@@ -546,45 +546,56 @@ Escolha o melhor agente:`;
     let lastErr: any;
     for (let i = 0; i < this.providers.length; i++) {
       const provider = this.providers[i];
-      // modelOverride: só pro simulador de teste do multi-agente (nunca usado no
-      // fluxo real de WhatsApp) — troca o modelo do provedor Gemini pra comparação.
-      const modelToUse = modelOverride && provider.isGemini ? modelOverride : provider.model;
-      try {
-        const response = await callWithRetry(
-          () => provider.client.chat.completions.create({
-            model: modelToUse,
-            max_tokens: 1024,
-            ...(temperature != null ? { temperature } : {}),
-            response_format: { type: 'json_object' },
-            ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...messages,
-            ],
-          } as any),
-          this.logger,
-        );
-        if (i > 0) {
-          this.logger.warn(`[LINDONA] ✅ Failover ativo: respondido por "${provider.name}"`);
-        }
-        const usage = (response as any).usage;
-        const cachedTokens: number = usage?.prompt_tokens_details?.cached_tokens ?? 0;
-        const inputTokens: number = usage?.prompt_tokens ?? 0;
-        const outputTokens: number = usage?.completion_tokens ?? 0;
-        if (cachedTokens > 0) {
-          this.logger.log(`[LINDONA] 💰 Cache hit: ${cachedTokens} tokens cacheados de ${inputTokens} input (${Math.round(cachedTokens / inputTokens * 100)}% do input)`);
-        }
-        return {
-          text: response.choices[0].message.content?.trim() ?? '',
-          inputTokens,
-          cachedTokens,
-          outputTokens,
-        };
-      } catch (err) {
-        lastErr = err;
-        this.logger.error(`[LINDONA] Provedor "${provider.name}" falhou: ${err.message}`);
-        if (i < this.providers.length - 1) {
-          this.logger.warn(`[LINDONA] → tentando próximo provedor: "${this.providers[i + 1].name}"`);
+      // modelOverride: usado pelo simulador de teste do multi-agente e por hardcodes
+      // pontuais por tenant (ver evolution.controller.ts) — troca o modelo do
+      // provedor Gemini. Se modelOverride falhar e houver fallbackModelOverride
+      // (também Gemini), tenta ele ANTES de cair pro próximo provedor da lista —
+      // ex: gemini-2.5-pro → gemini-3.6-flash → openai (só se ambos falharem).
+      const modelsToTry = modelOverride && provider.isGemini
+        ? [modelOverride, ...(fallbackModelOverride ? [fallbackModelOverride] : [])]
+        : [provider.model];
+
+      for (let m = 0; m < modelsToTry.length; m++) {
+        const modelToUse = modelsToTry[m];
+        try {
+          const response = await callWithRetry(
+            () => provider.client.chat.completions.create({
+              model: modelToUse,
+              max_tokens: 1024,
+              ...(temperature != null ? { temperature } : {}),
+              response_format: { type: 'json_object' },
+              ...(provider.isGemini ? { reasoning_effort: 'none' } : {}),
+              messages: [
+                { role: 'system', content: systemPrompt },
+                ...messages,
+              ],
+            } as any),
+            this.logger,
+          );
+          if (i > 0 || m > 0) {
+            this.logger.warn(`[LINDONA] ✅ Failover ativo: respondido por "${provider.name}" (modelo "${modelToUse}")`);
+          }
+          const usage = (response as any).usage;
+          const cachedTokens: number = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+          const inputTokens: number = usage?.prompt_tokens ?? 0;
+          const outputTokens: number = usage?.completion_tokens ?? 0;
+          if (cachedTokens > 0) {
+            this.logger.log(`[LINDONA] 💰 Cache hit: ${cachedTokens} tokens cacheados de ${inputTokens} input (${Math.round(cachedTokens / inputTokens * 100)}% do input)`);
+          }
+          return {
+            text: response.choices[0].message.content?.trim() ?? '',
+            inputTokens,
+            cachedTokens,
+            outputTokens,
+          };
+        } catch (err) {
+          lastErr = err;
+          this.logger.error(`[LINDONA] Provedor "${provider.name}" (modelo "${modelToUse}") falhou: ${err.message}`);
+          if (m < modelsToTry.length - 1) {
+            this.logger.warn(`[LINDONA] → tentando modelo de fallback "${modelsToTry[m + 1]}" no mesmo provedor`);
+          } else if (i < this.providers.length - 1) {
+            this.logger.warn(`[LINDONA] → tentando próximo provedor: "${this.providers[i + 1].name}"`);
+          }
         }
       }
     }
@@ -878,7 +889,7 @@ REGRAS:
     agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string; canSchedule?: boolean; canSendMedia?: boolean },
     availableMediaNames: string[],
     extraSystemContext?: string,
-    opts?: { disableHandoff?: boolean; modelOverride?: string },
+    opts?: { disableHandoff?: boolean; modelOverride?: string; fallbackModelOverride?: string },
   ): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
 
@@ -930,7 +941,7 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
     try {
       // temperature reduzida (só neste fluxo) pra mitigar alucinação de preço — ver
       // project_alex_price_hallucination_fix na memória.
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride, 0.3);
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, opts?.modelOverride, 0.3, opts?.fallbackModelOverride);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'multi_agent');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };

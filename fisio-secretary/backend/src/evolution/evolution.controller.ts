@@ -370,8 +370,13 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       try {
         // Hardcode temporário: tenant da demo de prospecção ativa (claudia_teste@hotmail.com)
         // usa gemini-2.5-pro em vez do default — pedido pontual do usuário, não generalizar.
-        const modelOverride = tenantId === '1ff3f0b3-52d1-4e89-b7bf-552d0556de29' ? 'gemini-2.5-pro' : undefined;
-        const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext, modelOverride);
+        // Se o 2.5-pro falhar (ex: instabilidade/desligamento momentâneo do Google),
+        // cai pro gemini-3.6-flash (ainda Gemini) ANTES de ir pro OpenAI — pedido do
+        // usuário pra não perder qualidade de resposta indo direto pro gpt-4o-mini.
+        const isClaudiaTeste = tenantId === '1ff3f0b3-52d1-4e89-b7bf-552d0556de29';
+        const modelOverride = isClaudiaTeste ? 'gemini-2.5-pro' : undefined;
+        const fallbackModelOverride = isClaudiaTeste ? 'gemini-3.6-flash' : undefined;
+        const result = await this.agentsService.chatForLead(tenantId, lead, combinedText, mediaNames, extraSystemContext, modelOverride, fallbackModelOverride);
         if (result) {
           aiResponse = result.aiResponse;
           // Persiste o agente atual no lead pra próxima mensagem continuar com ele

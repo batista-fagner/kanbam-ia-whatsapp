@@ -118,7 +118,7 @@ export class AgentsService {
   // produção (chatForLead → processMessageAgent, com histórico e capacidades
   // canSchedule/canSendMedia) — sem persistir Lead no banco. O estado da conversa
   // (aiContext) roda de ida e volta com o frontend a cada turno.
-  async chatTest(tenantId: string, message: string, currentAgentId: string | null, aiContext: any[], modelOverride?: string) {
+  async chatTest(tenantId: string, message: string, currentAgentId: string | null, aiContext: any[], modelOverride?: string, fallbackModelOverride?: string) {
     if (!message?.trim()) throw new BadRequestException('Mensagem é obrigatória');
 
     const mediaFiles = await this.mediaService.listAll(tenantId);
@@ -137,7 +137,7 @@ export class AgentsService {
       ...facts,
     } as Lead;
 
-    const result = await this.chatForLead(tenantId, fakeLead, message, availableMediaNames, undefined, modelOverride);
+    const result = await this.chatForLead(tenantId, fakeLead, message, availableMediaNames, undefined, modelOverride, fallbackModelOverride);
     if (!result) throw new BadRequestException('Conecte ao menos um agente ao supervisor');
 
     const updatedContext = this.aiService.buildUpdatedContext(fakeLead, message, result.aiResponse.rawJson!);
@@ -191,6 +191,7 @@ export class AgentsService {
     availableMediaNames: string[],
     extraSystemContext?: string,
     modelOverride?: string,
+    fallbackModelOverride?: string,
   ): Promise<{ aiResponse: AiResponse; agentId: string; agentName: string; handoffOccurred: boolean; transferredFrom: string | null; tokenUsage: { inputTokens: number; cachedTokens: number; outputTokens: number } } | null> {
     const active = await this.repo.find({
       where: { tenantId, isActive: true },
@@ -210,7 +211,7 @@ export class AgentsService {
       current = active.find((a) => a.id === agentId) ?? active[0];
     }
 
-    let response = await this.aiService.processMessageAgent(lead, message, current, availableMediaNames, extraSystemContext, { modelOverride });
+    let response = await this.aiService.processMessageAgent(lead, message, current, availableMediaNames, extraSystemContext, { modelOverride, fallbackModelOverride });
     const firstUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
     if (!response.handoff || active.length === 1) {
       this.ensureReply(response, tenantId, current.name);
@@ -225,7 +226,7 @@ export class AgentsService {
     // O agente que recebe o bastão responde com o handoff DESABILITADO estruturalmente
     // (opts.disableHandoff) — obriga uma resposta real e evita o ping-pong de
     // handoff:true + reply:"" que cai no fallback genérico.
-    response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true, modelOverride });
+    response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true, modelOverride, fallbackModelOverride });
     response.handoff = false;
     this.ensureReply(response, tenantId, next.name);
     const secondUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
