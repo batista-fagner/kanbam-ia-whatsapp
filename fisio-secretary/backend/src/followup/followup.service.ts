@@ -42,6 +42,12 @@ const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 // idêntico ao de sempre (template fixo + spin).
 const AGENT_AWARE_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29']; // claudia_teste@hotmail.com
 
+// Bypass TEMPORÁRIO da janela de horário comercial (9h-20h) — só pro tenant da demo
+// de prospecção ativa (claudia_teste@hotmail.com), pedido pontual pra deixar a
+// cadência testável a qualquer hora antes da apresentação do cliente dele
+// (2026-07-24, ele testa às 10h). Remover quando o usuário pedir — não generalizar.
+const BUSINESS_HOURS_BYPASS_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
+
 @Injectable()
 export class FollowupService {
   private readonly logger = new Logger(FollowupService.name);
@@ -133,9 +139,12 @@ export class FollowupService {
   // múltiplas instâncias sem depender de Redis.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
-    // PROTEÇÃO 1 — Janela de horário: fora de 9h–20h (BRT) não envia nada.
+    // PROTEÇÃO 1 — Janela de horário: fora de 9h–20h (BRT) não envia nada, EXCETO
+    // pros tenants em BUSINESS_HOURS_BYPASS_TENANT_IDS (checado por follow-up, não
+    // aqui — não pode ser um return global, senão bloqueia o bypass também).
     // Os follow-ups vencidos ficam pending e saem quando a janela abrir.
-    if (!this.isWithinBusinessHours()) return;
+    const withinHours = this.isWithinBusinessHours();
+    if (!withinHours && BUSINESS_HOURS_BYPASS_TENANT_IDS.length === 0) return;
 
     // PROTEÇÃO 2 — Puxa um pool de candidatos vencidos; o nº REAL de envios por
     // execução é limitado por SEND_BATCH_PER_RUN (sentThisRun). Pool amplo evita que
@@ -155,6 +164,10 @@ export class FollowupService {
 
     for (const f of due) {
       if (sentThisRun >= SEND_BATCH_PER_RUN) break; // teto de envios por execução
+
+      if (!withinHours && !BUSINESS_HOURS_BYPASS_TENANT_IDS.includes(f.tenantId)) {
+        continue; // fora do horário e tenant não tem bypass — deixa pending
+      }
 
       // PROTEÇÃO 3 — Teto diário por tenant: ao atingir o limite, deixa pending pra amanhã.
       let sentToday = sentTodayByTenant.get(f.tenantId);
@@ -381,11 +394,14 @@ export class FollowupService {
   // herdando automaticamente horário comercial / teto diário / espaçamento.
   @Cron(CronExpression.EVERY_MINUTE)
   async processCadenceFollowups(): Promise<void> {
-    if (!this.isWithinBusinessHours()) return;
+    const withinHours = this.isWithinBusinessHours();
 
     const configs = await this.configRepo.find();
 
     for (const cfg of configs) {
+      // Fora do horário: só segue pros tenants com bypass (ver BUSINESS_HOURS_BYPASS_TENANT_IDS).
+      if (!withinHours && !BUSINESS_HOURS_BYPASS_TENANT_IDS.includes(cfg.id)) continue;
+
       const cadence = cfg.followupCadence;
       if (!cadence || typeof cadence !== 'object') continue;
 
