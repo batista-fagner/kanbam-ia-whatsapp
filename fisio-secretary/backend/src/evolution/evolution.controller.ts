@@ -138,7 +138,7 @@ export class EvolutionController {
 
         const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
         const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
-        await this.evolutionService.sendTextMessage(phone, reply, tenantToken);
+        await this.evolutionService.sendTextMessage(phone, reply, tenantToken, tenantId);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
 
         const updatedLead = await this.leadsService.findOne(lead.id);
@@ -455,7 +455,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (!available) {
         this.logger.warn(`Reagendamento bloqueado — horário ocupado: ${newDateTime.toISOString()}`);
         const busyReply = `Esse horário também está ocupado (${conflictingEvent}). Tem outro horário de preferência? 😊`;
-        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken);
+        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken, tenantId);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -495,7 +495,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (aiResponse.reply) {
         if (mediaSentCount > 0) await new Promise(r => setTimeout(r, 500));
         this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
-        await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
+        await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
       }
 
@@ -588,7 +588,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         if (aiResponse.reply?.trim()) {
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-          await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
+          await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
           await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
           this.logger.log(`✅ [TEXT REPLY] Resposta enviada para ${phone}`);
         }
@@ -603,7 +603,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
     this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-    await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken);
+    await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
