@@ -27,6 +27,9 @@ export class Message {
   @Column({ name: 'message_type', default: 'text' })
   messageType: string;
 
+  @Column({ name: 'media_url', type: 'text', nullable: true })
+  mediaUrl: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -29,6 +29,11 @@ import { FollowupService } from '../followup/followup.service';
 const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
 
+// Reconhecimento de imagem (foto de cabelo → qualificação + parecer de
+// viabilidade) — em teste, escopado só ao tenant sandbox alex_teste@hotmail.com
+// (motor dynamic_modules). Ver plano/memória do projeto antes de generalizar.
+const IMAGE_ANALYSIS_TENANT_IDS = ['e624e817-5b6c-4840-b0ea-269eb78afe8d'];
+
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
@@ -37,6 +42,10 @@ export class EvolutionController {
   private readonly lastMessageWasAudio = new Map<string, boolean>();
   // Rastreia qual tenant já recebeu notificação de limite de vídeo hoje (chave: tenantId, valor: data BRT)
   private readonly mediaLimitNotifiedDate = new Map<string, string>();
+  // URL (R2) da imagem recebida ainda não processada, por queueKey (`tenantId:phone`)
+  // — consumida em processMessage() quando o debounce dispara. Só usado pelos
+  // tenants em IMAGE_ANALYSIS_TENANT_IDS.
+  private readonly pendingImageUrl = new Map<string, string>();
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -132,6 +141,47 @@ export class EvolutionController {
     const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;
 
     if (!phone) return { ok: true };
+
+    // Reconhecimento de imagem (tenant sandbox, ver IMAGE_ANALYSIS_TENANT_IDS):
+    // baixa a foto via uazapi, sobe pro R2 e segue pro fluxo normal (fila de
+    // debounce) carregando a URL pra montar conteúdo multimodal em
+    // processMessage(). Qualquer falha no meio do caminho cai pro
+    // comportamento padrão abaixo (resposta fixa sem legenda / só texto com
+    // legenda) — sem regressão pros demais tenants nem pra esse em caso de erro.
+    if (isImage && IMAGE_ANALYSIS_TENANT_IDS.includes(tenantId)) {
+      const messageId: string = message.messageid;
+      if (messageId && this.processedIds.has(messageId)) return { ok: true };
+      if (messageId) {
+        this.processedIds.add(messageId);
+        setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+      }
+
+      try {
+        const { lead } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
+        const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+        const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
+        if (!downloaded) throw new Error('uazapi não devolveu fileURL');
+
+        const imageResponse = await axios.get(downloaded.fileURL, { responseType: 'arraybuffer' });
+        const buffer = Buffer.from(imageResponse.data);
+        const imageUrl = await this.mediaService.uploadInboundImage(buffer, tenantId, lead.id, downloaded.mimetype);
+        this.logger.log(`🖼️ [IMG-ANALYSIS] Imagem de ${phone} baixada e salva no R2: ${imageUrl}`);
+
+        const captionText = rawText ? `[imagem] ${rawText}` : '[imagem]';
+        const queueKey = `${tenantId}:${phone}`;
+        this.pendingImageUrl.set(queueKey, imageUrl);
+
+        this.messageQueue.enqueue(queueKey, captionText, (combinedText) => {
+          this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
+            this.logger.error(`❌ [ERRO AO PROCESSAR IMAGEM] ${phone}: ${err.message}`);
+          });
+        });
+        return { ok: true };
+      } catch (err) {
+        this.logger.error(`[IMG-ANALYSIS] Erro ao baixar/processar imagem de ${phone}: ${err.message} — cai pro fluxo padrão`);
+        // não retorna — segue pro bloco padrão abaixo
+      }
+    }
 
     // Imagem sem caption: a IA ainda não lê imagens. No agente MegaHair, pede pra cliente descrever o cabelo.
     if (isImage && !text) {
@@ -265,7 +315,15 @@ export class EvolutionController {
   private async processMessage(tenantId: string, phone: string, combinedText: string, messageKeyId: string, pushName?: string | null) {
     const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
 
-    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId);
+    // Imagem baixada no handler do webhook (ver IMAGE_ANALYSIS_TENANT_IDS)
+    // pendente pra este phone — consumida aqui, uma vez, e usada tanto pra
+    // persistir a URL na mensagem quanto pro conteúdo multimodal do motor
+    // dynamic_modules logo abaixo.
+    const queueKey = `${tenantId}:${phone}`;
+    const pendingImageUrl = this.pendingImageUrl.get(queueKey);
+    if (pendingImageUrl) this.pendingImageUrl.delete(queueKey);
+
+    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId, pendingImageUrl);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
     // Lead respondeu → reinicia o relógio de ociosidade da cadência de follow-up
     // (se houver cadência configurada pra raia atual do lead).
@@ -365,7 +423,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     let aiResponse: AiResponse | null = null;
     if (instanceConfig?.promptEngine === 'dynamic_modules') {
       try {
-        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText);
+        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, pendingImageUrl);
         if (result) {
           aiResponse = result.aiResponse;
           await this.leadsService.update(lead.id, { activeModules: result.moduleNames } as any);

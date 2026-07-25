@@ -140,6 +140,22 @@ export class MediaService {
     return this.repo.save(record);
   }
 
+  // Sobe uma imagem RECEBIDA de um lead (não vídeo/foto de catálogo) pro R2,
+  // num prefixo separado — sem criar linha em media_files, que é só a
+  // biblioteca curada de mídia de SAÍDA. Usado pelo reconhecimento de imagem
+  // (ver evolution.controller.ts, escopo restrito ao tenant alex_teste).
+  async uploadInboundImage(buffer: Buffer, tenantId: string, leadId: string, mimeType: string): Promise<string> {
+    const ext = mimeType.split('/').pop() || 'jpg';
+    const storagePath = `inbound/${tenantId}/${leadId}/${Date.now()}.${ext}`;
+    await this.s3.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+      Body: buffer,
+      ContentType: mimeType,
+    }));
+    return `${this.publicUrl}/${storagePath}`;
+  }
+
   async rename(id: string, newName: string, tenantId?: string): Promise<MediaFile> {
     const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');

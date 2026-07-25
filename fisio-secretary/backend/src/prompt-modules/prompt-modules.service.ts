@@ -184,6 +184,7 @@ export class PromptModulesService {
     tenantId: string,
     lead: Lead,
     message: string,
+    imageUrl?: string,
   ): Promise<{ aiResponse: AiResponse; moduleNames: string[] } | null> {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) return null;
@@ -196,7 +197,17 @@ export class PromptModulesService {
       : [];
     const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
 
-    const messages = [...history, { role: 'user', content: message }];
+    // Imagem só entra no conteúdo multimodal desta chamada — o que fica
+    // persistido em lead.aiContext (via aiService.buildUpdatedContext, chamado
+    // pelo controller com o combinedText original) é sempre o texto puro, então
+    // a foto nunca é reenviada como histórico nas próximas mensagens.
+    const userContent: any = imageUrl
+      ? [
+          { type: 'text', text: message },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ]
+      : message;
+    const messages = [...history, { role: 'user', content: userContent }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
     aiResponse.reply = stripInternalMarkers(aiResponse.reply);
