@@ -2,11 +2,6 @@ import { useState } from 'react'
 import { X, Trash2, Calendar, User, Phone, Tag, DollarSign, FileText } from 'lucide-react'
 import { createAppointment, updateAppointment, deleteAppointment } from '../services/api'
 
-const SERVICE_OPTIONS = [
-  { value: 'mega_hair',  label: 'Mega Hair (aplicação)' },
-  { value: 'manutencao', label: 'Manutenção' },
-]
-
 const STATUS_OPTIONS = [
   { value: 'agendado',       label: 'Agendado' },
   { value: 'confirmado',     label: 'Confirmado' },
@@ -29,7 +24,7 @@ export default function AppointmentModal({ appointment, defaultDate, onClose, on
   const [form, setForm] = useState({
     clientName:    appointment?.clientName ?? '',
     clientPhone:   appointment?.clientPhone ?? '',
-    service:       appointment?.service ?? 'mega_hair',
+    service:       appointment?.service ?? '',
     value:         appointment?.value ?? '',
     status:        appointment?.status ?? 'agendado',
     startDateTime: toDateTimeLocal(appointment?.startDateTime ?? defaultDate ?? new Date()),
@@ -121,15 +116,13 @@ export default function AppointmentModal({ appointment, defaultDate, onClose, on
 
           <div className="grid grid-cols-2 gap-3">
             <Field icon={<Tag className="w-3.5 h-3.5" />} label="Serviço">
-              <select
+              <input
+                type="text"
                 value={form.service}
                 onChange={e => update('service', e.target.value)}
+                placeholder="Ex: Mega Hair (aplicação)"
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
-              >
-                {SERVICE_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              />
             </Field>
 
             <Field icon={<DollarSign className="w-3.5 h-3.5" />} label="Valor (R$)">
