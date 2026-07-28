@@ -535,6 +535,69 @@ Escolha o melhor agente:`;
     }
   }
 
+  // Rede de segurança do motor de módulos dinâmicos: quando o filtro por
+  // keyword (regex) não bate em NADA, em vez de só repetir os módulos do
+  // turno anterior, pergunta pra uma IA barata qual módulo é necessário —
+  // cobre o caso de keyword mal escrita/corrompida ou mensagem que não usa
+  // nenhuma das palavras previstas (ver project_alex_price_hallucination_fix
+  // na memória: "100 g" sem "preço"/"valor" nunca batia em regex nenhuma e a
+  // IA respondia sem tabela de preço no contexto, inventando o valor).
+  async classifyModules(
+    message: string,
+    priorAssistantText: string,
+    modules: Array<{ name: string; keywords: string }>,
+    opts?: { tenantId?: string },
+  ): Promise<string[]> {
+    if (!modules.length) return [];
+    const client = this.supervisorClient ?? this.providers[0]?.client;
+    const model = this.supervisorClient ? this.supervisorModel : this.providers[0]?.model;
+    if (!client) return [];
+
+    const roster = modules
+      .map((m, i) => {
+        const topics = m.keywords.split('\n').map((k) => k.trim()).filter(Boolean).join(', ');
+        return `${i + 1}. "${m.name}" — assuntos: ${topics || 'geral'}`;
+      })
+      .join('\n');
+
+    const systemPrompt = `Você decide quais blocos de conhecimento (módulos) um agente de atendimento via WhatsApp precisa carregar para responder a próxima mensagem do cliente.
+Escolha SOMENTE módulos da lista, usando o nome exato entre aspas.
+Se a mensagem do cliente claramente precisar de mais de um módulo, pode escolher vários.
+Se nenhum módulo da lista for necessário, devolva lista vazia.
+Responda APENAS com JSON válido, sem texto extra, no formato:
+{"modules": ["nome exato 1", "nome exato 2"]}`;
+
+    const priorBlock = priorAssistantText ? `Última mensagem do agente: "${priorAssistantText}"\n` : '';
+    const userPrompt = `Módulos disponíveis:\n${roster}\n\n${priorBlock}Mensagem do cliente agora: "${message}"\n\nQuais módulos são necessários pra responder essa mensagem?`;
+
+    try {
+      const resp = await client.chat.completions.create({
+        model,
+        max_tokens: 200,
+        response_format: { type: 'json_object' },
+        reasoning_effort: 'none',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any);
+      if (opts?.tenantId) {
+        const u = (resp as any).usage;
+        void this._trackUsage(opts.tenantId, u?.prompt_tokens ?? 0, u?.prompt_tokens_details?.cached_tokens ?? 0, u?.completion_tokens ?? 0, 'dynamic_modules');
+      }
+      const raw = (resp.choices[0].message.content ?? '').trim();
+      const parsed = JSON.parse(raw);
+      const names: string[] = Array.isArray(parsed.modules) ? parsed.modules.filter((n: any) => typeof n === 'string') : [];
+      const validNames = new Set(modules.map((m) => m.name));
+      const chosen = names.filter((n) => validNames.has(n));
+      this.logger.log(`[MODULE-CLASSIFIER] "${message.substring(0, 40)}" → [${chosen.join(', ') || '-'}]`);
+      return chosen;
+    } catch (err) {
+      this.logger.warn(`[MODULE-CLASSIFIER] Falha na classificação, sem módulo extra: ${err?.message}`);
+      return [];
+    }
+  }
+
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
@@ -967,7 +1030,10 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
   // do resto do sistema) e faz o parse do JSON de resposta.
   async processDynamicPrompt(tenantId: string, systemPrompt: string, messages: any[], modelOverride?: string): Promise<AiResponse> {
     try {
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, modelOverride);
+      // temperature reduzida (mesma mitigação aplicada ao multi_agent) — na migração
+      // pro motor de módulos dinâmicos esse fix não tinha sido carregado, o que
+      // reabriu a alucinação de preço do Alex. Ver project_alex_price_hallucination_fix.
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, modelOverride, 0.3);
       void this._trackUsage(tenantId, inputTokens, cachedTokens, outputTokens, 'dynamic_modules');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };

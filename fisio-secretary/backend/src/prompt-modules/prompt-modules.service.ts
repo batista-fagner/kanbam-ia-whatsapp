@@ -125,10 +125,19 @@ export class PromptModulesService {
   // carrega e o modelo fica sem a tabela pra responder — e inventa um valor
   // em vez de seguir a regra do Core (bug real: preço inventado em prod,
   // 2026-07-22, tenant alexcosta171@yahoo.com).
-  // Se nada bater (nem na mensagem, nem na pergunta anterior), mantém os
-  // módulos do turno anterior (continuidade — respostas curtas tipo "100" não
-  // têm palavra-chave própria, mas o assunto continua o mesmo).
-  selectModules(message: string, allModules: PromptModule[], previousModuleNames: string[], priorAssistantText?: string): PromptModule[] {
+  // Se nada bater (nem na mensagem, nem na pergunta anterior), em vez de só
+  // repetir os módulos do turno anterior, pergunta pra uma IA barata qual
+  // módulo é necessário (rede de segurança contra keyword mal escrita/
+  // corrompida ou mensagem fora do padrão previsto — ver
+  // project_alex_price_hallucination_fix na memória). Só cai na continuidade
+  // pura (turno anterior) se a IA também não apontar nada.
+  async selectModules(
+    tenantId: string,
+    message: string,
+    allModules: PromptModule[],
+    previousModuleNames: string[],
+    priorAssistantText?: string,
+  ): Promise<PromptModule[]> {
     const candidates = allModules.filter((m) => !m.isCore && m.isActive);
     const haystack = priorAssistantText ? `${priorAssistantText}\n${message}` : message;
     const matched = candidates.filter((m) => {
@@ -142,6 +151,16 @@ export class PromptModulesService {
       });
     });
     if (matched.length > 0) return matched;
+
+    const aiChosenNames = await this.aiService.classifyModules(
+      message,
+      priorAssistantText ?? '',
+      candidates.map((m) => ({ name: m.name, keywords: m.keywords })),
+      { tenantId },
+    );
+    if (aiChosenNames.length > 0) {
+      return candidates.filter((m) => aiChosenNames.includes(m.name));
+    }
 
     const prevSet = new Set(previousModuleNames ?? []);
     return candidates.filter((m) => prevSet.has(m.name));
@@ -191,7 +210,7 @@ export class PromptModulesService {
     const core = allModules.find((m) => m.isCore);
     const history = slimHistory((lead.aiContext as any[]) ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
-    const selected = this.selectModules(message, allModules, lead.activeModules ?? [], priorAssistantText);
+    const selected = await this.selectModules(tenantId, message, allModules, lead.activeModules ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
@@ -232,7 +251,7 @@ export class PromptModulesService {
     const core = allModules.find((m) => m.isCore);
     const history = slimHistory(aiContext ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
-    const selected = this.selectModules(message, allModules, previousModuleNames ?? [], priorAssistantText);
+    const selected = await this.selectModules(tenantId, message, allModules, previousModuleNames ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
