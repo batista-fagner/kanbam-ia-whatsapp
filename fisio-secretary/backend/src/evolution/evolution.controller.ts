@@ -589,8 +589,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
 
       // Atualiza stage e desativa IA permanentemente para nunca mais responder
+      const wasAgendado = lead.stage === 'agendado';
       if (aiResponse.stage) {
         await this.leadsService.updateStage(lead.id, aiResponse.stage as any, 'ai');
+      }
+      if (aiResponse.stage === 'agendado' && !wasAgendado) {
+        this.notifyAppointmentScheduled(lead, instanceConfig, tenantToken, tenantId);
       }
       await this.leadsService.toggleAi(lead.id, false);
 
@@ -653,6 +657,9 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
       if (newOrder >= currentOrder || canRegress) {
         await this.leadsService.updateStage(lead.id, aiResponse.stage as any, 'ai');
+        if (aiResponse.stage === 'agendado') {
+          this.notifyAppointmentScheduled(lead, instanceConfig, tenantToken, tenantId);
+        }
         // stage=perdido (desistiu/pediu pra parar) → pausa follow-up automático.
         // Só pausa a cadência, NÃO desativa a IA — se o lead voltar a escrever,
         // resetCadenceOnReply já limpa a pausa e a Clara responde normal.
@@ -696,6 +703,16 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
+  }
+
+  // Notifica o número configurado pelo cliente (Configurações) sempre que um lead
+  // vira "agendado" — disparo best-effort, não pode derrubar o fluxo de resposta ao lead.
+  private notifyAppointmentScheduled(lead: any, instanceConfig: any, tenantToken: string | undefined, tenantId: string): void {
+    const notificationPhone = instanceConfig?.notificationPhone;
+    if (!notificationPhone) return;
+    const text = `📅 Novo agendamento!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}`;
+    this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
+      .catch(err => this.logger.error(`[NOTIFY] Falha ao notificar agendamento pra ${notificationPhone}: ${err.message}`));
   }
 
   // Envia 1+ mídias cadastradas (respeitando o teto diário por tenant) e salva cada

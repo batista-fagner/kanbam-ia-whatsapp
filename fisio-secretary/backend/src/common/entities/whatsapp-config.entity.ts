@@ -96,6 +96,10 @@ export class WhatsappConfig {
   @Column({ name: 'billing_phone', type: 'varchar', nullable: true })
   billingPhone: string | null;
 
+  // Telefone que recebe notificação automática sempre que um lead agenda (stage='agendado')
+  @Column({ name: 'notification_phone', type: 'varchar', nullable: true })
+  notificationPhone: string | null;
+
   // --- Pagamento Stripe (D2) ---
   @Column({ name: 'stripe_customer_id', type: 'varchar', nullable: true })
   stripeCustomerId: string | null;

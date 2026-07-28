@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import PromptSearchViewer from '../components/PromptSearchViewer'
@@ -283,6 +283,64 @@ function DeactivationKeywordCard({ config, onSaved }) {
         </button>
       </div>
       {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
+function NotificationPhoneCard({ config, onSaved }) {
+  const [phone, setPhone] = useState(config?.notificationPhone ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    const trimmed = phone.trim()
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationPhone: trimmed || null }),
+      })
+      setPhone(trimmed)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100">
+          <BellRing className="w-4 h-4 text-amber-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Notificação de agendamento</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Número de WhatsApp que recebe um aviso automático toda vez que um lead agenda (com DDD, ex: 71992867765). Deixe em branco para desativar.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          maxLength={20}
+          placeholder="71992867765"
+          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition"
+        >
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      {saved && <p className="text-xs text-amber-600 mt-2">Salvo!</p>}
     </div>
   )
 }
@@ -1436,6 +1494,11 @@ export default function SettingsPage() {
       {/* Card módulos dinâmicos — protótipo, rollout ainda mais restrito */}
       {!bootstrapping && instanceConfig && canSeeDynamicModules && (
         <DynamicModulesToggleCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {/* Card notificação de agendamento */}
+      {!bootstrapping && instanceConfig && (
+        <NotificationPhoneCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
       {/* Card palavra de desativação da IA */}

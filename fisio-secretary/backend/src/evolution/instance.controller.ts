@@ -79,6 +79,7 @@ export class InstanceController {
       deactivationKeyword?: string | null;
       activationKeyword?: string | null;
       promptEngine?: string;
+      notificationPhone?: string | null;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

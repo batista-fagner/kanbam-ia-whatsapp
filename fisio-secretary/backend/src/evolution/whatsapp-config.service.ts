@@ -186,6 +186,7 @@ export class WhatsappConfigService {
       deactivationKeyword?: string | null;
       activationKeyword?: string | null;
       promptEngine?: string;
+      notificationPhone?: string | null;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -200,6 +201,7 @@ export class WhatsappConfigService {
     if ('promptEngine' in fields && (fields.promptEngine === 'legacy' || fields.promptEngine === 'dynamic_modules')) {
       record.promptEngine = fields.promptEngine;
     }
+    if ('notificationPhone' in fields) record.notificationPhone = fields.notificationPhone?.trim() || null;
     return this.repo.save(record);
   }
 
