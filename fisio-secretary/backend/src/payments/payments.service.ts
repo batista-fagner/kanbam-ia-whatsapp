@@ -520,6 +520,17 @@ export class PaymentsService {
 
     if (claim.affected !== 1) return; // já ativado por outra instância
 
+    // Registra a confirmação no histórico de cobrança (aba "Cobranças" no Admin) —
+    // é o que dá ao painel um indicador visível de que o PIX foi efetivamente pago,
+    // não só "enviado".
+    await this._logBillingEvent(
+      tenant.id,
+      'pagamento',
+      'confirmado',
+      Number(tenant.planValue ?? '390.00'),
+      tenant.lastPixTxid ?? tenant.id.replace(/-/g, ''),
+    );
+
     if (!wasAlreadyActivatedBefore) {
       // Primeira ativação: gera senha definitiva e envia credenciais
       const users = await this.usersService.findByTenant(tenant.id);
@@ -652,8 +663,8 @@ export class PaymentsService {
 
   private async _logBillingEvent(
     tenantId: string | null,
-    channel: 'pix' | 'whatsapp' | 'email',
-    status: 'sent' | 'failed',
+    channel: 'pix' | 'whatsapp' | 'email' | 'pagamento',
+    status: 'sent' | 'failed' | 'confirmado',
     amount: number,
     txid: string | null,
     errorMessage?: string,

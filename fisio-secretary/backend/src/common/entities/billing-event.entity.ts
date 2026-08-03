@@ -16,11 +16,12 @@ export class BillingEvent {
   label: string | null;
 
   // 'pix' = geração da cobrança na Efí. 'whatsapp' / 'email' = canais de entrega do PIX gerado.
+  // 'pagamento' = confirmação de que o PIX foi pago (webhook/polling da Efí), status sempre 'confirmado'.
   @Column({ type: 'varchar' })
-  channel: 'pix' | 'whatsapp' | 'email';
+  channel: 'pix' | 'whatsapp' | 'email' | 'pagamento';
 
   @Column({ type: 'varchar' })
-  status: 'sent' | 'failed';
+  status: 'sent' | 'failed' | 'confirmado';
 
   @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
   amount: string | null;

@@ -178,12 +178,12 @@ export default function AdminPage() {
 
   function nextDueDate(billingDay) {
     if (!billingDay) return null
-    const now = new Date()
+    const now = new Date(); now.setHours(0, 0, 0, 0)
     const y = now.getFullYear(), m = now.getMonth()
     const lastDay = new Date(y, m + 1, 0).getDate()
     const day = Math.min(billingDay, lastDay)
     const due = new Date(y, m, day)
-    if (due <= now) { // já passou esse mês → próximo mês
+    if (due < now) { // já passou esse mês → próximo mês
       const lastDayNext = new Date(y, m + 2, 0).getDate()
       return new Date(y, m + 1, Math.min(billingDay, lastDayNext))
     }
@@ -417,7 +417,7 @@ export default function AdminPage() {
           )}
 
           {!loadingBilling && billingEvents.length > 0 && (() => {
-            const channelLabel = { pix: '⚡ QR', whatsapp: '💬 whatsapp', email: '📧 e-mail' }
+            const channelLabel = { pix: '⚡ QR', whatsapp: '💬 whatsapp', email: '📧 e-mail', pagamento: '✅ pago' }
             const groups = new Map()
             for (const ev of billingEvents) {
               const bucket = Math.floor(new Date(ev.createdAt).getTime() / 60000)
@@ -431,12 +431,12 @@ export default function AdminPage() {
             return (
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {grouped.map(g => {
-                  const allSent = g.events.every(e => e.status === 'sent')
+                  const allOk = g.events.every(e => e.status === 'sent' || e.status === 'confirmado')
                   const failed = g.events.filter(e => e.status === 'failed')
                   return (
                     <div key={g.id} className="p-3 flex items-center justify-between gap-3 text-sm">
                       <div className="flex items-center gap-3 min-w-0">
-                        {allSent
+                        {allOk
                           ? <Check className="w-4 h-4 text-green-600 shrink-0" />
                           : <X className="w-4 h-4 text-red-600 shrink-0" />}
                         <div className="min-w-0">
@@ -445,7 +445,11 @@ export default function AdminPage() {
                             {g.events.map(e => (
                               <span
                                 key={e.id}
-                                className={`text-xs px-1.5 py-0.5 rounded-full ${e.status === 'sent' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-500'}`}
+                                className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                  e.status === 'confirmado' ? 'bg-green-50 text-green-600 font-medium'
+                                  : e.status === 'sent' ? 'bg-gray-100 text-gray-500'
+                                  : 'bg-red-50 text-red-500'
+                                }`}
                               >
                                 {channelLabel[e.channel] || e.channel}
                               </span>
@@ -497,7 +501,7 @@ export default function AdminPage() {
         )}
         {clients.map(c => {
           const dleft = daysUntilDay(c.billingDay)
-          const dueSoon = dleft !== null && dleft <= 5
+          const dueSoon = dleft !== null && dleft <= 2
           const due = nextDueDate(c.billingDay)
           return (
             <div key={c.id} className="p-4 flex items-center justify-between gap-4">
@@ -575,7 +579,7 @@ export default function AdminPage() {
                   {due && (
                     <span className={`text-xs px-2 py-0.5 rounded-full ${dueSoon ? 'bg-amber-100 text-amber-700 font-medium' : 'bg-gray-100 text-gray-500'}`}>
                       {due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                      {dleft === 0 ? ' — hoje' : dleft <= 5 ? ` — ${dleft}d` : ''}
+                      {dleft === 0 ? ' — hoje' : dleft <= 2 ? ` — ${dleft}d` : ''}
                     </span>
                   )}
                 </div>
