@@ -462,6 +462,61 @@ Escreva a mensagem de follow-up:`;
     return text;
   }
 
+  // Gerador de rascunho de prompt (onboarding — agente de CS, Fase 1). Adapta o prompt de
+  // um cliente-referência (mesmo agentType) usando as respostas do Google Form do cliente
+  // novo. Mantém a estrutura/seções do prompt de referência — nunca inventa informação que
+  // não veio do form; onde faltar resposta, marca "⚠️ FALTA:" explicitamente (ver
+  // agente-suporte-cs.md). Isso é preenchimento estruturado, não criação livre — temperature
+  // baixa e sem "reasoning" (mesma configuração do lite client).
+  async generatePromptDraft(referencePrompt: string, formAnswers: Record<string, string>): Promise<string> {
+    const client = this.liteClient ?? this.providers[0]?.client;
+    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
+    if (!client) throw new Error('Nenhum provedor LLM configurado');
+
+    const respostasTexto = Object.entries(formAnswers)
+      .filter(([titulo]) => titulo.trim().toLowerCase() !== 'código interno')
+      .map(([titulo, resposta]) => `${titulo}: ${resposta || '(não respondido)'}`)
+      .join('\n');
+
+    const systemPrompt = `Você é um assistente interno que ajuda a equipe a montar o prompt de um novo cliente, a partir de um prompt de referência de outro cliente já ativo (mesmo tipo de negócio) e das respostas de um formulário de onboarding.
+
+REGRAS OBRIGATÓRIAS:
+- Mantenha a MESMA estrutura, seções, tom de voz, regras universais e formatação do prompt de referência — você está adaptando, não recriando do zero.
+- Troque todo conteúdo específico do cliente de referência (nome, empresa, endereço, preços, diferenciais, regras de negócio) pelo conteúdo do novo cliente, usando SOMENTE o que está nas respostas do formulário.
+- NUNCA invente preço, endereço, horário, regra de negócio ou qualquer dado que não esteja explícito nas respostas.
+- Se uma informação necessária para preencher uma seção do prompt de referência não veio no formulário, mantenha a seção mas escreva literalmente "⚠️ FALTA: <o que falta>" no lugar do dado — não pule a seção nem invente.
+- Remova qualquer menção que só fazia sentido pro cliente de referência (nome dele, negócio dele) e que não se aplica ao novo cliente.
+- Não inclua bloco de esquema JSON nem tabela de datas — isso é injetado automaticamente pelo sistema depois, fora deste texto.
+- Responda APENAS com o texto final do prompt adaptado, sem comentários, sem markdown de code block, sem explicações antes ou depois.`;
+
+    const userPrompt = `PROMPT DE REFERÊNCIA (cliente já ativo, mesmo tipo de negócio):
+"""
+${referencePrompt}
+"""
+
+RESPOSTAS DO FORMULÁRIO DO CLIENTE NOVO:
+${respostasTexto || '(nenhuma resposta recebida)'}
+
+Adapte o prompt de referência para o cliente novo, seguindo as regras acima.`;
+
+    const resp = await callWithRetry(
+      () => client.chat.completions.create({
+        model,
+        max_tokens: 8000,
+        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any),
+      this.logger,
+    );
+
+    const text = (resp.choices[0].message.content ?? '').trim();
+    this.logger.log(`[PROMPT-DRAFT] Rascunho gerado (${text.length} chars, ${(text.match(/⚠️ FALTA:/g) ?? []).length} lacuna(s))`);
+    return text;
+  }
+
   // Supervisor: escolhe qual agente deve responder uma mensagem do cliente.
   // Usa o modelo lite (barato). Recebe a lista de agentes ativos do tenant e a
   // mensagem; devolve o id escolhido + um motivo curto. Sempre retorna um agente
