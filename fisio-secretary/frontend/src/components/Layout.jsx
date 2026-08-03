@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -17,7 +17,10 @@ export default function Layout({ onLogout }) {
   // Protótipo "agente único + módulos dinâmicos" (2026-07) — tenant de teste do
   // Alex + conta oficial dele em migração (prompt_engine ainda 'legacy' até o
   // conteúdo ser testado e aprovado, ver memória project_alex_dynamic_modules_migration).
-  const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com']
+  // Soraia entra no mesmo estado (2026-08): vinda do multiagente, com acesso ao
+  // construtor pra montar os módulos, mas prompt_engine segue 'legacy' — o
+  // WhatsApp real dela continua no multiagente até o conteúdo ser aprovado.
+  const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
   const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email)
 
   const navItems = [
@@ -36,6 +39,7 @@ export default function Layout({ onLogout }) {
     ...(user?.role === 'admin' ? [
       { icon: Users, label: 'Clientes', path: '/admin' },
       { icon: FileText, label: 'Prompts', path: '/admin/prompts' },
+      { icon: ClipboardList, label: 'Onboarding', path: '/admin/onboarding' },
       { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
     ] : []),
   ]

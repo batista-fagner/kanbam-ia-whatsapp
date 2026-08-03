@@ -20,17 +20,65 @@ export class PromptDraftsService {
     @InjectRepository(WhatsappConfig) private readonly configRepo: Repository<WhatsappConfig>,
   ) {}
 
-  async listDrafts(status?: string): Promise<GeneratedPrompt[]> {
-    return this.draftRepo.find({
+  // Lista os formulários recebidos (mais recente primeiro), com o nome do cliente e o
+  // status do rascunho mais recente daquele tenant (se já foi gerado algum). É a tela
+  // principal da revisão — mostra o que chegou e o que já tem/não tem rascunho.
+  async listOnboardingForms(): Promise<Array<OnboardingForm & { tenantName: string | null; latestDraftId: string | null; latestDraftStatus: string | null }>> {
+    const forms = await this.formRepo.find({ order: { createdAt: 'DESC' } });
+    if (forms.length === 0) return [];
+
+    const tenantIds = [...new Set(forms.map((f) => f.tenantId).filter((id): id is string => !!id))];
+    const tenants = tenantIds.length
+      ? await this.configRepo.find({ where: tenantIds.map((id) => ({ id })) as any })
+      : [];
+    const tenantNameById = new Map(tenants.map((t) => [t.id, t.displayName ?? t.profileName ?? t.id]));
+
+    const drafts = tenantIds.length
+      ? await this.draftRepo.find({ where: tenantIds.map((id) => ({ tenantId: id })) as any, order: { createdAt: 'DESC' } })
+      : [];
+    const latestDraftByTenant = new Map<string, GeneratedPrompt>();
+    for (const d of drafts) {
+      if (!latestDraftByTenant.has(d.tenantId)) latestDraftByTenant.set(d.tenantId, d);
+    }
+
+    return forms.map((f) => ({
+      ...f,
+      tenantName: f.tenantId ? tenantNameById.get(f.tenantId) ?? null : null,
+      latestDraftId: f.tenantId ? latestDraftByTenant.get(f.tenantId)?.id ?? null : null,
+      latestDraftStatus: f.tenantId ? latestDraftByTenant.get(f.tenantId)?.status ?? null : null,
+    }));
+  }
+
+  async listDrafts(status?: string): Promise<Array<GeneratedPrompt & { tenantName: string | null }>> {
+    const drafts = await this.draftRepo.find({
       where: status ? { status: status as any } : {},
       order: { createdAt: 'DESC' },
     });
+    if (drafts.length === 0) return [];
+
+    const tenantIds = [...new Set(drafts.map((d) => d.tenantId))];
+    const tenants = await this.configRepo.find({ where: tenantIds.map((id) => ({ id })) as any });
+    const tenantNameById = new Map(tenants.map((t) => [t.id, t.displayName ?? t.profileName ?? t.id]));
+
+    return drafts.map((d) => ({ ...d, tenantName: tenantNameById.get(d.tenantId) ?? null }));
   }
 
-  async getDraft(id: string): Promise<GeneratedPrompt> {
+  // Retorna o rascunho + o que a UI de revisão precisa junto: respostas do form que
+  // originou este rascunho e o nome do cliente (evita round-trips extras do frontend).
+  async getDraft(id: string): Promise<GeneratedPrompt & { tenantName: string | null; formAnswers: Record<string, string> | null }> {
     const draft = await this.draftRepo.findOne({ where: { id } });
     if (!draft) throw new NotFoundException('Rascunho não encontrado');
-    return draft;
+
+    const [tenant, form] = await Promise.all([
+      this.configRepo.findOne({ where: { id: draft.tenantId } }),
+      draft.sourceFormId ? this.formRepo.findOne({ where: { id: draft.sourceFormId } }) : Promise.resolve(null),
+    ]);
+
+    return {
+      ...draft,
+      tenantName: tenant?.displayName ?? tenant?.profileName ?? null,
+      formAnswers: form?.answers ?? null,
+    };
   }
 
   // Gera o rascunho a partir da última resposta de form do tenant + o prompt de um
@@ -49,7 +97,7 @@ export class PromptDraftsService {
     const reference = referenceTenantId
       ? await this.configRepo.findOne({ where: { id: referenceTenantId } })
       : await this.findDefaultReference(tenant.agentType);
-    if (!reference) throw new BadRequestException('Nenhum cliente-referência encontrado para este tipo de agente');
+    if (!reference) throw new BadRequestException('Nenhum cliente-referência encontrado — informe referenceTenantId ou cadastre DEFAULT_REFERENCE_TENANT_ID');
 
     const referencePrompt = tenant.agentType === 'megahair' ? reference.customPromptMegaHair : reference.customPromptSofia;
     if (!referencePrompt) throw new BadRequestException(`Cliente-referência (${reference.displayName ?? reference.id}) não tem prompt customizado cadastrado`);
@@ -71,16 +119,29 @@ export class PromptDraftsService {
     return draft;
   }
 
+  // Salva edições feitas na revisão sem aprovar ainda (a pessoa pode ir ajustando aos poucos).
+  async updateDraftContent(id: string, content: string): Promise<GeneratedPrompt> {
+    const draft = await this.draftRepo.findOne({ where: { id } });
+    if (!draft) throw new NotFoundException('Rascunho não encontrado');
+    if (draft.status !== 'draft') throw new BadRequestException('Só é possível editar rascunhos pendentes');
+    draft.content = content;
+    return this.draftRepo.save(draft);
+  }
+
   // Aprova o rascunho: copia o conteúdo pro custom_prompt_{sofia|megahair} do tenant — só
   // aqui o prompt vira "de verdade" ativo. Nunca acontece sozinho, sempre exige esse clique.
-  async approveDraft(id: string): Promise<GeneratedPrompt> {
-    const draft = await this.getDraft(id);
+  // Se vier "content", salva a edição final antes de aprovar (revisão feita na hora).
+  async approveDraft(id: string, content?: string): Promise<GeneratedPrompt> {
+    const draft = await this.draftRepo.findOne({ where: { id } });
+    if (!draft) throw new NotFoundException('Rascunho não encontrado');
     const tenant = await this.configRepo.findOne({ where: { id: draft.tenantId } });
     if (!tenant) throw new NotFoundException('Cliente do rascunho não existe mais');
 
+    const finalContent = content ?? draft.content;
     const field = tenant.agentType === 'megahair' ? 'customPromptMegaHair' : 'customPromptSofia';
-    await this.configRepo.update(tenant.id, { [field]: draft.content } as any);
+    await this.configRepo.update(tenant.id, { [field]: finalContent } as any);
 
+    draft.content = finalContent;
     draft.status = 'approved';
     await this.draftRepo.save(draft);
     this.logger.log(`[PROMPT-DRAFT] Rascunho ${id} aprovado e ativado pro tenant ${tenant.id} (${field})`);
@@ -94,10 +155,22 @@ export class PromptDraftsService {
     return draft;
   }
 
-  // Sem indicação explícita de referência: usa o cliente mais recente e ativo do mesmo
-  // agentType que já tem prompt customizado — proxy razoável de "configuração atual".
+  // Sem indicação explícita de referência: usa o tenant fixado em DEFAULT_REFERENCE_TENANT_ID
+  // (hoje: Julia da Cabelô/bbfagner2222@gmail.com, prompt megahair validado em produção) se ele
+  // servir pro agentType pedido; senão cai no cliente mais recente ativo do mesmo tipo.
   private async findDefaultReference(agentType: string): Promise<WhatsappConfig | null> {
     const column = agentType === 'megahair' ? 'custom_prompt_megahair' : 'custom_prompt_sofia';
+
+    const fixedId = this.config.get<string>('DEFAULT_REFERENCE_TENANT_ID');
+    if (fixedId) {
+      const fixed = await this.configRepo
+        .createQueryBuilder('wc')
+        .where('wc.id = :id', { id: fixedId })
+        .andWhere(`wc.${column} IS NOT NULL`)
+        .getOne();
+      if (fixed) return fixed;
+    }
+
     return this.configRepo
       .createQueryBuilder('wc')
       .where('wc.agent_type = :agentType', { agentType })

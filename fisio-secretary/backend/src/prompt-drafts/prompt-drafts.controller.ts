@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { PromptDraftsService } from './prompt-drafts.service';
@@ -9,6 +9,11 @@ import { PromptDraftsService } from './prompt-drafts.service';
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class PromptDraftsController {
   constructor(private readonly service: PromptDraftsService) {}
+
+  @Get('forms')
+  listForms() {
+    return this.service.listOnboardingForms();
+  }
 
   @Get()
   list(@Query('status') status?: string) {
@@ -25,9 +30,14 @@ export class PromptDraftsController {
     return this.service.generateDraft(tenantId, referenceTenantId);
   }
 
+  @Patch(':id')
+  update(@Param('id') id: string, @Body('content') content: string) {
+    return this.service.updateDraftContent(id, content);
+  }
+
   @Post(':id/approve')
-  approve(@Param('id') id: string) {
-    return this.service.approveDraft(id);
+  approve(@Param('id') id: string, @Body('content') content?: string) {
+    return this.service.approveDraft(id, content);
   }
 
   @Post(':id/discard')

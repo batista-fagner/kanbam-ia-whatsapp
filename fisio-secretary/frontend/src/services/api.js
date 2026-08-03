@@ -232,6 +232,42 @@ export const getAdminMonolithPrompt = (tenantId, kind) => // kind: 'sofia' | 'me
 export const getAdminAgentPrompt = (tenantId, agentId) =>
   authFetch(`${BASE}/admin/prompts/${tenantId}/agent/${agentId}`).then(json)
 
+// --- Onboarding: form recebido → rascunho de prompt → revisão (agente de CS, Fase 1) ---
+export const listOnboardingForms = () =>
+  authFetch(`${BASE}/admin/prompt-drafts/forms`).then(json)
+
+export const listPromptDrafts = (status) => {
+  const qs = status ? `?status=${status}` : ''
+  return authFetch(`${BASE}/admin/prompt-drafts${qs}`).then(json)
+}
+
+export const getPromptDraft = (id) =>
+  authFetch(`${BASE}/admin/prompt-drafts/${id}`).then(json)
+
+export const generatePromptDraft = (tenantId, referenceTenantId) =>
+  authFetch(`${BASE}/admin/prompt-drafts/generate/${tenantId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(referenceTenantId ? { referenceTenantId } : {}),
+  }).then(json)
+
+export const updatePromptDraft = (id, content) =>
+  authFetch(`${BASE}/admin/prompt-drafts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  }).then(json)
+
+export const approvePromptDraft = (id, content) =>
+  authFetch(`${BASE}/admin/prompt-drafts/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(content != null ? { content } : {}),
+  }).then(json)
+
+export const discardPromptDraft = (id) =>
+  authFetch(`${BASE}/admin/prompt-drafts/${id}/discard`, { method: 'POST' }).then(json)
+
 // --- Checkout público (Stripe) — sem auth ---
 export const createCheckout = (payload) => // { name, email, phone, method: 'card'|'pix' }
   fetch(`${BASE}/payments/checkout`, {
