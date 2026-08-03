@@ -126,6 +126,7 @@ const rules = [
 
 export default function AlertRulesPage() {
   const [autoFollowup, setAutoFollowup]   = useState(emptyFollowup())
+  const [followupEnabled, setFollowupEnabled] = useState(true)
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved]   = useState(false)
 
@@ -152,6 +153,9 @@ export default function AlertRulesPage() {
             }
           }
           setAutoFollowup(next)
+        }
+        if (typeof data?.autoFollowupEnabled === 'boolean') {
+          setFollowupEnabled(data.autoFollowupEnabled)
         }
 
         const ar = data?.appointmentReminder
@@ -180,6 +184,25 @@ export default function AlertRulesPage() {
       setTimeout(() => setFollowupSaved(false), 2500)
     } finally {
       setSavingFollowup(false)
+    }
+  }
+
+  const [togglingFollowup, setTogglingFollowup] = useState(false)
+
+  const toggleFollowupEnabled = async () => {
+    const next = !followupEnabled
+    setFollowupEnabled(next)
+    setTogglingFollowup(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoFollowupEnabled: next }),
+      })
+    } catch {
+      setFollowupEnabled(!next) // reverte
+    } finally {
+      setTogglingFollowup(false)
     }
   }
 
@@ -222,15 +245,33 @@ export default function AlertRulesPage() {
 
           {/* Card: Follow-up automático */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <RefreshCw className="w-4 h-4 text-teal-600" />
-              <h2 className="text-sm font-semibold text-gray-800">Follow-up automático</h2>
+            <div className="flex items-center justify-between gap-4 mb-1">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-teal-600" />
+                <h2 className="text-sm font-semibold text-gray-800">Follow-up automático</h2>
+              </div>
+              <button
+                onClick={toggleFollowupEnabled}
+                disabled={togglingFollowup}
+                className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+                  followupEnabled ? 'bg-teal-600' : 'bg-gray-200'
+                } ${togglingFollowup ? 'opacity-50' : ''}`}
+                title={followupEnabled ? 'Desligar follow-up automático' : 'Ligar follow-up automático'}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${followupEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
             </div>
+            <p className="text-xs text-gray-400 mb-2">
+              {followupEnabled
+                ? 'Ligado — as raias configuradas abaixo enviam follow-up automático.'
+                : 'Desligado — nenhuma mensagem automática é enviada, mesmo com raias configuradas abaixo.'}
+            </p>
             <p className="text-sm text-gray-500 mb-2">
               Leads que pararam de responder recebem <strong>uma única</strong> mensagem por raia.
               Use <code className="px-1 py-0.5 bg-gray-100 rounded text-teal-700">{'{nome}'}</code> para o primeiro nome.
               Verificação a cada minuto.
             </p>
+            <div className={`transition-opacity ${followupEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
             <div className="mb-4 p-3 bg-teal-50 border border-teal-100 rounded-lg text-xs text-gray-600 leading-relaxed">
               💡 <strong>Variação automática (anti-bloqueio):</strong> use{' '}
               <code className="px-1 py-0.5 bg-white rounded text-teal-700">{'{opção A|opção B|opção C}'}</code>{' '}
@@ -291,6 +332,7 @@ export default function AlertRulesPage() {
                   </div>
                 )
               })}
+            </div>
             </div>
 
             <div className="flex items-center gap-3 mt-4">

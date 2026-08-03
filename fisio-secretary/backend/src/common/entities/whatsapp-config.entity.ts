@@ -39,6 +39,11 @@ export class WhatsappConfig {
   @Column({ name: 'auto_followup_config', type: 'jsonb', nullable: true })
   autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string }> | null;
 
+  // Chave-mestra: desliga o follow-up automático inteiro (todas as raias) sem apagar a config salva.
+  // O cliente decide se quer o recurso ligado; default true para não quebrar quem já usa.
+  @Column({ name: 'auto_followup_enabled', type: 'boolean', default: true })
+  autoFollowupEnabled: boolean;
+
   // Lembrete de agendamento: enviado ~24h antes. Ex: { enabled, message }
   @Column({ name: 'appointment_reminder', type: 'jsonb', nullable: true })
   appointmentReminder: { enabled: boolean; message: string } | null;

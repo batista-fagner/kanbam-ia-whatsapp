@@ -181,6 +181,7 @@ export class WhatsappConfigService {
     fields: {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+      autoFollowupEnabled?: boolean;
       appointmentReminder?: { enabled?: boolean; message?: string } | null;
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;
@@ -194,6 +195,7 @@ export class WhatsappConfigService {
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     if ('autoFollowupConfig' in fields) record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig);
+    if ('autoFollowupEnabled' in fields) record.autoFollowupEnabled = !!fields.autoFollowupEnabled;
     if ('appointmentReminder' in fields) record.appointmentReminder = this.sanitizeAppointmentReminder(fields.appointmentReminder);
     if ('multiAgentEnabled' in fields) record.multiAgentEnabled = !!fields.multiAgentEnabled;
     if ('deactivationKeyword' in fields) record.deactivationKeyword = this.sanitizeKeyword(fields.deactivationKeyword, 'opa');

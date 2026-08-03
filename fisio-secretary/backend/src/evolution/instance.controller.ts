@@ -74,6 +74,7 @@ export class InstanceController {
     @Body() body: {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+      autoFollowupEnabled?: boolean;
       appointmentReminder?: { enabled?: boolean; message?: string } | null;
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;

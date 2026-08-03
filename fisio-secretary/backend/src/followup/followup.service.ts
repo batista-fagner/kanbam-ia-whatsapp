@@ -344,6 +344,8 @@ export class FollowupService {
     const configs = await this.configRepo.find();
 
     for (const cfg of configs) {
+      if (cfg.autoFollowupEnabled === false) continue;
+
       const fu = cfg.autoFollowupConfig;
       if (!fu || typeof fu !== 'object') continue;
 
