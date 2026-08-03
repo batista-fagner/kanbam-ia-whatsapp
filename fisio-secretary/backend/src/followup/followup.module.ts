@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
-import { ScheduleModule } from '@nestjs/schedule';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { Agent } from '../common/entities/agent.entity';
@@ -16,7 +15,8 @@ import { AppointmentsModule } from '../appointments/appointments.module';
 @Module({
   imports: [
     ConfigModule,
-    ScheduleModule.forRoot(),
+    // ScheduleModule.forRoot() já é registrado uma única vez no AppModule —
+    // NÃO repetir aqui (duplicava a execução de todo @Cron() do sistema).
     HttpModule,
     TypeOrmModule.forFeature([Followup, WhatsappConfig, Agent]),
     LeadsModule,

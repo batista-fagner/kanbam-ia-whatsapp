@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { Lead } from './common/entities/lead.entity';
 import { Conversation } from './common/entities/conversation.entity';
 import { Message } from './common/entities/message.entity';
@@ -64,6 +65,11 @@ import { PromptModulesModule } from './prompt-modules/prompt-modules.module';
   imports: [
     // ENV_FILE permite trocar o arquivo de ambiente (ex: .env.development no dev isolado).
     ConfigModule.forRoot({ isGlobal: true, envFilePath: process.env.ENV_FILE || '.env' }),
+    // Registrado UMA única vez aqui — nunca repetir ScheduleModule.forRoot() em
+    // outro módulo. Chamar mais de uma vez faz o Nest rodar o bootstrap do
+    // agendador 2x, duplicando TODO @Cron() do app (ex: cobrança e follow-up
+    // disparando 2x por dia — bug real encontrado em 2026-08-03).
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
