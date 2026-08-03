@@ -134,6 +134,10 @@ export class WhatsappConfig {
   @Column({ name: 'plan_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
   planValue: string | null;
 
+  // Quando o cliente enviou o Google Form de onboarding (agente de CS, Fase 1). Null = ainda não preencheu.
+  @Column({ name: 'prompt_form_submitted_at', type: 'timestamp', nullable: true })
+  promptFormSubmittedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
