@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2 } from 'lucide-react'
 import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
 
 function daysUntil(dateStr) {
@@ -11,6 +11,12 @@ function daysUntil(dateStr) {
 
 // Data de hoje no fuso de Brasília ('YYYY-MM-DD'). toISOString() usa UTC e adianta o dia à noite.
 const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+
+// Google Form de onboarding (agente de CS) — link pré-preenchido por tenant via campo oculto
+// "Código interno". Ver agente-suporte-cs.md e backend/src/forms/forms.controller.ts.
+const ONBOARDING_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeY2IZLnw5Cw5FbRI2scRipQFT-qHrnUt3ujBfdoTWgUETiVw/viewform'
+const ONBOARDING_FORM_ENTRY = 'entry.995908210'
+const buildOnboardingLink = (tenantId) => `${ONBOARDING_FORM_URL}?usp=pp_url&${ONBOARDING_FORM_ENTRY}=${tenantId}`
 
 export default function AdminPage() {
   const [clients, setClients] = useState([])
@@ -585,6 +591,16 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(buildOnboardingLink(c.id))
+                    alert('Link de onboarding copiado! Já vem com o campo "Código interno" preenchido — o cliente não precisa alterar.')
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                  title="Copiar link de onboarding (form pré-preenchido pra este cliente)"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                </button>
                 {c.paymentMethod === 'pix' && (
                   <button
                     onClick={() => handleResendPix(c)}
