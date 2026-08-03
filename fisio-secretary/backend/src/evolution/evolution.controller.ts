@@ -110,10 +110,15 @@ export class EvolutionController {
         const deactivationKeyword = (tenantConfig?.deactivationKeyword || 'opa').toLowerCase();
         const activationKeyword = (tenantConfig?.activationKeyword || 'volta').toLowerCase();
 
-        if (operatorText.toLowerCase() === deactivationKeyword) {
+        // Alguns apps de WhatsApp usados por operadores (multi-atendente) prefixam
+        // toda mensagem enviada com uma assinatura, ex: "*Julia da Cabelô.:*\nopa".
+        // Por isso comparamos pela última linha não vazia, não pelo texto inteiro.
+        const operatorLastLine = operatorText.split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? '';
+
+        if (operatorLastLine.toLowerCase() === deactivationKeyword) {
           await this.leadsService.toggleAi(lead.id, false);
           this.logger.log(`🛑 [DEACTIVATE] Operador assumiu conversa de ${phone} via WhatsApp — IA desativada (palavra: "${deactivationKeyword}")`);
-        } else if (operatorText.toLowerCase() === activationKeyword) {
+        } else if (operatorLastLine.toLowerCase() === activationKeyword) {
           await this.leadsService.toggleAi(lead.id, true);
           this.logger.log(`✅ [ACTIVATE] IA reativada para ${phone} via WhatsApp (palavra: "${activationKeyword}")`);
         } else if (operatorText) {
