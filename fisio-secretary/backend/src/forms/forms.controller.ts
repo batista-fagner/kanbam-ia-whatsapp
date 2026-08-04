@@ -13,10 +13,19 @@ interface OnboardingFormWebhookDto {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Título exato da pergunta oculta no Forms — carrega o tenantId via link pré-preenchido
+// Título da pergunta oculta no Forms — carrega o tenantId via link pré-preenchido
 // (Forms → ⋮ → "Preencher formulário automaticamente"). O cliente vê o campo mas não
 // precisa alterá-lo; é opcional pra não travar o envio se ele mexer nele por engano.
-const TENANT_FIELD_TITLE = 'Código interno';
+// Comparação por trim+lowercase (não exata): o título real no Forms às vezes chega
+// com espaço extra (ex.: " Código interno") por edição manual da pergunta.
+const TENANT_FIELD_TITLE = 'código interno';
+
+function findByNormalizedTitle(respostas: Record<string, string>, title: string): string | undefined {
+  for (const key of Object.keys(respostas)) {
+    if (key.trim().toLowerCase() === title) return respostas[key];
+  }
+  return undefined;
+}
 
 // Webhook do Google Form de onboarding (agente de CS, Fase 1 — ver agente-suporte-cs.md).
 // Público (sem JwtAuthGuard), protegido por header secreto — mesmo padrão dos webhooks de WhatsApp.
@@ -49,7 +58,7 @@ export class FormsController {
     // Fonte principal: campo oculto "Código interno", preenchido via link pré-preenchido
     // (não depende de qual conta Google o cliente usou pra responder).
     let tenantId: string | null = null;
-    const codigoInterno = respostas[TENANT_FIELD_TITLE]?.trim();
+    const codigoInterno = findByNormalizedTitle(respostas, TENANT_FIELD_TITLE)?.trim();
     if (codigoInterno && UUID_RE.test(codigoInterno)) {
       const tenant = await this.configRepo.findOne({ where: { id: codigoInterno } });
       if (tenant) tenantId = tenant.id;
