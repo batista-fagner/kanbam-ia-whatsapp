@@ -29,10 +29,11 @@ import { FollowupService } from '../followup/followup.service';
 const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
 
-// Reconhecimento de imagem (foto de cabelo → qualificação + parecer de
-// viabilidade) — em teste, escopado só ao tenant sandbox alex_teste@hotmail.com
-// (motor dynamic_modules). Ver plano/memória do projeto antes de generalizar.
-const IMAGE_ANALYSIS_TENANT_IDS = ['e624e817-5b6c-4840-b0ea-269eb78afe8d'];
+// Reconhecimento de imagem (foto de cabelo → identifica textura pra recomendar
+// o vídeo certo do catálogo) — habilitado tenant a tenant. alex_teste (motor
+// dynamic_modules) e a conta admin/Cabelô principal (motor legacy, ver
+// processMessageMegaHair). Ver plano/memória do projeto antes de generalizar.
+const IMAGE_ANALYSIS_TENANT_IDS = ['e624e817-5b6c-4840-b0ea-269eb78afe8d', '2c562828-0fe9-43c8-bad0-77a931968afc'];
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -350,6 +351,17 @@ export class EvolutionController {
       return;
     }
 
+    // Tenant suspenso pelo admin (inadimplência): não apaga nada e continua salvando
+    // as mensagens (o operador consegue ver no Kanban se logar), mas a IA não responde
+    // até o admin reativar. Login do painel já é bloqueado separadamente (auth.service/jwt.strategy).
+    const tenantConfigForActive = await this.whatsappConfigService.getByTenant(tenantId);
+    if (tenantConfigForActive?.isActive === false) {
+      this.logger.log(`Tenant ${tenantId} suspenso — mensagem de ${phone} salva, IA não responde`);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
     // Proteção anti-loop/economia de token: com a IA ligada, a cada 100 msgs inbound,
     // desliga a IA e alerta o admin. Se a IA já estiver desligada (operador assumiu),
     // essa checagem é ignorada (aiEnabled já retornou acima).
@@ -383,7 +395,7 @@ export class EvolutionController {
     }
 
     // Config + token do tenant — todo envio uazapi DEVE usar o token da instância deste cliente.
-    const instanceConfig = await this.whatsappConfigService.getByTenant(tenantId);
+    const instanceConfig = tenantConfigForActive;
     const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
     // Mostra "digitando..." enquanto a IA processa
@@ -485,7 +497,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, pendingImageUrl);
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 

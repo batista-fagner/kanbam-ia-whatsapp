@@ -886,7 +886,7 @@ OUTRAS REGRAS:
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
     const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
 
@@ -902,9 +902,10 @@ CRÍTICO — COMO USAR A TABELA DE DATAS:
 - Se a cliente discordar de uma data, NÃO concorde mecanicamente — releia a tabela acima antes de responder.
 
 REGRA DE IMAGEM — OBRIGATÓRIA:
-- Vc NÃO consegue ver imagens. NUNCA. Não tente identificar, descrever ou adivinhar o conteúdo de nenhuma imagem.
-- Quando a mensagem começar com "[imagem]", responda SEMPRE: "oi! não consigo ver imagens por aqui 😅 o cabelo da foto é liso, ondulado ou cacheado?"
-- Só continue o fluxo normal depois que ela responder com a textura.
+- Quando a cliente enviar uma foto de cabelo, identifique a TEXTURA (liso, ondulado ou cacheado) a partir da imagem.
+- NUNCA tente adivinhar ou inferir o TAMANHO (cm) pela foto — tamanho sempre se pergunta, nunca se estima visualmente.
+- Depois de identificar a textura pela foto, siga o fluxo normal: pergunte o tamanho desejado e ofereça o vídeo da textura correspondente (liso/levemente ondulado → linha Vietnamita Premium; levemente ondulado linha especial → Vietnamita Especial; cacheado → cacheado brasileiro).
+- Se a foto não deixar a textura clara, pergunte: "não consegui ver bem a textura na foto — é liso, ondulado ou cacheado?"
 
 IDENTIDADE E TOM:
 - Vc se chama Lindona e trabalha na Cabelô.
@@ -968,9 +969,19 @@ REGRAS:
     const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
     const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${extraBlock}\n\n${buildDateBlock()}`;
 
+    // Imagem só entra no conteúdo multimodal desta chamada — o histórico
+    // persistido (lead.aiContext) continua sempre com o texto puro, então a
+    // foto nunca é reenviada como histórico nas próximas mensagens (mesmo
+    // padrão do PromptModulesService.chatForLead).
+    const userContent: any = imageUrl
+      ? [
+          { type: 'text', text: incomingText },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ]
+      : incomingText;
     const messages: any[] = [
       ...history,
-      { role: 'user', content: incomingText },
+      { role: 'user', content: userContent },
     ];
 
     try {
