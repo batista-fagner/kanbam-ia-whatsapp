@@ -31,13 +31,13 @@ const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho
 
 // Reconhecimento de imagem (foto de cabelo → identifica textura pra recomendar
 // a mídia certa do catálogo) — habilitado tenant a tenant. alex_teste (motor
-// dynamic_modules), a conta admin/Cabelô principal e Niltoncabelos (ambos no
-// motor legacy, ver processMessageMegaHair). O prompt do tenant precisa ter a
-// regra de imagem habilitada — senão a IA responde "não consigo ver imagens".
+// dynamic_modules) e a conta admin/Cabelô principal (motor legacy, ver
+// processMessageMegaHair). Niltoncabelos NÃO está habilitado ainda (decisão
+// do cliente, 2026-08-06) — o prompt dele usa o fluxo "não consigo ver
+// imagens, pergunta a textura por texto".
 const IMAGE_ANALYSIS_TENANT_IDS = [
   'e624e817-5b6c-4840-b0ea-269eb78afe8d',
   '2c562828-0fe9-43c8-bad0-77a931968afc',
-  'cc6d550e-3c62-410f-a9a5-589b00bf1475',
 ];
 
 @Controller('webhooks')
