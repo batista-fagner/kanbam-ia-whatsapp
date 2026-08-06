@@ -30,10 +30,15 @@ const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
 
 // Reconhecimento de imagem (foto de cabelo → identifica textura pra recomendar
-// o vídeo certo do catálogo) — habilitado tenant a tenant. alex_teste (motor
-// dynamic_modules) e a conta admin/Cabelô principal (motor legacy, ver
-// processMessageMegaHair). Ver plano/memória do projeto antes de generalizar.
-const IMAGE_ANALYSIS_TENANT_IDS = ['e624e817-5b6c-4840-b0ea-269eb78afe8d', '2c562828-0fe9-43c8-bad0-77a931968afc'];
+// a mídia certa do catálogo) — habilitado tenant a tenant. alex_teste (motor
+// dynamic_modules), a conta admin/Cabelô principal e Niltoncabelos (ambos no
+// motor legacy, ver processMessageMegaHair). O prompt do tenant precisa ter a
+// regra de imagem habilitada — senão a IA responde "não consigo ver imagens".
+const IMAGE_ANALYSIS_TENANT_IDS = [
+  'e624e817-5b6c-4840-b0ea-269eb78afe8d',
+  '2c562828-0fe9-43c8-bad0-77a931968afc',
+  'cc6d550e-3c62-410f-a9a5-589b00bf1475',
+];
 
 @Controller('webhooks')
 export class EvolutionController {
