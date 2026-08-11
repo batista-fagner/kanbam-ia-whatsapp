@@ -80,6 +80,7 @@ export class EvolutionController {
   }
 
   private async handleUazapiWebhook(tenantId: string, body: any) {
+    if (body.EventType === 'connection') return this.handleConnectionEvent(tenantId, body);
     if (body.EventType !== 'messages') return { ok: true };
 
     const message = body.message;
@@ -263,6 +264,31 @@ export class EvolutionController {
       });
     });
 
+    return { ok: true };
+  }
+
+  // Evento `connection` do webhook uazapi — dispara em tempo real quando a instância
+  // conecta/desconecta (ex: deslogada de outro aparelho). Atualiza o campo `connected`
+  // que alimenta o badge do painel admin. O formato exato do payload ainda não foi
+  // confirmado na doc do uazapi, então checa os campos mais prováveis defensivamente
+  // e loga o corpo bruto pra ajustar se necessário.
+  private async handleConnectionEvent(tenantId: string, body: any) {
+    const connected =
+      body.status?.connected ??
+      body.connected ??
+      (typeof body.instance?.status === 'string' ? body.instance.status === 'connected' : undefined) ??
+      (typeof body.connection === 'string' ? body.connection === 'open' : undefined);
+
+    if (typeof connected !== 'boolean') {
+      this.logger.warn(`[CONN-EVENT] Payload de conexão em formato inesperado (tenant ${tenantId}): ${JSON.stringify(body)}`);
+      return { ok: true };
+    }
+
+    const updated = await this.whatsappConfigService.setConnected(tenantId, connected);
+    if (updated) {
+      const reason = body.instance?.lastDisconnectReason ?? body.lastDisconnectReason;
+      this.logger.warn(`[CONN-EVENT] Tenant ${tenantId} → connected=${connected}${reason ? ` (${reason})` : ''}`);
+    }
     return { ok: true };
   }
 

@@ -177,6 +177,15 @@ export class WhatsappConfigService {
     }
   }
 
+  // Atualiza só a flag `connected` — usado pelo webhook de conexão (evento em tempo real)
+  // e pelo cron de fallback (ConnectionMonitorService), sem mexer em mais nada do registro.
+  async setConnected(tenantId: string, connected: boolean): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record || record.connected === connected) return record;
+    record.connected = connected;
+    return this.repo.save(record);
+  }
+
   async updateConfig(
     fields: {
       customPromptMegaHair?: string | null;

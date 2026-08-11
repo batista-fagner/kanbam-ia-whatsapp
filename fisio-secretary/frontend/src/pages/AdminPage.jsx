@@ -516,7 +516,9 @@ export default function AdminPage() {
                   <span className="font-semibold text-gray-800">{c.displayName || '(sem nome)'}</span>
                   {c.connected
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-600"><Wifi className="w-3 h-3" /> conectado</span>
-                    : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><WifiOff className="w-3 h-3" /> desconectado</span>}
+                    : c.isActive
+                      ? <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold"><WifiOff className="w-3 h-3" /> desconectado — IA parada</span>
+                      : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><WifiOff className="w-3 h-3" /> desconectado</span>}
                   {!c.isActive && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">suspenso</span>}
                   {c.planStatus === 'past_due' && (
                     <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 pl-2 pr-1 py-0.5 rounded-full">

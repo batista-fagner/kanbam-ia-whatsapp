@@ -9,6 +9,7 @@ import { MonolithTestController } from './monolith-test.controller';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
+import { ConnectionMonitorService } from './connection-monitor.service';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { MetaProvider } from './providers/meta.provider';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
@@ -58,6 +59,7 @@ import { FollowupModule } from '../followup/followup.module';
     },
     EvolutionService,
     MessageQueueService,
+    ConnectionMonitorService,
   ],
   exports: [EvolutionService],
 })
