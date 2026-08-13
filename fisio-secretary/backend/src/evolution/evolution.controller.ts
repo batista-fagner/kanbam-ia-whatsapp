@@ -52,6 +52,10 @@ export class EvolutionController {
   // — consumida em processMessage() quando o debounce dispara. Só usado pelos
   // tenants em IMAGE_ANALYSIS_TENANT_IDS.
   private readonly pendingImageUrl = new Map<string, string>();
+  // Usado quando a IA manda action=send_media mas o item não existe no catálogo (nome
+  // inventado ou ainda não cadastrado) — a reply da IA nesse caso assume que a mídia foi
+  // enviada ("olha só esse aqui"), então não pode ser usada como está.
+  private readonly MEDIA_NOT_FOUND_FALLBACK = 'Ops, ainda não encontrei esse modelo aqui no meu catálogo 😕 Pode me confirmar o nome de novo? Assim já busco certinho pra você!';
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -615,16 +619,23 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       // sem vídeo E sem texto (bug: o early-return abaixo pulava o bloco de mídia
       // que só rodava mais adiante no fluxo normal).
       let mediaSentCount = 0;
+      let shouldIgnoreFallback: string | null = null;
       if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
-        mediaSentCount = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
+        const mediaResult = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
+        mediaSentCount = mediaResult.sentCount;
+        if (mediaResult.sentCount === 0 && mediaResult.notFound.length > 0) {
+          shouldIgnoreFallback = this.MEDIA_NOT_FOUND_FALLBACK;
+          this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
+        }
       }
 
       // Envia a mensagem final UMA VEZ antes de silenciar
-      if (aiResponse.reply) {
+      const shouldIgnoreReply = shouldIgnoreFallback ?? aiResponse.reply;
+      if (shouldIgnoreReply) {
         if (mediaSentCount > 0) await new Promise(r => setTimeout(r, 500));
-        this.logger.log(`📤 [SHOULDIGNORE] Enviando ${aiResponse.reply.substring(0, 40)}...`);
-        await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
+        this.logger.log(`📤 [SHOULDIGNORE] Enviando ${shouldIgnoreReply.substring(0, 40)}...`);
+        await this.evolutionService.sendTextMessage(phone, shouldIgnoreReply, tenantToken, tenantId);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', shouldIgnoreReply.replace(/\|\|\|/g, '\n\n'));
       }
 
       // Aplica etiquetas na uazapi e salva no banco
@@ -721,10 +732,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
     // Envio de mídia (imagem/vídeo cadastrada no sistema).
     // mediaName pode ser string (1 vídeo) ou array (vários — ex: "todos os lisos").
+    let mediaNotFoundFallback: string | null = null;
     if (aiResponse.action === 'send_media' && aiResponse.mediaName) {
-      const sentCount = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
+      const mediaResult = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
 
-      if (sentCount > 0) {
+      if (mediaResult.sentCount > 0) {
         // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
         if (aiResponse.reply?.trim()) {
           await new Promise(r => setTimeout(r, 500));
@@ -737,17 +749,25 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      // Nenhuma mídia encontrada → cai pro envio de texto normal (reply da IA).
+      // Mídia pedida mas não encontrada no catálogo → o reply da IA assume que foi
+      // enviada ("olha só esse aqui"), então não pode ser usado como está — troca por
+      // uma resposta honesta em vez de deixar o cliente esperando um vídeo que não veio.
+      if (mediaResult.notFound.length > 0) {
+        mediaNotFoundFallback = this.MEDIA_NOT_FOUND_FALLBACK;
+        this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
+      }
+      // Nenhuma mídia encontrada → cai pro envio de texto normal (reply da IA, ou fallback).
     }
 
     this.lastMessageWasAudio.delete(`${tenantId}:${phone}`);
 
     // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
-    this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-    await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
+    const finalReply = mediaNotFoundFallback ?? aiResponse.reply;
+    this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${finalReply.substring(0, 60)}...`);
+    await this.evolutionService.sendTextMessage(phone, finalReply, tenantToken, tenantId);
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
-    await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', finalReply.replace(/\|\|\|/g, '\n\n'));
 
     const updatedLead = await this.leadsService.findOne(lead.id);
     this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -774,7 +794,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     tenantToken: string | undefined,
     instanceConfig: any,
     mediaNameInput: string | string[],
-  ): Promise<number> {
+  ): Promise<{ sentCount: number; notFound: string[] }> {
     const DEFAULT_CAPTION = 'repare na ponta como ele é todo inteiro, o que acha?';
     const MAX_MEDIA = 12; // teto de segurança para evitar flood
     const names = (Array.isArray(mediaNameInput) ? mediaNameInput : [mediaNameInput])
@@ -807,6 +827,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     }
 
     let sentCount = 0;
+    const notFound: string[] = [];
     for (let i = 0; i < names.length; i++) {
       if (sentCount >= remainingQuota) {
         this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
@@ -815,6 +836,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const mediaFile = await this.mediaService.findByName(names[i], tenantId);
       if (!mediaFile) {
         this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
+        notFound.push(names[i]);
         continue;
       }
       const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
@@ -827,7 +849,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
     }
 
-    return sentCount;
+    return { sentCount, notFound };
   }
 
   // Verificação de webhook exigida pela Meta

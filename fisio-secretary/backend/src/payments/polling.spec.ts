@@ -148,7 +148,7 @@ describe('PaymentsService — expiração local de 6h (Efí não expira sozinha)
     const s = new PaymentsService(configRepo, implantacaoRepo, {} as any, {} as any, config as any, {} as any, {} as any);
     // Simula a Efí: cobrança sempre "ATIVA", nunca devolve EXPIRADA sozinha (comportamento real).
     (s as any)._efiGetCobStatus = jest.fn(async () => 'ATIVA');
-    s._wakePolling();
+    (s as any)._wakePolling();
     return s;
   };
 
