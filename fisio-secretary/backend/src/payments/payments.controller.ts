@@ -108,6 +108,12 @@ export class PaymentsController {
     return this.payments.updateCheckoutSettings(body);
   }
 
+  // Público: dados da página de renovação (QR + código Pix) — link enviado no template do WhatsApp.
+  @Get('payments/pix/:txid')
+  async pixPage(@Param('txid') txid: string) {
+    return this.payments.getPixPageData(txid);
+  }
+
   // Público: recebe confirmações de pagamento da Efí Bank (fallback — exige mTLS).
   // A confirmação principal é por polling (PaymentsService.pollPendingPix).
   @Post('webhooks/efi')

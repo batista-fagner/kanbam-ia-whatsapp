@@ -130,6 +130,14 @@ export class WhatsappConfig {
   @Column({ name: 'last_pix_txid', type: 'varchar', nullable: true })
   lastPixTxid: string | null;
 
+  // QR code (data:image/png;base64,...) e código copia-e-cola do PIX do ciclo atual (mesmo txid
+  // acima). Persistidos pra alimentar a página pública /pix/:txid sem precisar reconsultar a Efí.
+  @Column({ name: 'last_pix_qr_code', type: 'text', nullable: true })
+  lastPixQrCode: string | null;
+
+  @Column({ name: 'last_pix_code', type: 'text', nullable: true })
+  lastPixCode: string | null;
+
   // Valor mensal cobrado deste cliente (planos variados: 310, 490, ...). Sem valor cadastrado → fallback fixo no PaymentsService.
   @Column({ name: 'plan_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
   planValue: string | null;

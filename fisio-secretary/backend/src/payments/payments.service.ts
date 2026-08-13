@@ -667,14 +667,25 @@ export class PaymentsService implements OnModuleInit {
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
       await this._logBillingEvent(tenant.id, 'pix', 'sent', valorNum, txid);
 
-      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro,
-      // nem impedir a marcação de lastPixSentAt/lastPixTxid (o QR já foi gerado com sucesso na Efí).
+      // Persiste QR+código já aqui (antes de tentar enviar) — a página pública /pix/:txid
+      // depende só do banco, então precisa disso mesmo se o envio por WhatsApp falhar.
+      tenant.lastPixSentAt = new Date();
+      tenant.lastPixTxid = txid;
+      tenant.lastPixQrCode = pix.qrCode;
+      tenant.lastPixCode = pix.pixCode;
+      await this.configRepo.save(tenant);
+
+      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
       try {
-        // pix_mensal_copia_cola_v3: sem QR code, código Pix em texto monoespaçado (copiável por toque longo).
-        // Botão COPY_CODE testado e descartado: limite de ~15 caracteres, incompatível com código Pix (150+).
-        await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_copia_cola_v3', [
-          { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+        // pix_mensal_link_v1: sem QR/código no corpo — botão de link leva pra página com os dois
+        // prontos pra copiar. Evita o limite de caracteres do botão COPY_CODE (~15, incompatível
+        // com o código Pix de 150+) e o texto monoespaçado do v3 (funcional, mas menos amigável).
+        const pageUrl = this._buildPixPageUrl(txid);
+        await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_link_v1', [
+          { type: 'body', parameters: [{ type: 'text', text: valor }] },
+          { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: txid }] },
         ]);
+        this.logger.log(`[EFI] Link de renovação: ${pageUrl}`);
         await this._logBillingEvent(tenant.id, 'whatsapp', 'sent', valorNum, txid);
       } catch (waErr) {
         this.logger.error(`[EFI] Falha ao enviar PIX mensal por WhatsApp (tenant ${tenant.id}): ${waErr.message}`);
@@ -688,9 +699,6 @@ export class PaymentsService implements OnModuleInit {
         await this._logBillingEvent(tenant.id, 'email', result.ok ? 'sent' : 'failed', valorNum, txid, result.error);
       }
 
-      tenant.lastPixSentAt = new Date();
-      tenant.lastPixTxid = txid;
-      await this.configRepo.save(tenant);
       this.logger.log(`[EFI] PIX mensal enviado → ${tenant.billingPhone} (tenant ${tenant.id})`);
     } catch (err) {
       this.logger.error(`[EFI] Falha ao gerar QR mensal (tenant ${tenant.id}): ${err.message}`);
@@ -1164,5 +1172,41 @@ export class PaymentsService implements OnModuleInit {
 
   async listOverdue(): Promise<WhatsappConfig[]> {
     return this.configRepo.find({ where: { planStatus: 'past_due' } });
+  }
+
+  // ───────────────────────── Página pública /pix/:txid ─────────────────────────
+
+  private _buildPixPageUrl(txid: string): string {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+    return `${frontendUrl.replace(/\/$/, '')}/pix/${txid}`;
+  }
+
+  // Sem auth (link vem direto do WhatsApp). Só retorna dado de quem tem exatamente esse
+  // txid como cobrança ATUAL (lastPixTxid) — um txid de ciclo anterior já não bate mais,
+  // então cai em "expired" sem expor nada do ciclo velho.
+  async getPixPageData(txid: string): Promise<{
+    status: 'pending' | 'paid' | 'expired';
+    valor?: string;
+    qrCode?: string;
+    pixCode?: string;
+    clientName?: string;
+  }> {
+    if (!/^[a-zA-Z0-9]{20,40}$/.test(txid)) return { status: 'expired' };
+
+    const tenant = await this.configRepo.findOne({ where: { lastPixTxid: txid } });
+    if (!tenant) return { status: 'expired' };
+
+    if (tenant.planStatus === 'active') return { status: 'paid', clientName: tenant.displayName ?? undefined };
+    if (!['pending', 'past_due'].includes(tenant.planStatus)) return { status: 'expired' };
+    if (!tenant.lastPixQrCode || !tenant.lastPixCode) return { status: 'expired' };
+
+    const valorNum = Number(tenant.planValue ?? '390.00');
+    return {
+      status: 'pending',
+      valor: valorNum.toFixed(2).replace('.', ','),
+      qrCode: tenant.lastPixQrCode,
+      pixCode: tenant.lastPixCode,
+      clientName: tenant.displayName ?? undefined,
+    };
   }
 }

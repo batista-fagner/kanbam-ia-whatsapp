@@ -19,6 +19,7 @@ import ModulesTestPage from './pages/ModulesTestPage'
 import ProfilePage from './pages/ProfilePage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
+import PixRenewalPage from './pages/PixRenewalPage'
 import Layout from './components/Layout'
 
 function Routing() {
@@ -38,6 +39,7 @@ function Routing() {
       {/* Rotas públicas (checkout) — fora do guard de autenticação */}
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
+      <Route path="/pix/:txid" element={<PixRenewalPage />} />
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}

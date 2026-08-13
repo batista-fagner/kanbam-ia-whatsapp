@@ -303,6 +303,10 @@ export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEn
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)
 
+// --- Página pública de renovação (QR + código Pix) — sem auth, link vem do WhatsApp ---
+export const getPixPageData = (txid) =>
+  fetch(`${BASE}/payments/pix/${txid}`).then(json)
+
 // --- Trocar a própria senha ---
 export const changePassword = (currentPassword, newPassword) =>
   authFetch(`${BASE}/auth/change-password`, {
