@@ -386,7 +386,7 @@ export class PaymentsService implements OnModuleInit {
     return { ok: true, phone };
   }
 
-  // Gera o QR na Efí Bank e envia pela API oficial da Meta (template pix_mensal_v7).
+  // Gera o QR na Efí Bank e envia pela API oficial da Meta (link pra página com QR + código).
   // Roda em background (pode levar ~2 min). Se falhar, limpa o tenant fantasma e avisa o cliente.
   private async _sendCheckoutPix(tenantId: string, name: string, phone: string, email: string): Promise<void> {
     const txid = tenantId.replace(/-/g, ''); // 32 hex chars
@@ -399,13 +399,17 @@ export class PaymentsService implements OnModuleInit {
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
       await this._logBillingEvent(tenantId, 'pix', 'sent', valorNum, txid, undefined, name);
 
+      // Persiste QR+código já aqui — a página pública /pix/:txid depende só do banco.
+      await this.configRepo.update(tenantId, { lastPixTxid: txid, lastPixQrCode: pix.qrCode, lastPixCode: pix.pixCode });
+
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
       try {
-        const mediaId = await this._uploadMetaMedia(pix.qrCode);
-        await this._sendMetaTemplate(phone, 'pix_mensal_v7', [
-          { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
-          { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+        const pageUrl = this._buildPixPageUrl(txid);
+        await this._sendMetaTemplate(phone, 'pix_checkout_link_v1', [
+          { type: 'body', parameters: [{ type: 'text', text: name }, { type: 'text', text: valor }] },
+          { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: txid }] },
         ]);
+        this.logger.log(`[EFI] Link de checkout: ${pageUrl}`);
         await this._logBillingEvent(tenantId, 'whatsapp', 'sent', valorNum, txid, undefined, name);
       } catch (waErr) {
         this.logger.error(`[EFI] Falha ao enviar PIX de checkout por WhatsApp (tenant ${tenantId}): ${waErr.message}`);
