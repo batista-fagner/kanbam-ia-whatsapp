@@ -138,6 +138,12 @@ export class WhatsappConfig {
   @Column({ name: 'last_pix_code', type: 'text', nullable: true })
   lastPixCode: string | null;
 
+  // Valor EXATO usado pra gerar o PIX acima (checkout usa checkoutSettings.planoPrice, renovação
+  // usa tenant.planValue — fontes diferentes). A página /pix/:txid usa este campo, nunca recalcula
+  // a partir de plan_value: esse pode mudar (ou estar nulo) entre a geração e a visualização.
+  @Column({ name: 'last_pix_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
+  lastPixValue: string | null;
+
   // Valor mensal cobrado deste cliente (planos variados: 310, 490, ...). Sem valor cadastrado → fallback fixo no PaymentsService.
   @Column({ name: 'plan_value', type: 'numeric', precision: 10, scale: 2, nullable: true })
   planValue: string | null;

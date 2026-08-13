@@ -399,8 +399,12 @@ export class PaymentsService implements OnModuleInit {
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
       await this._logBillingEvent(tenantId, 'pix', 'sent', valorNum, txid, undefined, name);
 
-      // Persiste QR+código já aqui — a página pública /pix/:txid depende só do banco.
-      await this.configRepo.update(tenantId, { lastPixTxid: txid, lastPixQrCode: pix.qrCode, lastPixCode: pix.pixCode });
+      // Persiste QR+código+valor já aqui — a página pública /pix/:txid depende só do banco.
+      // valorNum vem de checkoutSettings.planoPrice (não de tenant.planValue, que pode estar
+      // nulo/desatualizado nesse momento) — precisa ser o valor exato usado na Efí.
+      await this.configRepo.update(tenantId, {
+        lastPixTxid: txid, lastPixQrCode: pix.qrCode, lastPixCode: pix.pixCode, lastPixValue: valorNum.toFixed(2),
+      });
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
       try {
@@ -671,12 +675,13 @@ export class PaymentsService implements OnModuleInit {
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
       await this._logBillingEvent(tenant.id, 'pix', 'sent', valorNum, txid);
 
-      // Persiste QR+código já aqui (antes de tentar enviar) — a página pública /pix/:txid
+      // Persiste QR+código+valor já aqui (antes de tentar enviar) — a página pública /pix/:txid
       // depende só do banco, então precisa disso mesmo se o envio por WhatsApp falhar.
       tenant.lastPixSentAt = new Date();
       tenant.lastPixTxid = txid;
       tenant.lastPixQrCode = pix.qrCode;
       tenant.lastPixCode = pix.pixCode;
+      tenant.lastPixValue = valorNum.toFixed(2);
       await this.configRepo.save(tenant);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
@@ -1204,7 +1209,10 @@ export class PaymentsService implements OnModuleInit {
     if (!['pending', 'past_due'].includes(tenant.planStatus)) return { status: 'expired' };
     if (!tenant.lastPixQrCode || !tenant.lastPixCode) return { status: 'expired' };
 
-    const valorNum = Number(tenant.planValue ?? '390.00');
+    // Valor exato usado na geração deste PIX (não recalcula a partir de plan_value: checkout usa
+    // outra fonte, e plan_value pode ter mudado/estar nulo entre a geração e a visualização).
+    // Fallback pro cálculo antigo só cobre links gerados antes deste campo existir.
+    const valorNum = tenant.lastPixValue != null ? Number(tenant.lastPixValue) : Number(tenant.planValue ?? '390.00');
     return {
       status: 'pending',
       valor: valorNum.toFixed(2).replace('.', ','),

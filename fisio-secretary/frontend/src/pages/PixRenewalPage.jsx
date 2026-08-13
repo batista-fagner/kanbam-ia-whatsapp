@@ -76,7 +76,7 @@ export default function PixRenewalPage() {
           {!error && data?.status === 'pending' && (
             <>
               <div className="bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl p-4 mb-6 text-white text-center">
-                <p className="text-sm opacity-90">Renovação mensal{data.clientName ? ` — ${data.clientName}` : ''}</p>
+                <p className="text-sm opacity-90">Plano Convert Hair{data.clientName ? ` — ${data.clientName}` : ''}</p>
                 <p className="text-2xl font-bold">R$ {data.valor}</p>
               </div>
 
