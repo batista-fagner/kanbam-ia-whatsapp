@@ -131,3 +131,72 @@ describe('PaymentsService — polling sob demanda', () => {
     await expect(svc.onModuleInit()).resolves.toBeUndefined();
   });
 });
+
+// A Efí nunca marca uma cobrança como expirada sozinha (fica "ATIVA" pra sempre do lado dela) —
+// a expiração de 6h precisa ser decidida localmente, com base em lastPixSentAt/createdAt.
+describe('PaymentsService — expiração local de 6h (Efí não expira sozinha)', () => {
+  let svc: any;
+  let configRepo: any;
+  let implantacaoRepo: any;
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
+
+  const makeSvc = () => {
+    configRepo = { find: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), save: jest.fn(), findOne: jest.fn() };
+    implantacaoRepo = { find: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), update: jest.fn() };
+    const config = { get: (k: string) => (k === 'EFI_CLIENT_ID' ? 'fake-id' : undefined) };
+    const s = new PaymentsService(configRepo, implantacaoRepo, {} as any, {} as any, config as any, {} as any, {} as any);
+    // Simula a Efí: cobrança sempre "ATIVA", nunca devolve EXPIRADA sozinha (comportamento real).
+    (s as any)._efiGetCobStatus = jest.fn(async () => 'ATIVA');
+    s._wakePolling();
+    return s;
+  };
+
+  beforeEach(() => { svc = makeSvc(); });
+
+  it('PIX gerado há menos de 6h continua pending, mesmo com Efí sempre "ATIVA"', async () => {
+    const tenant = { id: 't1', lastPixTxid: 'txid-1', planStatus: 'pending', lastPixSentAt: hoursAgo(2) };
+    configRepo.find.mockResolvedValue([tenant]);
+
+    await svc.pollPendingPix();
+
+    expect(configRepo.save).not.toHaveBeenCalled();
+    expect(tenant.planStatus).toBe('pending');
+  });
+
+  it('PIX gerado há mais de 6h expira sozinho, mesmo a Efí dizendo "ATIVA"', async () => {
+    const tenant = { id: 't2', lastPixTxid: 'txid-2', planStatus: 'pending', lastPixSentAt: hoursAgo(7) };
+    configRepo.find.mockResolvedValue([tenant]);
+
+    await svc.pollPendingPix();
+
+    expect(configRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 't2', planStatus: 'expired' }));
+  });
+
+  it('sem lastPixSentAt (nunca setado), não expira por engano', async () => {
+    const tenant = { id: 't3', lastPixTxid: 'txid-3', planStatus: 'pending', lastPixSentAt: null };
+    configRepo.find.mockResolvedValue([tenant]);
+
+    await svc.pollPendingPix();
+
+    expect(configRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('implantação (usa createdAt) expira depois de 6h', async () => {
+    const payment = { id: 'p1', status: 'pending', createdAt: hoursAgo(7) };
+    implantacaoRepo.find.mockResolvedValue([payment]);
+
+    await svc.pollPendingPix();
+
+    expect(implantacaoRepo.update).toHaveBeenCalledWith('p1', { status: 'expired' });
+  });
+
+  it('implantação recente (< 6h) não expira', async () => {
+    const payment = { id: 'p2', status: 'pending', createdAt: hoursAgo(1) };
+    implantacaoRepo.find.mockResolvedValue([payment]);
+
+    await svc.pollPendingPix();
+
+    expect(implantacaoRepo.update).not.toHaveBeenCalled();
+  });
+});

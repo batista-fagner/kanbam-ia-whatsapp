@@ -120,8 +120,9 @@ export class WhatsappConfig {
   @Column({ name: 'plan_status', type: 'varchar', default: 'active' })
   planStatus: string;
 
-  // Data do último PIX enviado — evita reenvio no mesmo dia
-  @Column({ name: 'last_pix_sent_at', type: 'date', nullable: true })
+  // Timestamp do último PIX enviado — evita reenvio no mesmo dia (billing-reminder) e é a base
+  // pra expiração local de 6h (pollPendingPix, já que a Efí não expira status sozinha).
+  @Column({ name: 'last_pix_sent_at', type: 'timestamp', nullable: true })
   lastPixSentAt: Date | null;
 
   // txid da cobrança PIX do ciclo de renovação atual. A Efí não permite reusar um txid já criado

@@ -42,6 +42,11 @@ export class PaymentsService implements OnModuleInit {
   // pending criado fora dos fluxos que chamam _wakePolling().
   private static readonly DEEP_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
+  // Prazo pra pagar um PIX gerado (checkout, implantação ou renovação). Passou disso →
+  // expira localmente em pollPendingPix, independente do que a Efí retornar.
+  private static readonly PIX_EXPIRATION_SECONDS = 6 * 60 * 60; // 6h
+  private static readonly PIX_EXPIRATION_MS = PaymentsService.PIX_EXPIRATION_SECONDS * 1000;
+
   constructor(
     @InjectRepository(WhatsappConfig)
     private readonly configRepo: Repository<WhatsappConfig>,
@@ -310,10 +315,13 @@ export class PaymentsService implements OnModuleInit {
     const agent = this._efiAgent();
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
+    // 6h: depois disso o banco do pagador recusa o pagamento. A Efí NÃO expira o status
+    // sozinha (cobrança fica "ATIVA" pra sempre do lado dela) — pollPendingPix expira
+    // localmente usando esse mesmo prazo, com base em lastPixSentAt/createdAt.
     const cobR = await firstValueFrom(
       this.http.put(
         `${this._efiBaseUrl}/v2/cob/${txid}`,
-        { calendario: { expiracao: 86400 }, valor: { original: amount }, chave: pixKey, solicitacaoPagador: descricao },
+        { calendario: { expiracao: PaymentsService.PIX_EXPIRATION_SECONDS }, valor: { original: amount }, chave: pixKey, solicitacaoPagador: descricao },
         { headers, httpsAgent: agent },
       ),
     );
@@ -404,6 +412,7 @@ export class PaymentsService implements OnModuleInit {
       // nulo/desatualizado nesse momento) — precisa ser o valor exato usado na Efí.
       await this.configRepo.update(tenantId, {
         lastPixTxid: txid, lastPixQrCode: pix.qrCode, lastPixCode: pix.pixCode, lastPixValue: valorNum.toFixed(2),
+        lastPixSentAt: new Date(),
       });
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
@@ -504,6 +513,11 @@ export class PaymentsService implements OnModuleInit {
     this.logger.log(`[EFI] Implantação paga → payment ${payment.id} CONFIRMADO`);
   }
 
+  private _isPixExpiredLocally(sentAt: Date | null | undefined): boolean {
+    if (!sentAt) return false;
+    return Date.now() - new Date(sentAt).getTime() > PaymentsService.PIX_EXPIRATION_MS;
+  }
+
   // ───────────────────────── Polling de pagamentos PIX (substitui o webhook) ─────────────────────────
 
   // A cada minuto, consulta a Efí Bank pelo status das cobranças pendentes.
@@ -538,10 +552,12 @@ export class PaymentsService implements OnModuleInit {
       }
       if (status === 'CONCLUIDA') {
         await this._activatePaidTenant(tenant);
-      } else if (status === 'EXPIRADA') {
+      } else if (status === 'EXPIRADA' || this._isPixExpiredLocally(tenant.lastPixSentAt)) {
+        // A Efí não marca a cobrança como expirada sozinha (fica "ATIVA" pra sempre do lado
+        // dela) — a expiração de 6h é decidida aqui, independente do que ela retornar.
         tenant.planStatus = 'expired';
         await this.configRepo.save(tenant);
-        this.logger.log(`[EFI] PIX expirado → tenant ${tenant.id} marcado como expired`);
+        this.logger.log(`[EFI] PIX expirado (6h) → tenant ${tenant.id} marcado como expired`);
       }
     }
 
@@ -558,9 +574,9 @@ export class PaymentsService implements OnModuleInit {
       }
       if (status === 'CONCLUIDA') {
         await this._activatePaidImplantacao(payment);
-      } else if (status === 'EXPIRADA') {
+      } else if (status === 'EXPIRADA' || this._isPixExpiredLocally(payment.createdAt)) {
         await this.implantacaoRepo.update(payment.id, { status: 'expired' });
-        this.logger.log(`[EFI] PIX implantação expirado → payment ${payment.id}`);
+        this.logger.log(`[EFI] PIX implantação expirado (6h) → payment ${payment.id}`);
       }
     }
 
