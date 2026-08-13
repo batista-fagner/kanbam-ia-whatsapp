@@ -610,10 +610,16 @@ export class PaymentsService {
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro,
       // nem impedir a marcação de lastPixSentAt/lastPixTxid (o QR já foi gerado com sucesso na Efí).
       try {
-        // pix_mensal_copia_cola_v3: sem QR code, código Pix em texto monoespaçado (copiável por toque longo).
-        // Categoria UTILITY (sem botão COPY_CODE, que a Meta força pra MARKETING).
-        await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_copia_cola_v3', [
-          { type: 'body', parameters: [{ type: 'text', text: valor }, { type: 'text', text: pix.pixCode }] },
+        // pix_mensal_copia_cola_botao: sem QR code, botão nativo "Copiar código" (1 toque).
+        // Categoria MARKETING (obrigatória pra template com botão COPY_CODE) — em teste.
+        await this._sendMetaTemplate(tenant.billingPhone, 'pix_mensal_copia_cola_botao', [
+          { type: 'body', parameters: [{ type: 'text', text: valor }] },
+          {
+            type: 'button',
+            sub_type: 'copy_code',
+            index: '0',
+            parameters: [{ type: 'coupon_code', coupon_code: pix.pixCode }],
+          },
         ]);
         await this._logBillingEvent(tenant.id, 'whatsapp', 'sent', valorNum, txid);
       } catch (waErr) {
