@@ -1,0 +1,133 @@
+import { PaymentsService } from './payments.service';
+
+// Testa só a máquina de estados do polling sob demanda (sem banco, sem Efí).
+describe('PaymentsService — polling sob demanda', () => {
+  let svc: any;
+  let configRepo: any;
+  let implantacaoRepo: any;
+  let efiCalls: string[];
+
+  const makeSvc = () => {
+    configRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      save: jest.fn(),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+    implantacaoRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      update: jest.fn(),
+    };
+    efiCalls = [];
+    const config = { get: (k: string) => (k === 'EFI_CLIENT_ID' ? 'fake-id' : undefined) };
+    const s = new PaymentsService(
+      configRepo, implantacaoRepo, {} as any, {} as any,
+      config as any, {} as any, {} as any,
+    );
+    (s as any)._efiGetCobStatus = jest.fn(async (txid: string) => { efiCalls.push(txid); return 'ATIVA'; });
+    return s;
+  };
+
+  beforeEach(() => { svc = makeSvc(); });
+
+  it('dorme por padrão: tick não toca no banco', async () => {
+    await svc.pollPendingPix();
+    // primeiro tick faz o deep check inicial (lastDeepCheckAt = 0)
+    expect(configRepo.find).toHaveBeenCalledTimes(1);
+
+    configRepo.find.mockClear();
+    implantacaoRepo.find.mockClear();
+    // ticks seguintes, ainda dormindo, não devem consultar nada
+    for (let i = 0; i < 10; i++) await svc.pollPendingPix();
+    expect(configRepo.find).not.toHaveBeenCalled();
+    expect(implantacaoRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('acorda ao gerar PIX e volta a consultar o banco', async () => {
+    await svc.pollPendingPix();      // consome o deep check inicial
+    configRepo.find.mockClear();
+
+    await svc.pollPendingPix();
+    expect(configRepo.find).not.toHaveBeenCalled(); // dormindo
+
+    svc._wakePolling();              // simula geração de PIX
+    await svc.pollPendingPix();
+    expect(configRepo.find).toHaveBeenCalledTimes(1); // acordou
+  });
+
+  it('com cobrança pendente, segue polling todo tick e consulta a Efí', async () => {
+    configRepo.find.mockResolvedValue([
+      { id: 'tenant-1', lastPixTxid: 'txid-abc', planStatus: 'pending' },
+    ]);
+    svc._wakePolling();
+
+    await svc.pollPendingPix();
+    await svc.pollPendingPix();
+    await svc.pollPendingPix();
+
+    expect(configRepo.find).toHaveBeenCalledTimes(3);
+    expect(efiCalls).toEqual(['txid-abc', 'txid-abc', 'txid-abc']);
+    expect(svc._pollingActive).toBe(true);
+  });
+
+  it('quando o pendente some, volta a dormir sozinho', async () => {
+    configRepo.find.mockResolvedValue([
+      { id: 'tenant-1', lastPixTxid: 'txid-abc', planStatus: 'pending' },
+    ]);
+    svc._wakePolling();
+    await svc.pollPendingPix();
+    expect(svc._pollingActive).toBe(true);
+
+    configRepo.find.mockResolvedValue([]); // pagou / expirou
+    await svc.pollPendingPix();
+    expect(svc._pollingActive).toBe(false);
+
+    configRepo.find.mockClear();
+    await svc.pollPendingPix();
+    expect(configRepo.find).not.toHaveBeenCalled(); // dormindo de novo
+  });
+
+  it('deep check: revalida no banco a cada 30min mesmo dormindo', async () => {
+    await svc.pollPendingPix();
+    configRepo.find.mockClear();
+
+    await svc.pollPendingPix();
+    expect(configRepo.find).not.toHaveBeenCalled();
+
+    // avança 30min
+    svc._lastDeepCheckAt = Date.now() - 31 * 60 * 1000;
+    await svc.pollPendingPix();
+    expect(configRepo.find).toHaveBeenCalledTimes(1);
+  });
+
+  it('deep check reativa polling se outra instância criou a cobrança', async () => {
+    await svc.pollPendingPix();
+    expect(svc._pollingActive).toBe(false);
+
+    configRepo.find.mockResolvedValue([
+      { id: 'tenant-x', lastPixTxid: 'txid-outro', planStatus: 'pending' },
+    ]);
+    svc._lastDeepCheckAt = Date.now() - 31 * 60 * 1000;
+    await svc.pollPendingPix();
+    expect(svc._pollingActive).toBe(true);
+    expect(efiCalls).toEqual(['txid-outro']);
+  });
+
+  it('boot: reativa polling se já havia pendência antes do restart', async () => {
+    configRepo.count.mockResolvedValue(1);
+    await svc.onModuleInit();
+    expect(svc._pollingActive).toBe(true);
+  });
+
+  it('boot: segue dormindo se não há pendência', async () => {
+    await svc.onModuleInit();
+    expect(svc._pollingActive).toBe(false);
+  });
+
+  it('boot: banco fora do ar não derruba a aplicação', async () => {
+    configRepo.count.mockRejectedValue(new Error('connection refused'));
+    await expect(svc.onModuleInit()).resolves.toBeUndefined();
+  });
+});

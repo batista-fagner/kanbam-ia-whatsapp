@@ -143,6 +143,7 @@ POST /webhooks/uazapi/:tenantId
 | Envio em massa com filtro por etiqueta | `BulkMessagePage.jsx` + `bulk-message.service.ts` |
 | Checkout PIX (Efí Bank) ✅ prod | `payments/` — `POST /payments/checkout` |
 | Checkout Cartão (Stripe) ⏳ aguarda live creds | `payments/` — `createCardCheckout()` |
+| Confirmação de PIX por polling sob demanda (sem webhook mTLS) | `PaymentsService.pollPendingPix()` — cron 1min mas só varre o banco com `_pollingActive=true`; acorda via `_wakePolling()` em checkout/implantação/renovação, dorme sozinho quando não há pendência, deep check de segurança a cada 30min |
 | Lembrete vencimento (cron 9h, 2 dias antes; PIX manda WhatsApp + e-mail com valor por cliente) | `BillingReminderService` — `BILLING_SENDER_TOKEN` |
 | Painel admin (criar/suspender/reset senha) | `admin.controller.ts` + `AdminPage.jsx` |
 | Mídias (upload Supabase, IA usa por nome) | `media/` + `MediaPage.jsx` |
@@ -212,3 +213,4 @@ REDIS_PASSWORD=...
 6. **Automação comentários Instagram** — copiar `backend/src/instagram-automation/` do funnel-platform; tokens por cliente no banco.
 7. **UI trocar senha** para o cliente (endpoint `/auth/change-password` já existe; falta form na SettingsPage).
 8. **Gemini Context Caching explícito** — cachear system prompt da Lindona via API (implementar quando billing ultrapassar free tier).
+9. **Webhook Efí Bank com mTLS** — substituiria o polling por confirmação instantânea de PIX. Certificado é burocrático de gerar, deixado pra quando escalar (múltiplas instâncias/alto volume). Código do handler já existe (`handleEfiWebhook`, `POST /payments/webhooks/efi`), só falta o certificado.

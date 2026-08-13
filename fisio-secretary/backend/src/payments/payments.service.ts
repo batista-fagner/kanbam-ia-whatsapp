@@ -1,6 +1,6 @@
 import * as https from 'https';
 import { randomUUID } from 'crypto';
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -26,11 +26,21 @@ export interface CheckoutResult {
 }
 
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleInit {
   private readonly logger = new Logger(PaymentsService.name);
   private readonly stripe: any;
   private readonly resend: Resend | null;
   private _efiTokenCache: { token: string; expiresAt: number } | null = null;
+
+  // Polling sob demanda: o cron roda a cada minuto, mas só toca no banco quando há
+  // cobrança pendente de verdade. Acorda em _wakePolling() (toda geração de PIX) e
+  // volta a dormir sozinho quando não sobra nada pendente.
+  private _pollingActive = false;
+  private _lastDeepCheckAt = 0;
+  // Rede de segurança: mesmo dormindo, revalida no banco de tempos em tempos. Cobre
+  // o caso de outra instância ter gerado o PIX (o flag é por processo) e o de um
+  // pending criado fora dos fluxos que chamam _wakePolling().
+  private static readonly DEEP_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
   constructor(
     @InjectRepository(WhatsappConfig)
@@ -49,6 +59,37 @@ export class PaymentsService {
     this.stripe = stripeKey ? new Stripe(stripeKey) : null;
     const resendKey = this.config.get<string>('RESEND_API_KEY');
     this.resend = resendKey ? new Resend(resendKey) : null;
+  }
+
+  // No boot (deploy/restart), retoma o polling se já houver cobrança pendente —
+  // senão um PIX gerado antes do restart nunca seria confirmado.
+  async onModuleInit(): Promise<void> {
+    if (!this.config.get<string>('EFI_CLIENT_ID')) return;
+    try {
+      if (await this._hasPendingCharges()) {
+        this._pollingActive = true;
+        this.logger.log('[EFI] Cobranças pendentes no boot → polling ativado');
+      }
+    } catch (err) {
+      // Banco indisponível no boot não pode derrubar a aplicação: o deep check
+      // (a cada 30min) reativa o polling na primeira varredura bem-sucedida.
+      this.logger.error(`[EFI] Falha ao checar pendências no boot: ${err.message}`);
+    }
+  }
+
+  private async _hasPendingCharges(): Promise<boolean> {
+    const pendings = await this.configRepo.count({
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+    });
+    if (pendings > 0) return true;
+    return (await this.implantacaoRepo.count({ where: { status: 'pending' } })) > 0;
+  }
+
+  // Chamado sempre que um PIX é gerado (checkout, implantação ou renovação mensal).
+  private _wakePolling(): void {
+    if (this._pollingActive) return;
+    this._pollingActive = true;
+    this.logger.log('[EFI] Polling de PIX ativado (nova cobrança pendente)');
   }
 
   // ───────────────────────── Configurações do checkout (admin) ─────────────────────────
@@ -354,6 +395,7 @@ export class PaymentsService {
     const valor = valorNum.toFixed(2).replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
+      this._wakePolling();
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
       await this._logBillingEvent(tenantId, 'pix', 'sent', valorNum, txid, undefined, name);
 
@@ -404,6 +446,7 @@ export class PaymentsService {
     const valorTexto = valorNum.replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, valorNum);
+      this._wakePolling();
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
       await this._logBillingEvent(null, 'pix', 'sent', valorTextoNum, txid, undefined, name);
 
@@ -457,9 +500,16 @@ export class PaymentsService {
 
   // A cada minuto, consulta a Efí Bank pelo status das cobranças pendentes.
   // Quando CONCLUIDA → ativa a conta e envia credenciais. Sem webhook = sem mTLS.
+  // Só varre o banco quando há cobrança pendente (_pollingActive); fora disso o tick
+  // é no-op, exceto pelo deep check a cada 30min (rede de segurança).
   @Cron(CronExpression.EVERY_MINUTE)
   async pollPendingPix(): Promise<void> {
     if (!this.config.get<string>('EFI_CLIENT_ID')) return; // Efí não configurada
+
+    if (!this._pollingActive) {
+      if (Date.now() - this._lastDeepCheckAt < PaymentsService.DEEP_CHECK_INTERVAL_MS) return;
+      this._lastDeepCheckAt = Date.now();
+    }
 
     // Polling plano mensal (tenants pendentes)
     const pendings = await this.configRepo.find({
@@ -504,6 +554,15 @@ export class PaymentsService {
         await this.implantacaoRepo.update(payment.id, { status: 'expired' });
         this.logger.log(`[EFI] PIX implantação expirado → payment ${payment.id}`);
       }
+    }
+
+    // Nada pendente nesta varredura → dorme até a próxima cobrança (ou o deep check).
+    if (pendings.length === 0 && implantacoes.length === 0) {
+      if (this._pollingActive) this.logger.log('[EFI] Sem cobranças pendentes → polling em espera');
+      this._pollingActive = false;
+      this._lastDeepCheckAt = Date.now();
+    } else {
+      this._pollingActive = true;
     }
   }
 
@@ -604,6 +663,7 @@ export class PaymentsService {
       // então nunca reaproveita tenant.id (usado só na 1ª cobrança, no checkout).
       const txid = randomUUID().replace(/-/g, '');
       const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valorNum.toFixed(2));
+      this._wakePolling();
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
       await this._logBillingEvent(tenant.id, 'pix', 'sent', valorNum, txid);
 
