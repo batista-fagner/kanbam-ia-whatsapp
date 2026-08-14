@@ -668,12 +668,9 @@ export class PaymentsService implements OnModuleInit {
     if (!tenant) throw new BadRequestException('Cliente não encontrado');
     if (tenant.paymentMethod !== 'pix') throw new BadRequestException('Cliente não usa PIX');
     if (!tenant.billingPhone) throw new BadRequestException('Cliente sem telefone de cobrança cadastrado');
+    // O reset do planStatus pra 'pending' (e do contador de 6h) acontece dentro de
+    // generateAndSendMonthlyPix, junto da persistência do txid/QR — só em caso de sucesso.
     await this.generateAndSendMonthlyPix(tenant);
-    // Marca como 'pending' pra entrar no polling (pollPendingPix) e confirmar sozinho quando pagar.
-    if (tenant.planStatus === 'active') {
-      tenant.planStatus = 'pending';
-      await this.configRepo.save(tenant);
-    }
   }
 
   async generateAndSendMonthlyPix(tenant: WhatsappConfig): Promise<void> {
@@ -698,6 +695,10 @@ export class PaymentsService implements OnModuleInit {
       tenant.lastPixQrCode = pix.qrCode;
       tenant.lastPixCode = pix.pixCode;
       tenant.lastPixValue = valorNum.toFixed(2);
+      // O status acompanha o PIX recém-gerado, sempre: a página /pix/:txid decide o que
+      // mostrar só pelo planStatus, então deixar 'expired' aqui esconde um QR novo e válido
+      // (era o que acontecia no reenvio do dia D-1, depois do polling expirar o PIX de D-2).
+      if (!['pending', 'past_due'].includes(tenant.planStatus)) tenant.planStatus = 'pending';
       await this.configRepo.save(tenant);
 
       // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.

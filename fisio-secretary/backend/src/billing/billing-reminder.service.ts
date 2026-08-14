@@ -73,14 +73,10 @@ export class BillingReminderService {
     const recentlyBilled = tenant.lastPixSentAt && this.daysBetween(new Date(tenant.lastPixSentAt), now) <= 6;
     const alreadyPaidThisCycle = tenant.planStatus === 'active' && recentlyBilled;
 
-    if (!alreadyPaidThisCycle) {
-      if (!this.isSameDay(tenant.lastPixSentAt, now)) {
-        await this.payments.generateAndSendMonthlyPix(tenant); // grava lastPixSentAt
-      }
-      if (tenant.planStatus === 'active') {
-        tenant.planStatus = 'pending';
-        await this.configRepo.save(tenant);
-      }
+    // Grava lastPixSentAt (reinicia as 6h) e devolve o planStatus pra 'pending' — inclusive
+    // quando o PIX do dia anterior já tinha sido expirado pelo polling (6h após o envio).
+    if (!alreadyPaidThisCycle && !this.isSameDay(tenant.lastPixSentAt, now)) {
+      await this.payments.generateAndSendMonthlyPix(tenant);
     }
 
     // Dia do vencimento sem pagamento confirmado → alerta no painel (sem bloquear)
