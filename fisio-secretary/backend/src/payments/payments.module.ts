@@ -6,18 +6,24 @@ import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { ImplantacaoPayment } from '../common/entities/implantacao-payment.entity';
 import { CheckoutSettings } from '../common/entities/checkout-settings.entity';
 import { BillingEvent } from '../common/entities/billing-event.entity';
+import { BullModule } from '@nestjs/bullmq';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
+import { PixQueueService } from './pix-queue.service';
+import { PixPollProcessor } from './pix-poll.processor';
+import { PIX_QUEUE_NAME } from '../queue/queue.constants';
 
 @Module({
   imports: [
     ConfigModule,
     HttpModule,
+    // A conexão Redis vem do QueueModule (@Global); aqui só declaramos a fila.
+    BullModule.registerQueue({ name: PIX_QUEUE_NAME }),
     TypeOrmModule.forFeature([WhatsappConfig, ImplantacaoPayment, CheckoutSettings, BillingEvent]),
     AuthModule, // exporta UsersService + JwtModule (guards)
   ],
-  providers: [PaymentsService],
+  providers: [PaymentsService, PixQueueService, PixPollProcessor],
   controllers: [PaymentsController],
   exports: [PaymentsService],
 })

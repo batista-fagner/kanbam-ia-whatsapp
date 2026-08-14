@@ -13,6 +13,8 @@ import { LeadsService } from '../leads/leads.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { FollowupQueueService } from './followup-queue.service';
+import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
 const ALLOWED_DELAYS = [1, 4, 24];
@@ -73,7 +75,12 @@ export class FollowupService {
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly appointmentsService: AppointmentsService,
+    private readonly followupQueue: FollowupQueueService,
   ) {}
+
+  private get queueMode(): boolean {
+    return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
+  }
 
   // ───────────────────────── API ─────────────────────────
 
@@ -116,6 +123,7 @@ export class FollowupService {
       status: 'pending',
     });
     const saved = await this.followupRepo.save(followup);
+    await this.followupQueue.enqueue(saved.id, saved.scheduledAt);
     this.logger.log(`[FOLLOWUP] Agendado p/ ${lead.phone} em ${delayHours}h (${scheduledAt.toISOString()})`);
     return saved;
   }
@@ -136,7 +144,43 @@ export class FollowupService {
       followup.status = 'canceled';
       await this.followupRepo.save(followup);
     }
+    // Sem guard de engine: remover jobId inexistente é no-op. O processor também confere
+    // o status antes de enviar, então cancelar é seguro mesmo com o job já em execução.
+    await this.followupQueue.cancel(id);
     return { ok: true };
+  }
+
+  // Reivindica e envia UM follow-up — mesma sequência do processDue(), extraída para o
+  // processor da fila usar. O claim atômico continua sendo a garantia contra envio duplo:
+  // o BullMQ pode reentregar um job (worker morto, redeploy), e só quem flipa
+  // pending → sending no Postgres é que envia de fato.
+  async claimAndSend(f: Followup): Promise<'sent' | 'already-claimed'> {
+    const claim = await this.followupRepo
+      .createQueryBuilder()
+      .update(Followup)
+      .set({ status: 'sending' as any })
+      .where('id = :id AND status = :pending', { id: f.id, pending: 'pending' })
+      .execute();
+
+    if (claim.affected !== 1) return 'already-claimed';
+
+    try {
+      await this.send(f);
+      f.status = 'sent';
+      f.sentAt = new Date();
+      f.error = null;
+      await this.followupRepo.save(f);
+      this.logger.log(`[FOLLOWUP] Enviado → ${f.phone} (lead ${f.leadId})`);
+      return 'sent';
+    } catch (err) {
+      // Devolve pra 'pending' e propaga: quem decide se ainda há tentativa é o BullMQ
+      // (attempts/backoff). Marcar 'failed' aqui impediria o retry de reivindicar de novo.
+      f.status = 'pending';
+      f.error = err?.message ?? 'erro desconhecido';
+      await this.followupRepo.save(f);
+      this.logger.error(`[FOLLOWUP] Falha ao enviar p/ ${f.phone}: ${f.error}`);
+      throw err;
+    }
   }
 
   // ───────────────────────── Cron ─────────────────────────
@@ -147,6 +191,7 @@ export class FollowupService {
   // múltiplas instâncias sem depender de Redis.
   @Cron(CronExpression.EVERY_MINUTE)
   async processDue(): Promise<void> {
+    if (this.queueMode) return; // quem despacha agora é o FollowupDispatchProcessor
     // PROTEÇÃO 1 — Janela de horário: cada tenant pode ter uma janela diferente
     // (ver TENANT_FOLLOWUP_WINDOW_OVERRIDES), então a checagem é POR FOLLOW-UP
     // (campo tenantId), não um return global no topo. Os vencidos ficam pending
@@ -264,7 +309,7 @@ export class FollowupService {
   // tenantId opcional: se o tenant tiver uma janela customizada (ver
   // TENANT_FOLLOWUP_WINDOW_OVERRIDES), usa ela — com janela própria pra sáb/dom —
   // em vez do padrão 9h-20h (todo santo dia) do resto do sistema.
-  private isWithinBusinessHours(tenantId?: string): boolean {
+  isWithinBusinessHours(tenantId?: string): boolean {
     const h = this.currentHourBRT();
     const override = tenantId ? TENANT_FOLLOWUP_WINDOW_OVERRIDES[tenantId] : undefined;
     if (!override) {
@@ -301,7 +346,7 @@ export class FollowupService {
   }
 
   // Quantos follow-ups já foram ENVIADOS hoje (dia BRT) por este tenant.
-  private async countSentTodayByTenant(tenantId: string): Promise<number> {
+  async countSentTodayByTenant(tenantId: string): Promise<number> {
     const rows = await this.followupRepo.query(
       `SELECT COUNT(*)::int AS cnt
          FROM followups
@@ -315,7 +360,7 @@ export class FollowupService {
     return rows[0]?.cnt ?? 0;
   }
 
-  private async followupDailyLimit(tenantId: string): Promise<number> {
+  async followupDailyLimit(tenantId: string): Promise<number> {
     const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
     const limit = cfg?.followupLimitPerDay;
     return typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FOLLOWUP_DAILY_LIMIT;
@@ -323,7 +368,7 @@ export class FollowupService {
 
   // Momento do último follow-up ENVIADO por este tenant (null se nunca enviou).
   // Base do espaçamento mínimo entre envios (PROTEÇÃO 4, anti-rajada).
-  private async lastSentAtByTenant(tenantId: string): Promise<Date | null> {
+  async lastSentAtByTenant(tenantId: string): Promise<Date | null> {
     const rows = await this.followupRepo.query(
       `SELECT MAX(sent_at) AS last FROM followups WHERE tenant_id = $1 AND status = 'sent'`,
       [tenantId],
@@ -367,7 +412,7 @@ export class FollowupService {
             if (!message) {
               message = this.interpolateName(rule.message, lead.name);
             }
-            await this.followupRepo.save(this.followupRepo.create({
+            const savedAuto = await this.followupRepo.save(this.followupRepo.create({
               tenantId: cfg.id,
               leadId: lead.id,
               phone: lead.phone,
@@ -375,6 +420,9 @@ export class FollowupService {
               scheduledAt: new Date(),
               status: 'pending',
             }));
+            // Jitter espalha o lote criado neste tick (no modo fila os jobs correm em
+            // paralelo; no legado o sleep entre envios do processDue fazia esse papel).
+            await this.followupQueue.enqueue(savedAuto.id, savedAuto.scheduledAt, Math.floor(Math.random() * 8000));
             this.logger.log(`[AUTO-FOLLOWUP] Agendado [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
           }
         } catch (err) {
@@ -469,7 +517,7 @@ export class FollowupService {
               continue;
             }
 
-            await this.followupRepo.save(this.followupRepo.create({
+            const savedCadence = await this.followupRepo.save(this.followupRepo.create({
               tenantId: cfg.id,
               leadId: lead.id,
               phone: lead.phone,
@@ -477,6 +525,7 @@ export class FollowupService {
               scheduledAt: new Date(),
               status: 'pending',
             }));
+            await this.followupQueue.enqueue(savedCadence.id, savedCadence.scheduledAt, Math.floor(Math.random() * 8000));
             this.logger.log(`[CADENCE] Toque ${lead.nurtureStep + 1}/${steps.length} [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
           }
         } catch (err) {
@@ -546,7 +595,7 @@ export class FollowupService {
 
   // ───────────────────────── Helpers ─────────────────────────
 
-  private async send(f: Followup): Promise<void> {
+  async send(f: Followup): Promise<void> {
     const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
     const token = await this.resolveTenantToken(f.tenantId);
     if (!token) throw new Error('Token da instância não encontrado');

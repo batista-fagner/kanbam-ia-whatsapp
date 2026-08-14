@@ -25,6 +25,8 @@ describe('PaymentsService — polling sob demanda', () => {
     const s = new PaymentsService(
       configRepo, implantacaoRepo, {} as any, {} as any,
       config as any, {} as any, {} as any,
+      // PixQueueService: QUEUE_ENGINE ausente aqui, então o caminho legado (cron) é o testado.
+      { startCheckChain: jest.fn() } as any,
     );
     (s as any)._efiGetCobStatus = jest.fn(async (txid: string) => { efiCalls.push(txid); return 'ATIVA'; });
     return s;
@@ -145,7 +147,7 @@ describe('PaymentsService — expiração local de 6h (Efí não expira sozinha)
     configRepo = { find: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), save: jest.fn(), findOne: jest.fn() };
     implantacaoRepo = { find: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), update: jest.fn() };
     const config = { get: (k: string) => (k === 'EFI_CLIENT_ID' ? 'fake-id' : undefined) };
-    const s = new PaymentsService(configRepo, implantacaoRepo, {} as any, {} as any, config as any, {} as any, {} as any);
+    const s = new PaymentsService(configRepo, implantacaoRepo, {} as any, {} as any, config as any, {} as any, {} as any, { startCheckChain: jest.fn() } as any);
     // Simula a Efí: cobrança sempre "ATIVA", nunca devolve EXPIRADA sozinha (comportamento real).
     (s as any)._efiGetCobStatus = jest.fn(async () => 'ATIVA');
     (s as any)._wakePolling();

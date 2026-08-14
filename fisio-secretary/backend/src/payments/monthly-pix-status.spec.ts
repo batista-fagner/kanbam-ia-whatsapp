@@ -24,6 +24,7 @@ describe('PaymentsService — status acompanha o PIX mensal recém-gerado', () =
     const s = new PaymentsService(
       configRepo, {} as any, {} as any, {} as any,
       config as any, {} as any, usersService as any,
+      { startCheckChain: jest.fn() } as any,
     );
     // Isola tudo que sai da máquina: Efí, WhatsApp, e-mail e auditoria.
     (s as any)._efiCreateCob = jest.fn().mockResolvedValue({ qrCode: 'data:image/png;base64,AAA', pixCode: '000201...' });

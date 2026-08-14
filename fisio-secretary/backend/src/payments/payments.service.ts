@@ -18,6 +18,8 @@ import { ImplantacaoPayment } from '../common/entities/implantacao-payment.entit
 import { CheckoutSettings } from '../common/entities/checkout-settings.entity';
 import { BillingEvent } from '../common/entities/billing-event.entity';
 import { UsersService } from '../auth/users.service';
+import { PixQueueService } from './pix-queue.service';
+import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 
 const CURRENCY = 'brl';
 
@@ -59,6 +61,8 @@ export class PaymentsService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly usersService: UsersService,
+    // Último parâmetro de propósito: polling.spec.ts instancia o serviço por posição.
+    private readonly pixQueue: PixQueueService,
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     this.stripe = stripeKey ? new Stripe(stripeKey) : null;
@@ -66,11 +70,36 @@ export class PaymentsService implements OnModuleInit {
     this.resend = resendKey ? new Resend(resendKey) : null;
   }
 
+  private get _queueMode(): boolean {
+    return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
+  }
+
+  // Chamado sempre que um PIX é gerado. No modo fila abre a cadeia de checagens dessa
+  // cobrança; no legado só acorda o cron. Os dois caminhos coexistem para o rollback
+  // ser uma troca de env var, sem redeploy.
+  private async _onPixCreated(kind: 'tenant' | 'implantacao', id: string, txid: string): Promise<void> {
+    if (this._queueMode) {
+      await this.pixQueue.startCheckChain(kind, id, txid);
+      return;
+    }
+    this._wakePolling();
+  }
+
   // No boot (deploy/restart), retoma o polling se já houver cobrança pendente —
   // senão um PIX gerado antes do restart nunca seria confirmado.
   async onModuleInit(): Promise<void> {
     if (!this.config.get<string>('EFI_CLIENT_ID')) return;
     try {
+      // No modo fila, reabre a cadeia de cada pendência (o equivalente ao _pollingActive
+      // do legado, mas por cobrança). jobId estável evita duplicar cadeia já existente.
+      if (this._queueMode) {
+        const { tenants, implantacoes } = await this.listPendingPixTargets();
+        for (const t of tenants) await this.pixQueue.startCheckChain('tenant', t.id, t.txid);
+        for (const p of implantacoes) await this.pixQueue.startCheckChain('implantacao', p.id, p.txid);
+        const total = tenants.length + implantacoes.length;
+        if (total > 0) this.logger.log(`[EFI][queue] ${total} cobrança(s) pendente(s) reenfileirada(s) no boot`);
+        return;
+      }
       if (await this._hasPendingCharges()) {
         this._pollingActive = true;
         this.logger.log('[EFI] Cobranças pendentes no boot → polling ativado');
@@ -403,7 +432,7 @@ export class PaymentsService implements OnModuleInit {
     const valor = valorNum.toFixed(2).replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Plano Convert Hair - ${name}`, valor.replace(',', '.'));
-      this._wakePolling();
+      await this._onPixCreated('tenant', tenantId, txid);
       this.logger.log(`[EFI] QR de checkout gerado txid=${txid} (${email})`);
       await this._logBillingEvent(tenantId, 'pix', 'sent', valorNum, txid, undefined, name);
 
@@ -463,7 +492,7 @@ export class PaymentsService implements OnModuleInit {
     const valorTexto = valorNum.replace('.', ',');
     try {
       const pix = await this._efiCreateCob(txid, `Implantação Convert Hair - ${name}`, valorNum);
-      this._wakePolling();
+      await this._onPixCreated('implantacao', paymentId, txid);
       this.logger.log(`[EFI] QR implantação gerado txid=${txid}`);
       await this._logBillingEvent(null, 'pix', 'sent', valorTextoNum, txid, undefined, name);
 
@@ -526,6 +555,7 @@ export class PaymentsService implements OnModuleInit {
   // é no-op, exceto pelo deep check a cada 30min (rede de segurança).
   @Cron(CronExpression.EVERY_MINUTE)
   async pollPendingPix(): Promise<void> {
+    if (this._queueMode) return; // quem checa agora é o PixPollProcessor, cobrança por cobrança
     if (!this.config.get<string>('EFI_CLIENT_ID')) return; // Efí não configurada
 
     if (!this._pollingActive) {
@@ -588,6 +618,71 @@ export class PaymentsService implements OnModuleInit {
     } else {
       this._pollingActive = true;
     }
+  }
+
+  // ───────────────────────── Reconciliação por cobrança (usada pelas filas) ─────────────────────────
+  //
+  // Mesma decisão do pollPendingPix, só que para UMA cobrança em vez da tabela inteira:
+  // o worker recebe o id/txid e não precisa varrer nada. A lógica de negócio é a mesma
+  // (_efiGetCobStatus / _activatePaid* / _isPixExpiredLocally) — só a orquestração muda.
+  //
+  // Sempre relê o registro do banco: a expiração é medida contra o lastPixSentAt ATUAL,
+  // não contra a idade do job. Sem isso, uma cadeia iniciada num PIX antigo (ex: reenvio
+  // de D-2) expiraria um PIX novo e válido gerado depois (D-1) — o UPDATE de expiração
+  // não distingue qual cobrança o originou.
+
+  async checkAndReconcileTenantPix(tenantId: string, txid: string): Promise<'confirmed' | 'expired' | 'pending'> {
+    const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+    // Sumiu ou já saiu de pendente (pago por outra cadeia/webhook) → nada a fazer, encerra.
+    if (!tenant || !['pending', 'past_due'].includes(tenant.planStatus)) return 'confirmed';
+
+    const status = await this._efiGetCobStatus(txid); // erro sobe: quem chama decide reagendar
+    if (status === 'CONCLUIDA') {
+      await this._activatePaidTenant(tenant);
+      return 'confirmed';
+    }
+    if (status === 'EXPIRADA' || this._isPixExpiredLocally(tenant.lastPixSentAt)) {
+      tenant.planStatus = 'expired';
+      await this.configRepo.save(tenant);
+      this.logger.log(`[EFI][queue] PIX expirado (6h) → tenant ${tenant.id}`);
+      return 'expired';
+    }
+    return 'pending';
+  }
+
+  async checkAndReconcileImplantacaoPix(paymentId: string, txid: string): Promise<'confirmed' | 'expired' | 'pending'> {
+    const payment = await this.implantacaoRepo.findOne({ where: { id: paymentId } });
+    if (!payment || payment.status !== 'pending') return 'confirmed';
+
+    const status = await this._efiGetCobStatus(txid);
+    if (status === 'CONCLUIDA') {
+      await this._activatePaidImplantacao(payment);
+      return 'confirmed';
+    }
+    if (status === 'EXPIRADA' || this._isPixExpiredLocally(payment.createdAt)) {
+      await this.implantacaoRepo.update(payment.id, { status: 'expired' });
+      this.logger.log(`[EFI][queue] PIX implantação expirado (6h) → payment ${payment.id}`);
+      return 'expired';
+    }
+    return 'pending';
+  }
+
+  // Alvos pendentes para o job de reconciliação periódica — equivalente às duas varreduras
+  // do cron legado, mas rodando a cada 30min em vez de a cada minuto. Rede de segurança para
+  // cobranças criadas fora dos fluxos que enfileiram (outra instância, insert manual, restart).
+  async listPendingPixTargets(): Promise<{
+    tenants: { id: string; txid: string }[];
+    implantacoes: { id: string; txid: string }[];
+  }> {
+    const pendings = await this.configRepo.find({
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+    });
+    const implantacoes = await this.implantacaoRepo.find({ where: { status: 'pending' } });
+    return {
+      // Mesmo fallback do cron: sem lastPixTxid o cliente ainda está na 1ª cobrança (checkout).
+      tenants: pendings.map((t) => ({ id: t.id, txid: t.lastPixTxid ?? t.id.replace(/-/g, '') })),
+      implantacoes: implantacoes.map((p) => ({ id: p.id, txid: p.id.replace(/-/g, '') })),
+    };
   }
 
   // Ativa o tenant após pagamento confirmado.
@@ -684,7 +779,7 @@ export class PaymentsService implements OnModuleInit {
       // então nunca reaproveita tenant.id (usado só na 1ª cobrança, no checkout).
       const txid = randomUUID().replace(/-/g, '');
       const pix = await this._efiCreateCob(txid, `Renovação plano Convert Hair`, valorNum.toFixed(2));
-      this._wakePolling();
+      await this._onPixCreated('tenant', tenant.id, txid);
       this.logger.log(`[EFI] QR mensal gerado para tenant ${tenant.id} (txid=${txid})`);
       await this._logBillingEvent(tenant.id, 'pix', 'sent', valorNum, txid);
 

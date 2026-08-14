@@ -5,8 +5,12 @@ import { HttpModule } from '@nestjs/axios';
 import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { Agent } from '../common/entities/agent.entity';
+import { BullModule } from '@nestjs/bullmq';
 import { FollowupService } from './followup.service';
 import { FollowupController } from './followup.controller';
+import { FollowupQueueService } from './followup-queue.service';
+import { FollowupDispatchProcessor } from './followup-dispatch.processor';
+import { FOLLOWUP_QUEUE_NAME } from '../queue/queue.constants';
 import { LeadsModule } from '../leads/leads.module';
 import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
@@ -18,13 +22,15 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     // ScheduleModule.forRoot() já é registrado uma única vez no AppModule —
     // NÃO repetir aqui (duplicava a execução de todo @Cron() do sistema).
     HttpModule,
+    // Conexão Redis vem do QueueModule (@Global); aqui só a fila deste domínio.
+    BullModule.registerQueue({ name: FOLLOWUP_QUEUE_NAME }),
     TypeOrmModule.forFeature([Followup, WhatsappConfig, Agent]),
     LeadsModule,
     AiModule,
     AuthModule,
     AppointmentsModule,
   ],
-  providers: [FollowupService],
+  providers: [FollowupService, FollowupQueueService, FollowupDispatchProcessor],
   controllers: [FollowupController],
   exports: [FollowupService],
 })

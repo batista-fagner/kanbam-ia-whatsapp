@@ -66,6 +66,7 @@ import { AgentsModule } from './agents/agents.module';
 import { PromptModulesModule } from './prompt-modules/prompt-modules.module';
 import { FormsModule } from './forms/forms.module';
 import { PromptDraftsModule } from './prompt-drafts/prompt-drafts.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -76,6 +77,9 @@ import { PromptDraftsModule } from './prompt-drafts/prompt-drafts.module';
     // agendador 2x, duplicando TODO @Cron() do app (ex: cobrança e follow-up
     // disparando 2x por dia — bug real encontrado em 2026-08-03).
     ScheduleModule.forRoot(),
+    // Conexão Redis/BullMQ compartilhada (@Global) — mesma regra do ScheduleModule:
+    // registrada só aqui, os módulos de domínio apenas declaram suas filas.
+    QueueModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
