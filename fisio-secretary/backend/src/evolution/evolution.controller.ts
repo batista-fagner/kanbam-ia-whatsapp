@@ -478,7 +478,10 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, pendingImageUrl);
         if (result) {
           aiResponse = result.aiResponse;
-          await this.leadsService.update(lead.id, { activeModules: result.moduleNames } as any);
+          // Persiste só o sinal deste turno (freshNames), não a união carregada
+          // — o arraste pro turno seguinte é calculado em selectModules e dura
+          // 1 turno; guardar a união aqui faria o conjunto crescer sem parar.
+          await this.leadsService.update(lead.id, { activeModules: result.freshNames } as any);
           this.logger.log(`[DYNAMIC-MODULES] módulos=[${result.moduleNames.join(',') || '-'}] (${phone})`);
         } else {
           this.logger.warn(`[DYNAMIC-MODULES] Tenant ${tenantId} sem módulos cadastrados — usando fluxo single-prompt`);

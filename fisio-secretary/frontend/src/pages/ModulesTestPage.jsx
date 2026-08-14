@@ -336,7 +336,9 @@ export default function ModulesTestPage() {
         moduleNames: data.moduleNames,
         meta: { stage: data.stage, temperature: data.temperature, action: data.action, mediaName: data.mediaName, tags: data.tags, shouldIgnore: data.shouldIgnore, systemPromptChars: data.systemPromptChars },
       }])
-      setPreviousModuleNames(data.moduleNames ?? [])
+      // freshModuleNames = só o sinal deste turno; moduleNames é a união já
+      // carregada (com o arraste), e devolver a união acumularia módulos.
+      setPreviousModuleNames(data.freshModuleNames ?? data.moduleNames ?? [])
       setAiContext(data.aiContext ?? [])
       if (data.tokenUsage) {
         setTokenTotals((prev) => ({

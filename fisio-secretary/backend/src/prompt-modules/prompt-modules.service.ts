@@ -131,16 +131,27 @@ export class PromptModulesService {
   // corrompida ou mensagem fora do padrão previsto — ver
   // project_alex_price_hallucination_fix na memória). Só cai na continuidade
   // pura (turno anterior) se a IA também não apontar nada.
+  //
+  // O sinal do turno ("fresh") NÃO é o conjunto final: o resultado é sempre a
+  // UNIÃO dele com os módulos do turno anterior. Sem isso um módulo cai no
+  // instante em que outro casa, mesmo com o assunto dele ainda em aberto —
+  // bug real em prod (2026-08-12, S&A Cabelos Naturais): o módulo de Preço
+  // manda mostrar o vídeo primeiro e só informar o valor na mensagem
+  // SEGUINTE, mas nessa mensagem seguinte ("Ok obrigada") só "vídeo"/"ver"
+  // casavam — o módulo de Preço saiu do prompt exatamente no turno em que a
+  // tabela era necessária e o modelo inventou R$1.690,00 no lugar dos
+  // R$879,90 da tabela. Como `previousModuleNames` guarda só o fresh do turno
+  // anterior (nunca a união), o arraste dura 1 turno e não cresce sem fim.
   async selectModules(
     tenantId: string,
     message: string,
     allModules: PromptModule[],
     previousModuleNames: string[],
     priorAssistantText?: string,
-  ): Promise<PromptModule[]> {
+  ): Promise<{ selected: PromptModule[]; freshNames: string[] }> {
     const candidates = allModules.filter((m) => !m.isCore && m.isActive);
     const haystack = priorAssistantText ? `${priorAssistantText}\n${message}` : message;
-    const matched = candidates.filter((m) => {
+    let fresh = candidates.filter((m) => {
       const patterns = m.keywords.split('\n').map((k) => k.trim()).filter(Boolean);
       return patterns.some((p) => {
         try {
@@ -150,20 +161,27 @@ export class PromptModulesService {
         }
       });
     });
-    if (matched.length > 0) return matched;
 
-    const aiChosenNames = await this.aiService.classifyModules(
-      message,
-      priorAssistantText ?? '',
-      candidates.map((m) => ({ name: m.name, keywords: m.keywords })),
-      { tenantId },
-    );
-    if (aiChosenNames.length > 0) {
-      return candidates.filter((m) => aiChosenNames.includes(m.name));
+    if (fresh.length === 0) {
+      const aiChosenNames = await this.aiService.classifyModules(
+        message,
+        priorAssistantText ?? '',
+        candidates.map((m) => ({ name: m.name, keywords: m.keywords })),
+        { tenantId },
+      );
+      if (aiChosenNames.length > 0) {
+        fresh = candidates.filter((m) => aiChosenNames.includes(m.name));
+      }
     }
 
+    const freshSet = new Set(fresh.map((m) => m.name));
     const prevSet = new Set(previousModuleNames ?? []);
-    return candidates.filter((m) => prevSet.has(m.name));
+    const carried = candidates.filter((m) => prevSet.has(m.name) && !freshSet.has(m.name));
+    // Ordem estável (sortOrder) independente de quem entrou por sinal ou por
+    // arraste — o prefixo do prompt precisa ser idêntico entre chamadas pro
+    // cache implícito do Gemini continuar valendo.
+    const selected = [...fresh, ...carried].sort((a, b) => a.sortOrder - b.sortOrder);
+    return { selected, freshNames: fresh.map((m) => m.name) };
   }
 
   // Catálogo de mídia sempre fresco (não fica salvo no `content` do módulo,
@@ -197,20 +215,23 @@ export class PromptModulesService {
   // ───────────────── Fluxo de PRODUÇÃO (webhook WhatsApp) ─────────────────
   // Espelha o formato relevante de AgentsService.chatForLead — quem chama
   // (evolution.controller.ts) só precisa do aiResponse pro pós-processamento
-  // padrão (loop/tags/mídia/agendamento) e do moduleNames pra persistir em
-  // lead.activeModules (continuidade no próximo turno).
+  // padrão (loop/tags/mídia/agendamento) e dos nomes dos módulos.
+  // `moduleNames` = o que de fato entrou no prompt (log/diagnóstico);
+  // `freshNames` = só o que o turno atual sinalizou, e é ESSE que vai pra
+  // lead.activeModules — persistir a união faria o conjunto só crescer, turno
+  // após turno, até carregar o catálogo inteiro em todo prompt.
   async chatForLead(
     tenantId: string,
     lead: Lead,
     message: string,
     imageUrl?: string,
-  ): Promise<{ aiResponse: AiResponse; moduleNames: string[] } | null> {
+  ): Promise<{ aiResponse: AiResponse; moduleNames: string[]; freshNames: string[] } | null> {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) return null;
     const core = allModules.find((m) => m.isCore);
     const history = slimHistory((lead.aiContext as any[]) ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
-    const selected = await this.selectModules(tenantId, message, allModules, lead.activeModules ?? [], priorAssistantText);
+    const { selected, freshNames } = await this.selectModules(tenantId, message, allModules, lead.activeModules ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
@@ -231,8 +252,9 @@ export class PromptModulesService {
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
     aiResponse.reply = stripInternalMarkers(aiResponse.reply);
     const moduleNames = selected.map((m) => m.name);
-    this.logger.log(`[DYNAMIC] módulos=[${moduleNames.join(',') || '-'}] tenant=${tenantId}`);
-    return { aiResponse, moduleNames };
+    const carried = moduleNames.filter((n) => !freshNames.includes(n));
+    this.logger.log(`[DYNAMIC] módulos=[${moduleNames.join(',') || '-'}]${carried.length ? ` (arrastados do turno anterior: ${carried.join(',')})` : ''} tenant=${tenantId}`);
+    return { aiResponse, moduleNames, freshNames };
   }
 
   // ───────────────── Fluxo de TESTE (tela de simulação) ─────────────────
@@ -251,7 +273,7 @@ export class PromptModulesService {
     const core = allModules.find((m) => m.isCore);
     const history = slimHistory(aiContext ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
-    const selected = await this.selectModules(tenantId, message, allModules, previousModuleNames ?? [], priorAssistantText);
+    const { selected, freshNames } = await this.selectModules(tenantId, message, allModules, previousModuleNames ?? [], priorAssistantText);
     const mediaNames = selected.some((m) => m.injectsMediaCatalog)
       ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
       : [];
@@ -270,6 +292,9 @@ export class PromptModulesService {
     return {
       reply: aiResponse.reply,
       moduleNames: selected.map((m) => m.name),
+      // O front devolve isto como previousModuleNames no próximo turno — tem
+      // que ser o fresh, não a união (senão a simulação vai acumulando módulos).
+      freshModuleNames: freshNames,
       stage: aiResponse.stage,
       temperature: aiResponse.temperature,
       action: aiResponse.action,
