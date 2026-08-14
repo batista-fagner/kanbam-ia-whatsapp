@@ -188,7 +188,38 @@ STRIPE_WEBHOOK_SECRET=...
 
 # Redis
 REDIS_PASSWORD=...
+
+# Filas (BullMQ) — 'bullmq' liga; qualquer outro valor mantém os @Cron legados
+QUEUE_ENGINE=legacy-cron
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_BULLMQ_DB=2        # 3 no .env.development; Evolution API usa /1
 ```
+
+---
+
+## Filas (Redis + BullMQ)
+
+Migração dos `@Cron` que varriam o banco para descobrir trabalho pendente. Controlado por
+`QUEUE_ENGINE`: `bullmq` liga as filas, qualquer outro valor mantém os crons antigos
+(nenhum foi removido — rollback é env var + restart).
+
+**Com `QUEUE_ENGINE != bullmq` nada de BullMQ é registrado** e nenhuma conexão Redis é
+aberta (`queue.enabled.ts` decide isso antes do Nest subir, lendo `process.env` direto —
+os `@Module` são avaliados antes do ConfigModule ler o `.env`).
+
+| Fila | Substitui | Como funciona |
+|---|---|---|
+| `pix-polling` | `PaymentsService.pollPendingPix()` (varria a tabela a cada 1min) | Um job por cobrança. Delay cresce a cada tentativa (20s→40s→…→teto 5min) e a cadeia encerra sozinha quando confirma/expira. Job repetível `pix-deep-reconcile` (30min) reenfileira pendências órfãs |
+| `followup-dispatch` | `FollowupService.processDue()` (lia 200 candidatos a cada 1min) | Um job por follow-up, dormindo até o `scheduledAt`. Janela comercial/teto diário/espaçamento de 3min reagendam o job em vez de deixar a linha pending |
+
+**Regras que não podem ser quebradas:**
+- **`jobId` nunca pode conter `:`** — o BullMQ lança (`Custom Id cannot contain :`) e a cadeia nunca começa. Separador é `_`; travado por `src/queue/job-id.spec.ts`.
+- **`repeat` não existe mais em `queue.add`** (BullMQ v6) — jobs repetíveis usam `queue.upsertJobScheduler()`.
+- **Expiração do PIX vem sempre do banco** (`lastPixSentAt` relido a cada tick), nunca da idade do job — senão uma cadeia antiga expira um PIX novo gerado no reenvio do dia seguinte.
+- **O UPDATE atômico condicional continua sendo a garantia de correção.** BullMQ reentrega job de worker morto; quem garante efeito colateral único é o Postgres (`_activatePaidTenant`, `claimAndSend`).
+
+⚠️ **Produção ainda não tem Redis provisionado** — por isso `QUEUE_ENGINE` segue `legacy-cron` lá. Ver Pendências.
 
 ---
 
@@ -213,4 +244,5 @@ REDIS_PASSWORD=...
 6. **Automação comentários Instagram** — copiar `backend/src/instagram-automation/` do funnel-platform; tokens por cliente no banco.
 7. **UI trocar senha** para o cliente (endpoint `/auth/change-password` já existe; falta form na SettingsPage).
 8. **Gemini Context Caching explícito** — cachear system prompt da Lindona via API (implementar quando billing ultrapassar free tier).
-9. **Webhook Efí Bank com mTLS** — substituiria o polling por confirmação instantânea de PIX. Certificado é burocrático de gerar, deixado pra quando escalar (múltiplas instâncias/alto volume). Código do handler já existe (`handleEfiWebhook`, `POST /payments/webhooks/efi`), só falta o certificado.
+9. **Webhook Efí Bank com mTLS** — substituiria o polling por confirmação instantânea de PIX. **O certificado NÃO é o que falta** (já está configurado em prod via `EFI_CERT_BASE64` e funciona nas chamadas de saída). A Efí exige mTLS **de entrada**: recusa registrar o webhook com `"A autenticação de TLS mútuo não está configurada na URL informada"`, porque quer apresentar certificado cliente ao chamar nosso endpoint e exige que o servidor valide. Railway não termina TLS com verificação de certificado cliente — precisaria de proxy (Nginx/Caddy com `ssl_verify_client`, ou Cloudflare mTLS) na frente. Handler já pronto (`handleEfiWebhook`), mas só ativa tenant, não trata `implantacao_payments`.
+10. **Provisionar Redis em produção + ligar as filas** — o código de filas já está deployado, mas `QUEUE_ENGINE=legacy-cron` em prod porque não há Redis no Railway. Passos: adicionar um serviço Redis no projeto Railway, setar `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`/`REDIS_BULLMQ_DB`, trocar `QUEUE_ENGINE=bullmq` e reiniciar. Rollback é voltar a env var. Ver seção "Filas".
