@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
@@ -9,12 +9,13 @@ import { FOLLOWUP_QUEUE_NAME, JOB_DISPATCH_FOLLOWUP, QUEUE_ENGINE_BULLMQ } from 
 @Injectable()
 export class FollowupQueueService {
   constructor(
-    @InjectQueue(FOLLOWUP_QUEUE_NAME) private readonly queue: Queue,
+    // @Optional: no modo legado a fila nem é registrada (ver queue.module.ts).
+    @Optional() @InjectQueue(FOLLOWUP_QUEUE_NAME) private readonly queue: Queue | null,
     private readonly config: ConfigService,
   ) {}
 
   private get enabled(): boolean {
-    return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
+    return !!this.queue && this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
   }
 
   // extraJitterMs espalha follow-ups criados no mesmo instante (o cron de cadência cria
@@ -40,7 +41,9 @@ export class FollowupQueueService {
   }
 
   private async add(followupId: string, delay: number, jobId: string): Promise<void> {
-    await this.queue.add(
+    const queue = this.queue;
+    if (!queue) return;
+    await queue.add(
       JOB_DISPATCH_FOLLOWUP,
       { followupId },
       {
@@ -59,6 +62,7 @@ export class FollowupQueueService {
   // Sem guard de propósito: remover um jobId inexistente é no-op, então funciona igual
   // nos dois modos e não deixa job órfão se o engine for trocado com follow-ups na fila.
   async cancel(followupId: string): Promise<void> {
+    if (!this.queue) return;
     await this.queue.remove(this.jobId(followupId)).catch(() => undefined);
   }
 }

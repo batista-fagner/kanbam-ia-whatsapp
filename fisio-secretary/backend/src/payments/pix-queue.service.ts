@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
@@ -26,20 +26,30 @@ export class PixQueueService implements OnModuleInit {
   private readonly logger = new Logger(PixQueueService.name);
 
   constructor(
-    @InjectQueue(PIX_QUEUE_NAME) private readonly queue: Queue,
+    // @Optional: no modo legado a fila nem é registrada (ver queue.module.ts), então
+    // a injeção vem nula e todo método aqui vira no-op.
+    @Optional() @InjectQueue(PIX_QUEUE_NAME) private readonly queue: Queue | null,
     private readonly config: ConfigService,
   ) {}
 
   private get enabled(): boolean {
-    return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
+    return !!this.activeQueue;
+  }
+
+  // Devolve a fila só quando ela existe E o engine está ligado — assim cada método sai
+  // cedo com uma referência já garantida como não-nula.
+  private get activeQueue(): Queue | null {
+    if (this.config.get<string>('QUEUE_ENGINE') !== QUEUE_ENGINE_BULLMQ) return null;
+    return this.queue ?? null;
   }
 
   async onModuleInit(): Promise<void> {
-    if (!this.enabled) return;
+    const queue = this.activeQueue;
+    if (!queue) return;
     // Rede de segurança equivalente ao deep check de 30min do cron: reenfileira cobranças
     // pendentes que não têm cadeia ativa (criadas por outra instância, insert manual, ou
     // perdidas num restart). upsert = idempotente, pode rodar em toda réplica no boot.
-    await this.queue.upsertJobScheduler(
+    await queue.upsertJobScheduler(
       'pix-deep-reconcile',
       { every: DEEP_RECONCILE_EVERY_MS },
       { name: JOB_DEEP_RECONCILE, data: {} },
@@ -57,8 +67,9 @@ export class PixQueueService implements OnModuleInit {
   // viram a mesma cadeia, e o deep reconcile só enfileira o que realmente está faltando
   // (BullMQ ignora um add cujo jobId já existe).
   async startCheckChain(kind: PixKind, id: string, txid: string): Promise<void> {
-    if (!this.enabled) return;
-    await this.queue.add(
+    const queue = this.activeQueue;
+    if (!queue) return;
+    await queue.add(
       kind === 'tenant' ? JOB_CHECK_TENANT : JOB_CHECK_IMPLANTACAO,
       { id, txid, attempt: 0 },
       {
@@ -74,8 +85,10 @@ export class PixQueueService implements OnModuleInit {
   // Próximo elo. O jobId leva o número da tentativa porque o anterior (mesmo id base)
   // ainda pode estar sendo finalizado — sem o sufixo, o add seria descartado como duplicado.
   async scheduleNextCheck(kind: PixKind, id: string, txid: string, attempt: number): Promise<void> {
+    const queue = this.activeQueue;
+    if (!queue) return;
     const delay = Math.min(CHECK_DELAY_STEP_MS * (attempt + 1), CHECK_DELAY_CAP_MS);
-    await this.queue.add(
+    await queue.add(
       kind === 'tenant' ? JOB_CHECK_TENANT : JOB_CHECK_IMPLANTACAO,
       { id, txid, attempt },
       {
