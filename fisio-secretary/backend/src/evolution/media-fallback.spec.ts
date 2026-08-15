@@ -20,14 +20,14 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
     );
   });
 
-  it('mídia encontrada: envia e retorna sentCount=1, notFound vazio, quotaReached=false', async () => {
+  it('mídia encontrada: envia e retorna sentCount=1, notFound vazio', async () => {
     mediaService.findByName.mockResolvedValue({
       id: 'm1', name: 'Vietnamita Select Liso 60 cm', url: 'https://x/video.mp4', mimeType: 'video/mp4', caption: null,
     });
 
     const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', {}, 'Vietnamita Select Liso 60 cm');
 
-    expect(result).toEqual({ sentCount: 1, notFound: [], quotaReached: false });
+    expect(result).toEqual({ sentCount: 1, notFound: [] });
     expect(uazapiProvider.sendMediaByUrl).toHaveBeenCalledTimes(1);
   });
 
@@ -36,7 +36,7 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
 
     const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', {}, 'Vietnamita Select Liso 60 cm');
 
-    expect(result).toEqual({ sentCount: 0, notFound: ['Vietnamita Select Liso 60 cm'], quotaReached: false });
+    expect(result).toEqual({ sentCount: 0, notFound: ['Vietnamita Select Liso 60 cm'] });
     expect(uazapiProvider.sendMediaByUrl).not.toHaveBeenCalled();
   });
 
@@ -49,33 +49,5 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
 
     expect(result.sentCount).toBe(1);
     expect(result.notFound).toEqual(['nao existe']);
-    expect(result.quotaReached).toBe(false);
-  });
-
-  // Bug real de produção (S&A Cabelos Naturais, lead 559885513035, 2026-08-14/15): a cota
-  // diária corta o loop ANTES de checar o catálogo, então notFound fica vazio — sem o
-  // quotaReached, o chamador não tinha como distinguir "não achei" de "cota batida", e o
-  // reply da IA ("aqui está o vídeo!") ia pro cliente sem nada anexado, silenciosamente.
-  it('cota diária já batida: não chama o catálogo, sentCount=0, quotaReached=true', async () => {
-    leadsService.countTodayOutboundMedia.mockResolvedValue(5);
-    const instanceConfig = { mediaLimitPerDay: 5 };
-
-    const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', instanceConfig, 'Vietnamita Select Liso 60 cm');
-
-    expect(result).toEqual({ sentCount: 0, notFound: [], quotaReached: true });
-    expect(mediaService.findByName).not.toHaveBeenCalled();
-    expect(uazapiProvider.sendMediaByUrl).not.toHaveBeenCalled();
-  });
-
-  it('cota bate no meio do lote: as anteriores enviam, o resto marca quotaReached', async () => {
-    leadsService.countTodayOutboundMedia.mockResolvedValue(0);
-    const instanceConfig = { mediaLimitPerDay: 1 };
-    mediaService.findByName.mockResolvedValue({ id: 'm1', name: 'ok', url: 'https://x', mimeType: 'video/mp4', caption: null });
-
-    const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', instanceConfig, ['ok', 'ok2']);
-
-    expect(result.sentCount).toBe(1);
-    expect(result.quotaReached).toBe(true);
-    expect(uazapiProvider.sendMediaByUrl).toHaveBeenCalledTimes(1);
   });
 });

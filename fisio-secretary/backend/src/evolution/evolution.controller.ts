@@ -56,10 +56,6 @@ export class EvolutionController {
   // inventado ou ainda não cadastrado) — a reply da IA nesse caso assume que a mídia foi
   // enviada ("olha só esse aqui"), então não pode ser usada como está.
   private readonly MEDIA_NOT_FOUND_FALLBACK = 'Ops, ainda não encontrei esse modelo aqui no meu catálogo 😕 Pode me confirmar o nome de novo? Assim já busco certinho pra você!';
-  // Cota diária de vídeos batida (mediaLimitPerDay): o vídeo pedido existe no catálogo,
-  // mas não foi enviado por causa do teto. Mensagem diferente da de "não encontrei" —
-  // aqui o problema não é o catálogo, é o limite do dia (evita confundir o cliente/lojista).
-  private readonly MEDIA_QUOTA_REACHED_FALLBACK = 'Hoje já bati o limite de vídeos que posso te enviar por aqui 😕 Mas me chama de novo amanhã que eu te mostro certinho, combinado?';
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -633,9 +629,6 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         if (mediaResult.sentCount === 0 && mediaResult.notFound.length > 0) {
           shouldIgnoreFallback = this.MEDIA_NOT_FOUND_FALLBACK;
           this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
-        } else if (mediaResult.sentCount === 0 && mediaResult.quotaReached) {
-          shouldIgnoreFallback = this.MEDIA_QUOTA_REACHED_FALLBACK;
-          this.logger.warn(`[MEDIA-LIMIT] Reply trocado por fallback honesto (cota batida) para ${phone}`);
         }
       }
 
@@ -765,12 +758,6 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (mediaResult.notFound.length > 0) {
         mediaNotFoundFallback = this.MEDIA_NOT_FOUND_FALLBACK;
         this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
-      } else if (mediaResult.quotaReached) {
-        // Mesmo raciocínio, motivo diferente: a mídia existe, mas a cota diária do
-        // tenant já foi batida (sentCount ficou 0 sem passar pelo catálogo). Sem este
-        // branch, o reply da IA ("aqui está o vídeo!") ia pro cliente sem nada anexado.
-        mediaNotFoundFallback = this.MEDIA_QUOTA_REACHED_FALLBACK;
-        this.logger.warn(`[MEDIA-LIMIT] Reply trocado por fallback honesto (cota batida) para ${phone}`);
       }
       // Nenhuma mídia encontrada → cai pro envio de texto normal (reply da IA, ou fallback).
     }
@@ -810,7 +797,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     tenantToken: string | undefined,
     instanceConfig: any,
     mediaNameInput: string | string[],
-  ): Promise<{ sentCount: number; notFound: string[]; quotaReached: boolean }> {
+  ): Promise<{ sentCount: number; notFound: string[] }> {
     const DEFAULT_CAPTION = 'repare na ponta como ele é todo inteiro, o que acha?';
     const MAX_MEDIA = 12; // teto de segurança para evitar flood
     const names = (Array.isArray(mediaNameInput) ? mediaNameInput : [mediaNameInput])
@@ -843,15 +830,9 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     }
 
     let sentCount = 0;
-    let quotaReached = false;
     const notFound: string[] = [];
     for (let i = 0; i < names.length; i++) {
       if (sentCount >= remainingQuota) {
-        // Cota batida: as mídias que sobraram existem ou não no catálogo, mas isso nunca
-        // chega a ser checado — sem sinalizar aqui, o chamador não tem como saber que o
-        // motivo do "não enviei" foi o teto, e não catálogo. Sem essa flag, o reply da IA
-        // (que assume que o vídeo foi enviado) ia pro cliente do jeito que veio.
-        quotaReached = true;
         this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
         break;
       }
@@ -871,7 +852,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
     }
 
-    return { sentCount, notFound, quotaReached };
+    return { sentCount, notFound };
   }
 
   // Verificação de webhook exigida pela Meta
