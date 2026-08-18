@@ -177,6 +177,19 @@ export class MediaService {
     return this.repo.save(record);
   }
 
+  // Apaga um objeto do R2 direto pela URL pública — usado pra fotos/áudios
+  // recebidos de leads (inbound), que não têm linha na tabela media_files.
+  // No-op silencioso se a URL não bater com o publicUrl configurado.
+  async deleteObjectByUrl(url: string): Promise<void> {
+    if (!url || !this.publicUrl || !url.startsWith(`${this.publicUrl}/`)) return;
+    const key = url.slice(this.publicUrl.length + 1);
+    try {
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+    } catch (err: any) {
+      this.logger.warn(`Erro ao remover objeto do Storage (continuando): ${err.message}`);
+    }
+  }
+
   async delete(id: string, tenantId?: string): Promise<void> {
     const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');

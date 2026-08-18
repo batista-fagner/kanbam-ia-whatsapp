@@ -7,6 +7,7 @@ import { Message } from '../common/entities/message.entity';
 import { LeadStageHistory } from '../common/entities/lead-stage-history.entity';
 import { DeletedLead } from '../common/entities/deleted-lead.entity';
 import { Appointment } from '../common/entities/appointment.entity';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class LeadsService implements OnApplicationBootstrap {
@@ -23,6 +24,7 @@ export class LeadsService implements OnApplicationBootstrap {
     private deletedLeadsRepo: Repository<DeletedLead>,
     @InjectRepository(Appointment)
     private appointmentsRepo: Repository<Appointment>,
+    private readonly mediaService: MediaService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -371,6 +373,24 @@ export class LeadsService implements OnApplicationBootstrap {
     const where: any = { id };
     if (tenantId) where.tenantId = tenantId;
     return this.deletedLeadsRepo.findOne({ where });
+  }
+
+  // Exclusão permanente de verdade (LGPD art. 18, VI — direito de eliminação).
+  // "Excluir" no Kanban só move pra deleted_leads (lixeira, recuperável); isso
+  // aqui apaga a linha do banco e as fotos/áudios que o lead mandou (inbound
+  // no R2) sem volta nenhuma. Não mexe no snapshot de outro tenant.
+  async purgeDeleted(id: string, tenantId?: string): Promise<boolean> {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    const record = await this.deletedLeadsRepo.findOne({ where });
+    if (!record) return false;
+
+    const messages: any[] = record.leadSnapshot?.messages ?? [];
+    const mediaUrls = messages.map(m => m?.mediaUrl).filter((url): url is string => !!url);
+    await Promise.all(mediaUrls.map(url => this.mediaService.deleteObjectByUrl(url)));
+
+    await this.deletedLeadsRepo.delete(record.id);
+    return true;
   }
 
   async getDashboard(period: '7' | '30' | '90' | 'all' = 'all', tenantId?: string) {

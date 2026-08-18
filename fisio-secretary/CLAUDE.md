@@ -41,11 +41,7 @@ SaaS multi-tenant de secretária virtual com IA para clínicas e lojas. Recebe m
 - `npm run start:dev:local` usa banco local. `npm run start:dev` usa prod (Supabase)
 - ⚠️ Supabase Storage no dev aponta para bucket de prod
 
-**Sincronizar banco local com prod:**
-```bash
-cd fisio-secretary && docker run --rm postgres:17-alpine pg_dump --no-owner --no-acl --clean --if-exists "postgresql://postgres.shnznailwrbpapkdfvyn:ip6tASAQZvhcTzeL@aws-1-us-east-1.pooler.supabase.com:5432/postgres" | docker exec -i fisio_postgres_dev psql -U fisio -d fisio_dev && echo "✅ Dump concluído!"
-```
-Garanta que `docker compose up -d` está rodando antes.
+**Sincronizar banco local com prod:** `./dump-prod-to-local.sh` (raiz do projeto). Lê `SUPABASE_DATABASE_URL` do `.env` (não tem credencial hardcoded no script) e restaura no container `fisio_postgres_dev`. Garanta que `docker compose up -d` está rodando antes.
 
 ---
 
@@ -144,7 +140,7 @@ POST /webhooks/uazapi/:tenantId
 | Checkout PIX (Efí Bank) ✅ prod | `payments/` — `POST /payments/checkout` |
 | Checkout Cartão (Stripe) ⏳ aguarda live creds | `payments/` — `createCardCheckout()` |
 | Confirmação de PIX por polling sob demanda (sem webhook mTLS) | `PaymentsService.pollPendingPix()` — cron 1min mas só varre o banco com `_pollingActive=true`; acorda via `_wakePolling()` em checkout/implantação/renovação, dorme sozinho quando não há pendência, deep check de segurança a cada 30min |
-| Lembrete vencimento (cron 9h, 2 dias antes; PIX manda WhatsApp + e-mail com valor por cliente) | `BillingReminderService` — `BILLING_SENDER_TOKEN` |
+| Lembrete vencimento (cron 13h, 2 dias antes; PIX manda WhatsApp + e-mail com valor por cliente) | `BillingReminderService` — `BILLING_SENDER_TOKEN` |
 | Painel admin (criar/suspender/reset senha) | `admin.controller.ts` + `AdminPage.jsx` |
 | Mídias (upload Supabase, IA usa por nome) | `media/` + `MediaPage.jsx` |
 | Busca de lead no Kanban | `KanbanPage.jsx` |

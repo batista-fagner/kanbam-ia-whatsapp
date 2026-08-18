@@ -123,6 +123,9 @@ export const getDeletedLeads = () =>
 export const getDeletedLead = (id) =>
   authFetch(`${BASE}/leads/deleted/${id}`).then(json)
 
+export const purgeDeletedLead = (id) =>
+  authFetch(`${BASE}/leads/deleted/${id}/purge`, { method: 'DELETE' }).then(json)
+
 export const getDashboard = (period = 'all') =>
   authFetch(`${BASE}/leads/dashboard?period=${period}`).then(json)
 

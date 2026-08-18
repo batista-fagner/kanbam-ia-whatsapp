@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Patch, Delete, Body, Query, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Patch, Delete, Body, Query, Inject, UseGuards, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from './leads.service';
@@ -45,6 +45,15 @@ export class LeadsController {
   @Get('deleted/:id')
   findOneDeleted(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
     return this.leadsService.findOneDeleted(id, tenantId);
+  }
+
+  // Exclusão permanente — apaga a linha de deleted_leads pra sempre (sem recuperação).
+  // Diferente do DELETE /leads/:id, que só move o lead pra essa lixeira.
+  @Delete('deleted/:id/purge')
+  async purgeDeleted(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    const ok = await this.leadsService.purgeDeleted(id, tenantId);
+    if (!ok) throw new NotFoundException('Registro não encontrado');
+    return { ok: true };
   }
 
   @Get(':id')

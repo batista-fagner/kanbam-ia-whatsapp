@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Search, User, Phone, Calendar, FileText, X, MessageSquare } from 'lucide-react'
-import { getDeletedLeads, getDeletedLead } from '../services/api'
+import { Trash2, Search, User, Phone, Calendar, FileText, X, MessageSquare, ShieldAlert } from 'lucide-react'
+import { getDeletedLeads, getDeletedLead, purgeDeletedLead } from '../services/api'
 
 const STAGE_LABELS = {
   novo_lead:    'Novo Lead',
@@ -45,6 +45,20 @@ export default function DeletedLeadsPage() {
     } finally {
       setLoadingDetail(false)
     }
+  }
+
+  async function handlePurge(id, name) {
+    const label = name || 'este lead'
+    const confirmed = window.confirm(
+      `Excluir PERMANENTEMENTE os dados de "${label}"?\n\n` +
+      `Isso apaga o registro do banco pra sempre (nome, telefone, mensagens, fotos enviadas). ` +
+      `Não tem como desfazer nem recuperar depois.\n\n` +
+      `Use isso só quando a própria pessoa pedir a exclusão total dos dados dela (LGPD).`
+    )
+    if (!confirmed) return
+    await purgeDeletedLead(id)
+    setItems(prev => prev.filter(it => it.id !== id))
+    setDetail(prev => (prev?.id === id ? null : prev))
   }
 
   const filtered = items.filter(it => {
@@ -115,12 +129,21 @@ export default function DeletedLeadsPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(it.deletedAt)}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openDetail(it.id)}
-                      className="text-blue-600 hover:underline text-xs font-medium"
-                    >
-                      Ver
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => openDetail(it.id)}
+                        className="text-blue-600 hover:underline text-xs font-medium"
+                      >
+                        Ver
+                      </button>
+                      <button
+                        onClick={() => handlePurge(it.id, it.name)}
+                        title="Excluir permanentemente (não recuperável)"
+                        className="text-red-600 hover:underline text-xs font-medium"
+                      >
+                        Excluir para sempre
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -130,7 +153,7 @@ export default function DeletedLeadsPage() {
       </div>
 
       {detail && (
-        <DetailModal detail={detail} onClose={() => setDetail(null)} />
+        <DetailModal detail={detail} onClose={() => setDetail(null)} onPurge={handlePurge} />
       )}
       {loadingDetail && !detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -141,7 +164,7 @@ export default function DeletedLeadsPage() {
   )
 }
 
-function DetailModal({ detail, onClose }) {
+function DetailModal({ detail, onClose, onPurge }) {
   const snap = detail.leadSnapshot || {}
   const lead = snap.lead || {}
   const messages = snap.messages || []
@@ -157,9 +180,17 @@ function DetailModal({ detail, onClose }) {
             <Trash2 className="w-4 h-4 text-red-500" />
             <h2 className="font-bold text-gray-800">Lead excluído</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onPurge(detail.id, detail.name)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" /> Excluir para sempre
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto p-6 space-y-5">
