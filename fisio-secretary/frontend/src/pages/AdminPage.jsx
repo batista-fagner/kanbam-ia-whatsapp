@@ -482,11 +482,11 @@ export default function AdminPage() {
       {/* Aba: Clientes */}
       {activeTab === 'clients' && <>
 
-      {/* Alerta de PIX em atraso — admin decide bloquear manualmente */}
-      {clients.filter(c => c.planStatus === 'past_due').length > 0 && (
+      {/* Alerta de PIX em atraso ou expirado sem pagar — admin decide bloquear manualmente */}
+      {clients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length > 0 && (
         <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-3 rounded-xl mb-4 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          {clients.filter(c => c.planStatus === 'past_due').length} cliente(s) com pagamento PIX em atraso — revise e suspenda manualmente se necessário.
+          {clients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length} cliente(s) com pagamento PIX em atraso/expirado — revise e suspenda manualmente se necessário.
         </div>
       )}
 
@@ -520,11 +520,11 @@ export default function AdminPage() {
                       ? <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold"><WifiOff className="w-3 h-3" /> desconectado — IA parada</span>
                       : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><WifiOff className="w-3 h-3" /> desconectado</span>}
                   {!c.isActive && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">suspenso</span>}
-                  {c.planStatus === 'past_due' && (
+                  {['past_due', 'expired'].includes(c.planStatus) && (
                     <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 pl-2 pr-1 py-0.5 rounded-full">
-                      PIX em atraso
+                      {c.planStatus === 'expired' ? 'PIX expirado sem pagar' : 'PIX em atraso'}
                       <button
-                        onClick={() => { if (confirm('Remover a tag "PIX em atraso" deste cliente?')) clearClientPastDue(c.id).then(load) }}
+                        onClick={() => { if (confirm('Remover a tag deste cliente?')) clearClientPastDue(c.id).then(load) }}
                         title="Remover tag"
                         className="hover:bg-amber-200 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
                       >
