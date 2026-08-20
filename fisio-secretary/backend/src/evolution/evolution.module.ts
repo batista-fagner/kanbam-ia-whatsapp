@@ -17,6 +17,8 @@ import { TokenUsage } from '../common/entities/token-usage.entity';
 import { Lead } from '../common/entities/lead.entity';
 import { Message } from '../common/entities/message.entity';
 import { Conversation } from '../common/entities/conversation.entity';
+import { BillingEvent } from '../common/entities/billing-event.entity';
+import { PromptModule } from '../common/entities/prompt-module.entity';
 import { LeadsModule } from '../leads/leads.module';
 import { AuthModule } from '../auth/auth.module';
 import { AiModule } from '../ai/ai.module';
@@ -32,7 +34,7 @@ import { FollowupModule } from '../followup/followup.module';
   imports: [
     HttpModule,
     ConfigModule,
-    TypeOrmModule.forFeature([WhatsappConfig, TokenUsage, Lead, Message, Conversation]),
+    TypeOrmModule.forFeature([WhatsappConfig, TokenUsage, Lead, Message, Conversation, BillingEvent, PromptModule]),
     LeadsModule,
     AuthModule,
     AiModule,

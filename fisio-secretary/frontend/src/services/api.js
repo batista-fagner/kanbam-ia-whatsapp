@@ -235,6 +235,9 @@ export const getAdminMonolithPrompt = (tenantId, kind) => // kind: 'sofia' | 'me
 export const getAdminAgentPrompt = (tenantId, agentId) =>
   authFetch(`${BASE}/admin/prompts/${tenantId}/agent/${agentId}`).then(json)
 
+export const getAdminModulePrompt = (tenantId, moduleId) =>
+  authFetch(`${BASE}/admin/prompts/${tenantId}/module/${moduleId}`).then(json)
+
 // --- Onboarding: form recebido → rascunho de prompt → revisão (agente de CS, Fase 1) ---
 export const listOnboardingForms = () =>
   authFetch(`${BASE}/admin/prompt-drafts/forms`).then(json)

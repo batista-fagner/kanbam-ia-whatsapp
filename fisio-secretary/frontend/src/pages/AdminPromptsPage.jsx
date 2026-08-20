@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { FileText, Loader2, AlertCircle, ChevronDown, Bot, X } from 'lucide-react'
-import { getAdminPrompts, getAdminMonolithPrompt, getAdminAgentPrompt } from '../services/api'
+import { FileText, Loader2, AlertCircle, ChevronDown, Bot, Boxes, X } from 'lucide-react'
+import { getAdminPrompts, getAdminMonolithPrompt, getAdminAgentPrompt, getAdminModulePrompt } from '../services/api'
 import PromptSearchViewer from '../components/PromptSearchViewer'
 
 const CHAR_LIMIT = 5000 // trava futura do plano de R$310 — por enquanto só alerta visual
@@ -48,6 +48,16 @@ export default function AdminPromptsPage() {
     }
   }
 
+  async function openModule(tenantId, moduleId, title) {
+    setViewer({ title, text: '', loading: true })
+    try {
+      const { text } = await getAdminModulePrompt(tenantId, moduleId)
+      setViewer({ title, text, loading: false })
+    } catch (e) {
+      setViewer({ title, text: `Erro ao carregar: ${e.message}`, loading: false })
+    }
+  }
+
   if (loading) {
     return <div className="p-8 text-gray-400 text-sm">Carregando prompts...</div>
   }
@@ -72,7 +82,13 @@ export default function AdminPromptsPage() {
           const megahairLen = t.monolith.megahair?.length ?? 0
           const sofiaLen = t.monolith.sofia?.length ?? 0
           const monolithLen = megahairLen || sofiaLen
-          const hasMonolith = !!(t.monolith.megahair || t.monolith.sofia)
+          const isDynamic = t.promptEngine === 'dynamic_modules'
+          // Motor ativo (whatsapp_config.prompt_engine) decide o que está REALMENTE
+          // em uso agora — um monólito pode continuar salvo como fallback de rollback
+          // mesmo depois de migrar pra módulos dinâmicos, então só mostramos o
+          // monólito como "ativo" quando o motor não é dynamic_modules.
+          const hasMonolith = !isDynamic && !!(t.monolith.megahair || t.monolith.sofia)
+          const dynamicLen = (t.dynamicModules || []).reduce((s, m) => s + (m.length || 0), 0)
           return (
             <div key={t.tenantId}>
               <button
@@ -87,6 +103,12 @@ export default function AdminPromptsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {isDynamic && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium flex items-center gap-1">
+                      <Boxes className="w-3 h-3" /> módulos dinâmicos
+                    </span>
+                  )}
+                  {isDynamic && <LengthBadge length={dynamicLen} />}
                   {hasMonolith && <LengthBadge length={monolithLen} />}
                   {t.multiAgent.length > 0 && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 font-medium flex items-center gap-1">
@@ -98,7 +120,30 @@ export default function AdminPromptsPage() {
 
               {isOpen && (
                 <div className="px-4 pb-4 pl-11 space-y-2">
-                  {t.monolith.megahair && (
+                  {isDynamic && t.dynamicModules.map(m => (
+                    <button
+                      key={m.moduleId}
+                      onClick={() => openModule(t.tenantId, m.moduleId, `${t.displayName} — Módulo: ${m.name}`)}
+                      className="w-full flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-gray-100 hover:border-purple-200 hover:bg-purple-50/40 transition text-left"
+                    >
+                      <span className="text-gray-700 flex items-center gap-2">
+                        {m.name}
+                        {m.isCore && <span className="text-xs text-purple-500">(core · sempre carrega)</span>}
+                        {!m.isActive && <span className="text-xs text-gray-400">(inativo)</span>}
+                      </span>
+                      <LengthBadge length={m.length} />
+                    </button>
+                  ))}
+                  {isDynamic && (t.monolith.megahair || t.monolith.sofia) && (
+                    <button
+                      onClick={() => openMonolith(t.tenantId, t.monolith.megahair ? 'megahair' : 'sofia', `${t.displayName} — Prompt monólito antigo (NÃO usado — fallback de rollback)`)}
+                      className="w-full flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-dashed border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition text-left"
+                    >
+                      <span className="text-gray-400">Prompt monólito antigo (guardado, não usado)</span>
+                      <LengthBadge length={t.monolith.megahair?.length || t.monolith.sofia?.length || 0} />
+                    </button>
+                  )}
+                  {!isDynamic && t.monolith.megahair && (
                     <button
                       onClick={() => openMonolith(t.tenantId, 'megahair', `${t.displayName} — Prompt monólito (Mega Hair)`)}
                       className="w-full flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-gray-100 hover:border-teal-200 hover:bg-teal-50/40 transition text-left"
@@ -107,7 +152,7 @@ export default function AdminPromptsPage() {
                       <LengthBadge length={t.monolith.megahair.length} />
                     </button>
                   )}
-                  {t.monolith.sofia && (
+                  {!isDynamic && t.monolith.sofia && (
                     <button
                       onClick={() => openMonolith(t.tenantId, 'sofia', `${t.displayName} — Prompt monólito (Sofia)`)}
                       className="w-full flex items-center justify-between text-sm px-3 py-2 rounded-lg border border-gray-100 hover:border-teal-200 hover:bg-teal-50/40 transition text-left"
@@ -129,7 +174,7 @@ export default function AdminPromptsPage() {
                       <LengthBadge length={a.length} />
                     </button>
                   ))}
-                  {!hasMonolith && t.multiAgent.length === 0 && (
+                  {!hasMonolith && !isDynamic && t.multiAgent.length === 0 && (
                     <p className="text-sm text-gray-400">Nenhum prompt configurado.</p>
                   )}
                 </div>

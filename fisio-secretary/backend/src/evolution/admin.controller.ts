@@ -14,6 +14,8 @@ import { Message } from '../common/entities/message.entity';
 import { Conversation } from '../common/entities/conversation.entity';
 import { AgentsService } from '../agents/agents.service';
 import { NotFoundException } from '@nestjs/common';
+import { BillingEvent } from '../common/entities/billing-event.entity';
+import { PromptModule } from '../common/entities/prompt-module.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -30,6 +32,8 @@ export class AdminController {
     @InjectRepository(Lead) private readonly leadRepo: Repository<Lead>,
     @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
     @InjectRepository(Conversation) private readonly conversationRepo: Repository<Conversation>,
+    @InjectRepository(BillingEvent) private readonly billingEventRepo: Repository<BillingEvent>,
+    @InjectRepository(PromptModule) private readonly promptModuleRepo: Repository<PromptModule>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -127,11 +131,23 @@ export class AdminController {
     return { ok: true, usersUpdated: users.length };
   }
 
-  // Remove manualmente a tag "PIX em atraso" (não mexe em isActive/suspensão)
+  // Remove manualmente a tag "PIX em atraso" (não mexe em isActive/suspensão).
+  // Também registra "pagamento confirmado" na aba Cobranças — usado quando o cliente
+  // paga por fora do fluxo automático da Efí (ex: PIX direto, dinheiro) e o admin só
+  // confirma manualmente; sem isso o pagamento nunca aparecia no histórico de cobrança.
   @Patch('clients/:id/clear-past-due')
   async clearPastDue(@Param('id') id: string) {
     const updated = await this.whatsappConfigService.clearPastDue(id);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
+    await this.billingEventRepo.save(
+      this.billingEventRepo.create({
+        tenantId: id,
+        channel: 'pagamento',
+        status: 'confirmado',
+        amount: updated.planValue ?? null,
+        txid: 'manual',
+      }),
+    );
     return { ok: true };
   }
 
@@ -177,20 +193,30 @@ export class AdminController {
   }
 
   // Lista, por tenant, o tamanho (em caracteres) de cada prompt configurado —
-  // monólito (custom_prompt_sofia/megahair) e multi-agente (agents.system_prompt).
-  // Não retorna o texto completo aqui (só preview curto); pra ler tudo, usar
-  // os endpoints abaixo (/admin/prompts/:tenantId/monolith/:kind e /agent/:agentId).
+  // monólito (custom_prompt_sofia/megahair), multi-agente (agents.system_prompt)
+  // e módulos dinâmicos (prompt_modules). Não retorna o texto completo aqui (só
+  // preview curto); pra ler tudo, usar os endpoints abaixo (monolith/:kind,
+  // agent/:agentId e module/:moduleId).
+  //
+  // promptEngine indica qual motor está REALMENTE ativo pra esse tenant agora
+  // (whatsapp_config.prompt_engine) — um tenant pode ter monólito antigo salvo
+  // (fica como fallback/histórico) mas estar rodando em dynamic_modules; sem
+  // esse campo a tela dava a entender que o monólito ainda estava em uso.
   @Get('prompts')
   async listPrompts() {
     const tenants = await this.whatsappConfigService.listAll();
     const result: any[] = [];
     for (const t of tenants) {
       const agents = await this.agentsService.findAll(t.id);
+      const modules = t.promptEngine === 'dynamic_modules'
+        ? await this.promptModuleRepo.find({ where: { tenantId: t.id }, order: { sortOrder: 'ASC' } })
+        : [];
       result.push({
         tenantId: t.id,
         displayName: t.displayName ?? t.profileName,
         agentType: t.agentType,
         multiAgentEnabled: t.multiAgentEnabled,
+        promptEngine: t.promptEngine ?? 'legacy',
         monolith: {
           sofia: t.customPromptSofia?.trim()
             ? { length: t.customPromptSofia.length, preview: this.preview(t.customPromptSofia) }
@@ -204,6 +230,13 @@ export class AdminController {
           name: a.name,
           isActive: a.isActive,
           length: a.systemPrompt?.length ?? 0,
+        })),
+        dynamicModules: modules.map(m => ({
+          moduleId: m.id,
+          name: m.name,
+          isCore: m.isCore,
+          isActive: m.isActive,
+          length: m.content?.length ?? 0,
         })),
       });
     }
@@ -227,6 +260,14 @@ export class AdminController {
     const agent = agents.find(a => a.id === agentId);
     if (!agent) throw new NotFoundException('Agente não encontrado');
     return { text: agent.systemPrompt ?? '', length: agent.systemPrompt?.length ?? 0 };
+  }
+
+  // Texto completo (content) de um módulo dinâmico específico.
+  @Get('prompts/:tenantId/module/:moduleId')
+  async getModulePrompt(@Param('tenantId') tenantId: string, @Param('moduleId') moduleId: string) {
+    const module = await this.promptModuleRepo.findOne({ where: { id: moduleId, tenantId } });
+    if (!module) throw new NotFoundException('Módulo não encontrado');
+    return { text: module.content ?? '', length: module.content?.length ?? 0 };
   }
 
   // ─── Monitoring endpoints ────────────────────────────────────────────────
