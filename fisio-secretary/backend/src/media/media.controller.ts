@@ -11,7 +11,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 const MAX_FILE_SIZE_MB = 50;
 // Vídeos pesados demoram/falham no envio pelo WhatsApp e pesam no custo de storage.
 // Limite vale só pra uploads novos — vídeos já existentes ficam como estão.
-const MAX_VIDEO_SIZE_MB = 10;
+const MAX_VIDEO_SIZE_MB = 30;
 
 // Multer rejeita arquivo grande antes do controller rodar — o erro chega em inglês
 // ("File too large"), por isso captura aqui e devolve uma mensagem em pt clara.

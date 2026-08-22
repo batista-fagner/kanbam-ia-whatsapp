@@ -15,7 +15,7 @@ function normalizeReelInput(input) {
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-const MAX_VIDEO_SIZE_MB = 10
+const MAX_VIDEO_SIZE_MB = 30
 const MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
 function formatSize(bytes) {
