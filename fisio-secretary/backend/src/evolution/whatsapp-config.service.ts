@@ -197,6 +197,7 @@ export class WhatsappConfigService {
       activationKeyword?: string | null;
       promptEngine?: string;
       notificationPhone?: string | null;
+      schedulingHandoffEnabled?: boolean;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -213,6 +214,7 @@ export class WhatsappConfigService {
       record.promptEngine = fields.promptEngine;
     }
     if ('notificationPhone' in fields) record.notificationPhone = fields.notificationPhone?.trim() || null;
+    if ('schedulingHandoffEnabled' in fields) record.schedulingHandoffEnabled = !!fields.schedulingHandoffEnabled;
     return this.repo.save(record);
   }
 

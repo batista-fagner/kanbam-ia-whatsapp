@@ -81,6 +81,7 @@ export class InstanceController {
       activationKeyword?: string | null;
       promptEngine?: string;
       notificationPhone?: string | null;
+      schedulingHandoffEnabled?: boolean;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

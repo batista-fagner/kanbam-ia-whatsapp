@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { Lead } from '../common/entities/lead.entity';
 import { TokenUsage } from '../common/entities/token-usage.entity';
 
@@ -115,6 +116,60 @@ RESPONDA SEMPRE em JSON com este formato exato:
   "mediaName": "id-exato-ou-null (ou um array de ids quando enviar vários vídeos)",
   "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS ou null",
   "appointmentService": "mega_hair|manutencao|null",
+  "appointmentValue": null,
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado ou null"
+  }
+}`;
+
+// Variante do bloco acima para tenants com schedulingHandoffEnabled=true: a IA NUNCA
+// agenda sozinha — ao detectar sinal de agendamento, faz handoff pro atendimento humano
+// (shouldIgnore=true) em vez de action="schedule". Ver whatsapp_config.scheduling_handoff_enabled.
+const JSON_FORMAT_MEGAHAIR_HANDOFF = `
+
+════════════════════════════════════════════════════════════════
+REGRAS DE STAGE E AGENDAMENTO (CRÍTICO — OBEDEÇA SEMPRE)
+════════════════════════════════════════════════════════════════
+A cada mensagem, vc DEVE reavaliar o stage. Não deixe o lead parado em "novo_lead" se a conversa já evoluiu.
+
+TRANSIÇÕES OBRIGATÓRIAS:
+1. stage="lead_quente" — Use SEMPRE que a cliente disser que JÁ USA, JÁ USOU mega hair, ou demonstrar interesse claro no produto (perguntou preço, perguntou textura, quis ver vídeo). Esta é a transição mais comum — não esqueça.
+2. stage="lead_frio" — Use quando a cliente disser que NUNCA usou mega hair E não mostrou interesse imediato.
+3. stage="agendado" — Use assim que a cliente demonstrar QUALQUER intenção de agendamento/visita à loja (disser um dia, pedir horário, perguntar disponibilidade, "quero ir aí", "posso agendar?"), mesmo sem confirmar nada ainda. Ver REGRAS DE AGENDAMENTO (HANDOFF) abaixo — SEMPRE acompanhado de action="none" e shouldIgnore=true.
+4. stage="perdido" — Use quando a cliente desistir, for rude, ou pedir produto fora do catálogo após tentativa de transferência.
+5. stage="novo_lead" — APENAS na primeira mensagem ou antes de qualquer qualificação real.
+
+REGRAS DE AGENDAMENTO (HANDOFF — ESTE CLIENTE NÃO QUER QUE A IA AGENDE SOZINHA):
+Assim que a cliente demonstrar intenção de agendamento (disser um dia, pedir horário, perguntar disponibilidade, dizer que quer ir à loja), a IA NÃO agenda — apenas encaminha para atendimento humano:
+  → action="none" (NUNCA "schedule")
+  → appointmentDateTime=null, appointmentService=null, appointmentValue=null
+  → stage="agendado"
+  → shouldIgnore=true (a IA para de responder; a conversa é encaminhada para um humano)
+  → tags=["qualificado"] se a cliente já confirmou que usa/usou mega hair, senão tags=[]
+  → reply: confirme que vai encaminhar para a equipe verificar disponibilidade, SEM citar data/horário como certo, ex: "Perfeito! Vou te encaminhar pra nossa equipe verificar a disponibilidade e dar continuidade. 😊"
+
+PROIBIDO:
+- Definir stage="vendas" ou stage="desliza_hair" — essas raias são da vendedora humana.
+- Manter stage="novo_lead" depois que a cliente já respondeu se usa mega hair.
+- Usar action="schedule" ou preencher appointmentDateTime — este cliente não usa agendamento automático.
+- Confirmar data/horário como se o agendamento já estivesse feito (nunca diga "agendado pra tal dia").
+- Pedir confirmação de horário à cliente antes de encaminhar — o encaminhamento acontece assim que a intenção de agendar aparece, não depois de combinar detalhes.
+
+REGRA DE TAGS (OBRIGATÓRIA):
+- tags=["qualificado"] — quando a cliente confirmar que JÁ USA ou JÁ USOU mega hair.
+- tags=[] nos demais casos.
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para a cliente",
+  "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "send_media|none",
+  "mediaName": "id-exato-ou-null (ou um array de ids quando enviar vários vídeos)",
+  "appointmentDateTime": null,
+  "appointmentService": null,
   "appointmentValue": null,
   "tags": [],
   "shouldIgnore": false,
@@ -325,6 +380,12 @@ export class AiService {
   private readonly supervisorClient: OpenAI | null = null;
   private readonly supervisorModel = 'gemini-3.1-flash-lite';
 
+  // Cliente Claude, usado só pra gerar rascunho de prompt de onboarding —
+  // roda 1x por cliente novo, então vale mais a precisão (Sonnet 5) do que
+  // o custo do modelo lite do Gemini (ver memória project_onboarding_prompt_draft_model).
+  private readonly anthropicClient: Anthropic | null = null;
+  private readonly anthropicModel = 'claude-sonnet-5';
+
   constructor(
     private config: ConfigService,
     @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
@@ -367,6 +428,11 @@ export class AiService {
         apiKey: geminiKey,
         baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
       });
+    }
+
+    const anthropicKey = config.get('ANTHROPIC_API_KEY');
+    if (anthropicKey) {
+      this.anthropicClient = new Anthropic({ apiKey: anthropicKey });
     }
 
     if (providers.length === 0) {
@@ -469,12 +535,15 @@ Escreva a mensagem de follow-up:`;
   // agente-suporte-cs.md). Isso é preenchimento estruturado, não criação livre — temperature
   // baixa e sem "reasoning" (mesma configuração do lite client).
   async generatePromptDraft(referencePrompt: string, formAnswers: Record<string, string>): Promise<string> {
-    const client = this.liteClient ?? this.providers[0]?.client;
-    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
-    if (!client) throw new Error('Nenhum provedor LLM configurado');
-
+    // O título da pergunta no Google Forms às vezes traz um exemplo de preço/dado
+    // embutido depois de uma quebra de linha (ex: "SERVIÇOS E VALORES:\nMétodo
+    // Italiano\nR$ 250,00..."), pra orientar quem preenche o form. A IA já
+    // confundiu esse exemplo com resposta real do cliente (bug real, visto no
+    // caso Niltoncabelos) — em todos os títulos desse form a pergunta de fato
+    // é sempre a primeira linha, então cortamos ali antes de mandar pra IA.
     const respostasTexto = Object.entries(formAnswers)
-      .filter(([titulo]) => titulo.trim().toLowerCase() !== 'código interno')
+      .map(([titulo, resposta]) => [titulo.split('\n')[0].trim(), resposta] as const)
+      .filter(([titulo]) => titulo.toLowerCase() !== 'código interno')
       .map(([titulo, resposta]) => `${titulo}: ${resposta || '(não respondido)'}`)
       .join('\n');
 
@@ -486,6 +555,8 @@ REGRAS OBRIGATÓRIAS:
 - NUNCA invente preço, endereço, horário, regra de negócio ou qualquer dado que não esteja explícito nas respostas.
 - Se uma informação necessária para preencher uma seção do prompt de referência não veio no formulário, mantenha a seção mas escreva literalmente "⚠️ FALTA: <o que falta>" no lugar do dado — não pule a seção nem invente.
 - Remova qualquer menção que só fazia sentido pro cliente de referência (nome dele, negócio dele) e que não se aplica ao novo cliente.
+- Cada pergunta do formulário abaixo é "TÍTULO: resposta". O TÍTULO às vezes contém um exemplo numérico ou de preço só para orientar quem preenche o form — esse exemplo NUNCA é dado real do cliente novo. Use APENAS o texto depois de ":" como dado real; ignore qualquer número/preço/exemplo que apareça dentro do próprio título da pergunta.
+- Se a resposta trouxer uma lista longa de itens/preços, transcreva TODOS os itens, sem resumir, sem cortar e sem escrever "consulte o catálogo" no lugar de dados que já vieram na resposta.
 - Não inclua bloco de esquema JSON nem tabela de datas — isso é injetado automaticamente pelo sistema depois, fora deste texto.
 - Responda APENAS com o texto final do prompt adaptado, sem comentários, sem markdown de code block, sem explicações antes ou depois.`;
 
@@ -499,21 +570,25 @@ ${respostasTexto || '(nenhuma resposta recebida)'}
 
 Adapte o prompt de referência para o cliente novo, seguindo as regras acima.`;
 
+    if (!this.anthropicClient) throw new Error('ANTHROPIC_API_KEY não configurada');
+
     const resp = await callWithRetry(
-      () => client.chat.completions.create({
-        model,
+      () => this.anthropicClient!.messages.create({
+        model: this.anthropicModel,
         max_tokens: 8000,
-        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      } as any),
+        // Tarefa de transcrição/adaptação estruturada, não de raciocínio —
+        // thinking vem ligado por padrão no Sonnet 5 e consome o max_tokens
+        // inteiro só "pensando", sem sobrar espaço pra escrever o prompt.
+        thinking: { type: 'disabled' },
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
       this.logger,
     );
 
-    const text = (resp.choices[0].message.content ?? '').trim();
-    this.logger.log(`[PROMPT-DRAFT] Rascunho gerado (${text.length} chars, ${(text.match(/⚠️ FALTA:/g) ?? []).length} lacuna(s))`);
+    const block = resp.content.find((b) => b.type === 'text');
+    const text = (block?.type === 'text' ? block.text : '').trim();
+    this.logger.log(`[PROMPT-DRAFT] Rascunho gerado via ${this.anthropicModel} (${text.length} chars, ${(text.match(/⚠️ FALTA:/g) ?? []).length} lacuna(s))`);
     return text;
   }
 
@@ -886,7 +961,7 @@ OUTRAS REGRAS:
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
     const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
 
@@ -967,7 +1042,8 @@ REGRAS:
     // buildDateBlock no final: prefixo estático (basePrompt+media+JSON) fica idêntico
     // entre todas as conversas → habilita cache automático (OpenAI 50%, Gemini 75%).
     const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
-    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${JSON_FORMAT_MEGAHAIR}${extraBlock}\n\n${buildDateBlock()}`;
+    const jsonFormatBlock = schedulingHandoffEnabled ? JSON_FORMAT_MEGAHAIR_HANDOFF : JSON_FORMAT_MEGAHAIR;
+    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${extraBlock}\n\n${buildDateBlock()}`;
 
     // Imagem só entra no conteúdo multimodal desta chamada — o histórico
     // persistido (lead.aiContext) continua sempre com o texto puro, então a

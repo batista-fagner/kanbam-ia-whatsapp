@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing, CalendarClock } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import PromptSearchViewer from '../components/PromptSearchViewer'
@@ -280,6 +280,68 @@ function DeactivationKeywordCard({ config, onSaved }) {
           className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 transition"
         >
           {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
+function SchedulingHandoffToggleCard({ config, onSaved }) {
+  const [enabled, setEnabled] = useState(!!config?.schedulingHandoffEnabled)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function toggle() {
+    const next = !enabled
+    setEnabled(next)
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedulingHandoffEnabled: next }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } catch {
+      setEnabled(!next) // reverte
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${enabled ? 'bg-teal-100' : 'bg-gray-100'}`}>
+            <CalendarClock className={`w-4 h-4 ${enabled ? 'text-teal-600' : 'text-gray-400'}`} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Agendamento manual (handoff humano)</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {enabled
+                ? 'Ativado — a IA nunca agenda sozinha. Ao detectar sinal de agendamento (dia, horário, "quero ir aí"), ela encaminha a conversa para um atendente e para de responder.'
+                : 'Desativado — a IA agenda direto quando o lead combinar dia/horário (comportamento padrão).'}
+            </p>
+            {enabled && (
+              <p className="text-xs text-amber-600 mt-1">
+                Lembre de preencher o número em "Notificação de agendamento" abaixo — é ele que recebe o aviso do handoff.
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+            enabled ? 'bg-teal-600' : 'bg-gray-200'
+          } ${saving ? 'opacity-50' : ''}`}
+          title={enabled ? 'Desativar handoff de agendamento' : 'Ativar handoff de agendamento'}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
         </button>
       </div>
       {saved && <p className="text-xs text-teal-600 mt-2">Salvo!</p>}
@@ -603,7 +665,7 @@ export default function SettingsPage() {
   const canSeeTestPanel = !HIDE_TEST_PANEL_EMAILS.includes(user?.email)
   // Módulos dinâmicos: protótipo ainda mais restrito que o multiagente — só quem
   // já está migrando/testando esse motor específico (ver Layout.jsx, mesmo padrão).
-  const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com']
+  const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
   const canSeeDynamicModules = import.meta.env.VITE_API_URL?.includes('localhost')
     || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
     || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email)
@@ -1494,6 +1556,11 @@ export default function SettingsPage() {
       {/* Card módulos dinâmicos — protótipo, rollout ainda mais restrito */}
       {!bootstrapping && instanceConfig && canSeeDynamicModules && (
         <DynamicModulesToggleCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {/* Card agendamento manual (handoff humano) — só MegaHair, é onde a IA agenda hoje */}
+      {!bootstrapping && instanceConfig && instanceConfig.agentType === 'megahair' && (
+        <SchedulingHandoffToggleCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
       {/* Card notificação de agendamento */}

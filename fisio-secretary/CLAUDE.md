@@ -53,7 +53,7 @@ fisio-secretary/
 │   ├── evolution/
 │   │   ├── evolution.controller.ts    ← webhook + processMessage()
 │   │   ├── evolution.service.ts       ← wrapper IWhatsAppProvider
-│   │   ├── message-queue.service.ts   ← debounce 10s por phone
+│   │   ├── message-queue.service.ts   ← debounce 15s por phone
 │   │   └── providers/
 │   │       ├── whatsapp-provider.interface.ts
 │   │       ├── uazapi.provider.ts     ← postWithRetry() (3x, 1.5s)
@@ -88,7 +88,7 @@ POST /webhooks/uazapi/:tenantId
   → filtra msgs antigas (>5min) + deduplicação por messageId
   → se áudio → transcribeAudio() via uazapi
   → MessageQueueService.enqueue() → retorna {ok:true}
-  → após 10s de silêncio → processMessage(tenantId, ...)
+  → após 15s de silêncio → processMessage(tenantId, ...)
   → aiEnabled=false? → salva msg + notifica frontend (operador assume)
   → sendTypingIndicator()
   → aiService.processMessage() | processMessageMegaHair()

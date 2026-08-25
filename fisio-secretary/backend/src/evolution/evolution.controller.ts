@@ -200,6 +200,8 @@ export class EvolutionController {
     }
 
     // Imagem sem caption: a IA ainda não lê imagens. No agente MegaHair, pede pra cliente descrever o cabelo.
+    // Passa pela fila de debounce (mesma queueKey do fluxo padrão) pra várias imagens
+    // mandadas em sequência gerarem só 1 resposta, não 1 por imagem.
     if (isImage && !text) {
       const messageId: string = message.messageid;
       if (messageId && this.processedIds.has(messageId)) return { ok: true };
@@ -212,13 +214,30 @@ export class EvolutionController {
         const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
         await this.leadsService.saveMessage(conversation.id, 'inbound', phone, '[imagem]', messageId);
 
-        const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
-        const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
-        await this.evolutionService.sendTextMessage(phone, reply, tenantToken, tenantId);
-        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
+        const queueKey = `${tenantId}:${phone}`;
+        this.messageQueue.enqueue(queueKey, '[imagem]', async () => {
+          try {
+            // IA desativada (etiqueta/operador assumiu) — só salva a imagem, nunca responde.
+            // Mesmo comportamento do fluxo de texto em processMessage().
+            const aiEnabled = await this.leadsService.getAiEnabled(lead.id);
+            if (!aiEnabled) {
+              this.logger.log(`IA desativada para ${phone} — imagem sem legenda ignorada`);
+              const updatedLeadPaused = await this.leadsService.findOne(lead.id);
+              this.leadsGateway.emitLeadUpdated(updatedLeadPaused);
+              return;
+            }
 
-        const updatedLead = await this.leadsService.findOne(lead.id);
-        this.leadsGateway.emitLeadUpdated(updatedLead);
+            const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
+            const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+            await this.evolutionService.sendTextMessage(phone, reply, tenantToken, tenantId);
+            await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);
+
+            const updatedLead = await this.leadsService.findOne(lead.id);
+            this.leadsGateway.emitLeadUpdated(updatedLead);
+          } catch (err) {
+            this.logger.error(`Erro ao responder imagem de ${phone}: ${err.message}`);
+          }
+        });
       } catch (err) {
         this.logger.error(`Erro ao tratar imagem de ${phone}: ${err.message}`);
       }
@@ -535,7 +554,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, pendingImageUrl);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, mediaNames, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, pendingImageUrl, instanceConfig?.schedulingHandoffEnabled ?? false);
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 

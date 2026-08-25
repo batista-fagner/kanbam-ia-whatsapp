@@ -16,7 +16,7 @@ const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
 @Injectable()
 export class MessageQueueService implements OnModuleDestroy {
   private readonly logger = new Logger(MessageQueueService.name);
-  private readonly DEBOUNCE_MS = 10000;
+  private readonly DEBOUNCE_MS = 15000;
   private readonly queues = new Map<string, QueueEntry>();
 
   // `phone` aqui é a queueKey `${tenantId}:${phone}` (ver evolution.controller.ts) —

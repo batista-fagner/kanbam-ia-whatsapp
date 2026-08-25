@@ -23,11 +23,11 @@ export class BillingReminderService {
     private readonly payments: PaymentsService,
   ) {}
 
-  // Roda todo dia às 9h (Brasília). Trata cobrança conforme o método do cliente:
+  // Roda todo dia às 13h (Brasília). Trata cobrança conforme o método do cliente:
   //  - 'pix'    → gera/reenvia QR PIX (Efí) + e-mail, na janela de 2 dias antes até o vencimento
   //  - 'manual' → lembrete de texto exatamente 2 dias antes (legado, sem PIX real)
   //  - 'card'   → nada (cobrança recorrente automática no cartão)
-  @Cron('0 9 * * *', { timeZone: TZ })
+  @Cron('0 13 * * *', { timeZone: TZ })
   async sendPaymentReminders() {
     const senderToken = await this.resolveSenderToken();
     if (!senderToken) {

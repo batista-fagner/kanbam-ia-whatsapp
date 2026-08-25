@@ -105,6 +105,13 @@ export class WhatsappConfig {
   @Column({ name: 'notification_phone', type: 'varchar', nullable: true })
   notificationPhone: string | null;
 
+  // Quando true, a IA NUNCA agenda sozinha (MegaHair): ao detectar sinal de agendamento
+  // (data/horário/visita), faz handoff pro humano (shouldIgnore=true) em vez de
+  // action="schedule". Default false para não mudar quem já depende do agendamento
+  // automático da IA. Ver JSON_FORMAT_MEGAHAIR_HANDOFF em ai.service.ts.
+  @Column({ name: 'scheduling_handoff_enabled', type: 'boolean', default: false })
+  schedulingHandoffEnabled: boolean;
+
   // --- Pagamento Stripe (D2) ---
   @Column({ name: 'stripe_customer_id', type: 'varchar', nullable: true })
   stripeCustomerId: string | null;
