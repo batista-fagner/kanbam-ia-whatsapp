@@ -411,6 +411,22 @@ export class EvolutionController {
     const pendingAudioUrl = this.pendingAudioUrl.get(queueKey);
     if (pendingAudioUrl) this.pendingAudioUrl.delete(queueKey);
 
+    // O Gemini (endpoint OpenAI-compatible) rejeita image_url apontando pra uma
+    // URL remota (400 sem corpo, testado direto na API) — só aceita a imagem
+    // como data URI base64. OpenAI aceita as duas formas, então convertemos
+    // aqui pra funcionar com qualquer provedor do failover. A URL do R2 em si
+    // (pendingImageUrl) continua sendo usada pra persistir a mensagem/Kanban.
+    let imageDataUri: string | undefined;
+    if (pendingImageUrl) {
+      try {
+        const imgResp = await axios.get(pendingImageUrl, { responseType: 'arraybuffer' });
+        const mime = imgResp.headers['content-type'] || 'image/jpeg';
+        imageDataUri = `data:${mime};base64,${Buffer.from(imgResp.data).toString('base64')}`;
+      } catch (err) {
+        this.logger.error(`[IMG-ANALYSIS] Falha ao converter imagem pra base64 (${phone}): ${err.message}`);
+      }
+    }
+
     await this.leadsService.saveMessage(
       conversation.id, 'inbound', phone, combinedText, messageKeyId,
       pendingImageUrl ?? pendingAudioUrl,
@@ -525,7 +541,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     let aiResponse: AiResponse | null = null;
     if (instanceConfig?.promptEngine === 'dynamic_modules') {
       try {
-        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, pendingImageUrl);
+        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, imageDataUri);
         if (result) {
           aiResponse = result.aiResponse;
           // Persiste só o sinal deste turno (freshNames), não a união carregada
@@ -585,7 +601,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, pendingImageUrl, instanceConfig?.schedulingHandoffEnabled ?? false);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, imageDataUri, instanceConfig?.schedulingHandoffEnabled ?? false);
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
