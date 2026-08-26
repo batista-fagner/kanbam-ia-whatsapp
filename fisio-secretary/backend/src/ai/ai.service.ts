@@ -742,14 +742,25 @@ Responda APENAS com JSON válido, sem texto extra, no formato:
   // Chama os provedores em ordem. callWithRetry trata erros transitórios dentro de
   // cada provedor; se um esgota (cota/rate limit persistente), passa pro próximo.
   // response_format json_object funciona em todos; reasoning_effort só no Gemini.
-  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string, temperature?: number, fallbackModelOverride?: string): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
+  private async callLLM(systemPrompt: string, messages: any[], modelOverride?: string, temperature?: number, fallbackModelOverride?: string, forceProviderName?: string): Promise<{ text: string; inputTokens: number; cachedTokens: number; outputTokens: number }> {
     if (this.providers.length === 0) {
       throw new Error('Nenhum provedor LLM configurado');
     }
 
+    // forceProviderName: pula a ordem normal de failover e usa só esse provedor —
+    // usado hoje pra mensagens com imagem, que sempre vão direto pro OpenAI (o
+    // Gemini, mesmo aceitando base64, foi menos consistente reconhecendo textura
+    // na prática; ver decisão do usuário em 2026-08-26).
+    const providersToTry = forceProviderName
+      ? this.providers.filter((p) => p.name === forceProviderName)
+      : this.providers;
+    if (forceProviderName && providersToTry.length === 0) {
+      throw new Error(`Provedor forçado "${forceProviderName}" não está configurado`);
+    }
+
     let lastErr: any;
-    for (let i = 0; i < this.providers.length; i++) {
-      const provider = this.providers[i];
+    for (let i = 0; i < providersToTry.length; i++) {
+      const provider = providersToTry[i];
       // modelOverride: usado pelo simulador de teste do multi-agente e por hardcodes
       // pontuais por tenant (ver evolution.controller.ts) — troca o modelo do
       // provedor Gemini. Se modelOverride falhar e houver fallbackModelOverride
@@ -806,8 +817,8 @@ Responda APENAS com JSON válido, sem texto extra, no formato:
           this.logger.error(`[LINDONA] Provedor "${provider.name}" (modelo "${modelToUse}") falhou: ${err.message}${detail ? ` — detalhe: ${JSON.stringify(detail)}` : ''}`);
           if (m < modelsToTry.length - 1) {
             this.logger.warn(`[LINDONA] → tentando modelo de fallback "${modelsToTry[m + 1]}" no mesmo provedor`);
-          } else if (i < this.providers.length - 1) {
-            this.logger.warn(`[LINDONA] → tentando próximo provedor: "${this.providers[i + 1].name}"`);
+          } else if (i < providersToTry.length - 1) {
+            this.logger.warn(`[LINDONA] → tentando próximo provedor: "${providersToTry[i + 1].name}"`);
           }
         }
       }
@@ -1073,8 +1084,10 @@ REGRAS:
     ];
 
     try {
-      // callLLM faz o failover entre provedores automaticamente.
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
+      // callLLM faz o failover entre provedores automaticamente. Mensagens com
+      // imagem vão direto pro OpenAI — reconhecimento de textura mais consistente
+      // na prática que o Gemini (decisão do usuário, 2026-08-26).
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, undefined, undefined, undefined, imageUrl ? 'openai' : undefined);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'monolith');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
@@ -1182,12 +1195,12 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
   // Recebe o systemPrompt já montado (bloco fixo + módulos selecionados) — não
   // monta nada aqui, só chama o LLM (com o mesmo pool de failover Gemini→OpenAI
   // do resto do sistema) e faz o parse do JSON de resposta.
-  async processDynamicPrompt(tenantId: string, systemPrompt: string, messages: any[], modelOverride?: string): Promise<AiResponse> {
+  async processDynamicPrompt(tenantId: string, systemPrompt: string, messages: any[], modelOverride?: string, forceProviderName?: string): Promise<AiResponse> {
     try {
       // temperature reduzida (mesma mitigação aplicada ao multi_agent) — na migração
       // pro motor de módulos dinâmicos esse fix não tinha sido carregado, o que
       // reabriu a alucinação de preço do Alex. Ver project_alex_price_hallucination_fix.
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, modelOverride, 0.3);
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, modelOverride, 0.3, undefined, forceProviderName);
       void this._trackUsage(tenantId, inputTokens, cachedTokens, outputTokens, 'dynamic_modules');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
