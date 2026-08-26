@@ -23,6 +23,10 @@ export interface AiResponse {
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
   handoff?: boolean; // Multi-agente: true = o agente pediu pra passar o bastão pro supervisor
   tokenUsage?: { inputTokens: number; cachedTokens: number; outputTokens: number }; // Multi-agente: consumo desta chamada (contador de teste)
+  // Motor de módulos dinâmicos, só quando o tenant tem PriceConfig ativa: a IA
+  // identifica produto/gramatura/pagamento, quem calcula é o código (ver
+  // src/pricing). Ausente/vazio pra qualquer tenant sem cálculo por gramatura.
+  priceQuotes?: { id: string; productKey: string; gramas: number; tela: boolean; payment: 'vista' | 'cartao' | 'especie' }[];
   fields?: {
     name?: string;
     symptoms?: string;

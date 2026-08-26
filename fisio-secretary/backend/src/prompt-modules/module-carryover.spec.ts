@@ -21,7 +21,7 @@ describe('PromptModulesService — arraste de módulos entre turnos', () => {
 
   beforeEach(() => {
     classifyModules = jest.fn().mockResolvedValue([]);
-    svc = new PromptModulesService({} as any, { classifyModules } as any, {} as any);
+    svc = new PromptModulesService({} as any, {} as any, { classifyModules } as any, {} as any);
   });
 
   const names = (r: { selected: any[] }) => r.selected.map((m) => m.name);

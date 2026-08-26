@@ -6,15 +6,16 @@ import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDU
 import { Lead } from '../common/entities/lead.entity';
 import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { MediaService } from '../media/media.service';
+import { PriceConfig } from '../common/entities/price-config.entity';
+import { buildPriceCatalogBlock } from '../pricing/price-calc';
+import { applyPriceQuotes } from '../pricing/price-quote-applier';
 
 type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog' | 'injectsDateTable'>>;
 
 // Schema JSON compartilhado por todo módulo/tenant deste motor — não tem campo
 // "handoff" (não existe mais o conceito) nem capacidades condicionais por
 // enquanto (protótipo: todo módulo pode agendar/mandar mídia).
-const JSON_SCHEMA = `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua campos além destes):
-{
-  "reply": "texto da resposta para a cliente",
+const JSON_SCHEMA_BASE_FIELDS = `  "reply": "texto da resposta para a cliente",
   "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
   "temperature": "quente|morno|frio",
   "action": "none|schedule|send_media",
@@ -24,8 +25,20 @@ const JSON_SCHEMA = `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua
   "appointmentValue": null,
   "tags": [],
   "shouldIgnore": false,
-  "fields": { "name": "nome se coletado ou null" }
+  "fields": { "name": "nome se coletado ou null" }`;
+
+// "priceQuotes" só entra no schema (e a IA só o preenche) quando o tenant tem
+// PriceConfig ativa — ver buildPriceCatalogBlock. Tenant sem config nem vê
+// esse campo, prompt fica idêntico ao de antes.
+const PRICE_QUOTES_FIELD = `,
+  "priceQuotes": [{ "id": "a", "productKey": "...", "gramas": 0, "tela": false, "payment": "vista" }]`;
+
+function buildJsonSchema(hasPriceCalc: boolean): string {
+  return `RESPONDA SEMPRE em JSON com este formato exato (NÃO inclua campos além destes):
+{
+${JSON_SCHEMA_BASE_FIELDS}${hasPriceCalc ? PRICE_QUOTES_FIELD : ''}
 }`;
+}
 
 const HISTORY_WINDOW = 16;
 
@@ -67,6 +80,7 @@ export class PromptModulesService {
 
   constructor(
     @InjectRepository(PromptModule) private readonly repo: Repository<PromptModule>,
+    @InjectRepository(PriceConfig) private readonly priceConfigRepo: Repository<PriceConfig>,
     private readonly aiService: AiService,
     private readonly mediaService: MediaService,
   ) {}
@@ -194,7 +208,7 @@ export class PromptModulesService {
     return hasAnyCaption(media) ? `${base}\n${CAPTION_PRICE_RULE}` : base;
   }
 
-  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[]): string {
+  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[], priceConfig?: PriceConfig | null): string {
     const moduleBlocks = selected.map((m) => {
       if (!m.injectsMediaCatalog) return m.content;
       return [m.content, this.buildMediaCatalogBlock(media)].filter(Boolean).join('\n\n');
@@ -210,8 +224,14 @@ export class PromptModulesService {
     const dateTail = needsFullDateTable
       ? [AGENT_SCHEDULING_RULES, buildDateBlock()].join('\n\n')
       : buildMiniDateBlock();
-    const parts = [core?.content ?? '', ...moduleBlocks, JSON_SCHEMA, dateTail];
+    const hasPriceCalc = !!(priceConfig?.isActive && priceConfig.products.length);
+    const priceBlock = hasPriceCalc ? buildPriceCatalogBlock(priceConfig!) : '';
+    const parts = [core?.content ?? '', ...moduleBlocks, priceBlock, buildJsonSchema(hasPriceCalc), dateTail];
     return parts.filter((p) => p?.trim()).join('\n\n');
+  }
+
+  private async getActivePriceConfig(tenantId: string): Promise<PriceConfig | null> {
+    return this.priceConfigRepo.findOne({ where: { tenantId, isActive: true } });
   }
 
   // ───────────────── Fluxo de PRODUÇÃO (webhook WhatsApp) ─────────────────
@@ -237,7 +257,8 @@ export class PromptModulesService {
     const media = selected.some((m) => m.injectsMediaCatalog)
       ? await this.mediaService.listAll(tenantId)
       : [];
-    const systemPrompt = this.buildSystemPrompt(core, selected, media);
+    const priceConfig = await this.getActivePriceConfig(tenantId);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig);
 
     // Imagem só entra no conteúdo multimodal desta chamada — o que fica
     // persistido em lead.aiContext (via aiService.buildUpdatedContext, chamado
@@ -252,7 +273,7 @@ export class PromptModulesService {
     const messages = [...history, { role: 'user', content: userContent }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
-    aiResponse.reply = stripInternalMarkers(aiResponse.reply);
+    aiResponse.reply = applyPriceQuotes(stripInternalMarkers(aiResponse.reply), aiResponse.priceQuotes, priceConfig);
     const moduleNames = selected.map((m) => m.name);
     const carried = moduleNames.filter((n) => !freshNames.includes(n));
     this.logger.log(`[DYNAMIC] módulos=[${moduleNames.join(',') || '-'}]${carried.length ? ` (arrastados do turno anterior: ${carried.join(',')})` : ''} tenant=${tenantId}`);
@@ -279,12 +300,13 @@ export class PromptModulesService {
     const media = selected.some((m) => m.injectsMediaCatalog)
       ? await this.mediaService.listAll(tenantId)
       : [];
-    const systemPrompt = this.buildSystemPrompt(core, selected, media);
+    const priceConfig = await this.getActivePriceConfig(tenantId);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig);
 
     const messages = [...history, { role: 'user', content: message }];
 
     const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages, modelOverride);
-    aiResponse.reply = stripInternalMarkers(aiResponse.reply);
+    aiResponse.reply = applyPriceQuotes(stripInternalMarkers(aiResponse.reply), aiResponse.priceQuotes, priceConfig);
     const updatedContext = [
       ...(aiContext ?? []),
       { role: 'user', content: message },
