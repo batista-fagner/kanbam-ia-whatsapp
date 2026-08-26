@@ -708,7 +708,14 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (aiResponse.stage === 'agendado' && !wasAgendado) {
         this.notifyAppointmentScheduled(lead, instanceConfig, tenantToken, tenantId);
       }
-      await this.leadsService.toggleAi(lead.id, false);
+      // Tenant com schedulingHandoffEnabled usa shouldIgnore=true como HANDOFF
+      // pontual (agendamento, avaliação) — encaminha pro humano cuidar dessa ação
+      // específica, mas a IA continua ativa pro resto da conversa. Nos demais
+      // tenants, shouldIgnore=true é desativação permanente de verdade (xingamento/
+      // fora de escopo/emergência) — comportamento inalterado.
+      if (!instanceConfig?.schedulingHandoffEnabled) {
+        await this.leadsService.toggleAi(lead.id, false);
+      }
 
       const updatedLead = await this.leadsService.findOne(lead.id);
       this.leadsGateway.emitLeadUpdated(updatedLead);
