@@ -30,14 +30,16 @@ const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
 
 // Reconhecimento de imagem (foto de cabelo → identifica textura pra recomendar
-// a mídia certa do catálogo) — habilitado tenant a tenant. alex_teste (motor
-// dynamic_modules) e a conta admin/Cabelô principal (motor legacy, ver
-// processMessageMegaHair). Niltoncabelos NÃO está habilitado ainda (decisão
-// do cliente, 2026-08-06) — o prompt dele usa o fluxo "não consigo ver
-// imagens, pergunta a textura por texto".
+// a mídia certa do catálogo) — habilitado tenant a tenant. Só alex_teste (motor
+// dynamic_modules) por enquanto. A conta admin/Cabelô principal (2c562828...)
+// foi DESATIVADA em 2026-08-26: o admin relatou que a IA reconhece textura/cor
+// mas não a origem do cabelo (Brasileiro/Vietnamita/Indiano) — essa origem é
+// rótulo de fornecedor, não uma característica visual confiável, então nenhum
+// ajuste de prompt resolve isso de verdade. Ver project_lindona_image_origin_limitation.
+// Niltoncabelos também não está habilitado (decisão do cliente, 2026-08-06) —
+// ambos usam o fluxo padrão "não consigo ver imagens, pergunta a textura por texto".
 const IMAGE_ANALYSIS_TENANT_IDS = [
   'e624e817-5b6c-4840-b0ea-269eb78afe8d',
-  '2c562828-0fe9-43c8-bad0-77a931968afc',
 ];
 
 @Controller('webhooks')
