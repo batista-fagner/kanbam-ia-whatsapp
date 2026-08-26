@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { Lead } from '../common/entities/lead.entity';
 import { TokenUsage } from '../common/entities/token-usage.entity';
 
@@ -911,11 +912,12 @@ REGRAS:
 
   // Instruções de uso do catálogo de mídias — compartilhadas entre o fluxo
   // single-prompt (processMessageMegaHair) e o multi-agente (processMessageAgent).
-  private buildMediaInstructions(availableMediaNames: string[]): string {
-    return availableMediaNames.length > 0
+  private buildMediaInstructions(availableMedia: CatalogEntry[]): string {
+    return availableMedia.length > 0
       ? `
 CATÁLOGO DE MÍDIAS DISPONÍVEIS:
-${availableMediaNames.map(n => `- "${n}"`).join('\n')}
+${buildCatalogLines(availableMedia)}
+${hasAnyCaption(availableMedia) ? CAPTION_PRICE_RULE + '\n' : ''}
 
 ⚠️ REGRA CRÍTICA: em "mediaName" use EXATAMENTE um dos nomes acima — copie letra por letra. NUNCA invente um nome. Se a cliente pedir tamanho fora do catálogo, ofereça o mais próximo disponível da lista.
 
@@ -967,9 +969,9 @@ OUTRAS REGRAS:
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMediaNames: string[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMedia: CatalogEntry[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
-    const mediaInstructions = this.buildMediaInstructions(availableMediaNames);
+    const mediaInstructions = this.buildMediaInstructions(availableMedia);
 
     const defaultPromptBase = `Vc é a Lindona, consultora especialista em Mega Hair da Cabelô.
 Seu objetivo é VENDER — qualificar a cliente e fechar o agendamento de aplicação.
@@ -1107,7 +1109,7 @@ REGRAS:
     lead: Lead,
     incomingText: string,
     agent: { name: string; respondsTo?: string; handoffWhen?: string; systemPrompt: string; canSchedule?: boolean; canSendMedia?: boolean },
-    availableMediaNames: string[],
+    availableMedia: CatalogEntry[],
     extraSystemContext?: string,
     opts?: { disableHandoff?: boolean; modelOverride?: string; fallbackModelOverride?: string },
   ): Promise<AiResponse> {
@@ -1137,7 +1139,7 @@ Vc é o agente "${agent.name}" de um time de agentes especializados.${scopeBlock
     const dateTail = caps.canSchedule ? buildDateBlock() : buildMiniDateBlock();
     const systemPrompt = [
       agent.systemPrompt,
-      caps.canSendMedia ? this.buildMediaInstructions(availableMediaNames) : '',
+      caps.canSendMedia ? this.buildMediaInstructions(availableMedia) : '',
       AGENT_STAGE_RULES,
       caps.canSchedule ? AGENT_SCHEDULING_RULES : '',
       buildAgentJsonSchema(caps),

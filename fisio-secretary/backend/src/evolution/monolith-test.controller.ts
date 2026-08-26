@@ -38,7 +38,6 @@ export class MonolithTestController {
 
     const config = await this.whatsappConfigService.getByTenant(user.tenantId);
     const mediaFiles = await this.mediaService.listAll(user.tenantId);
-    const availableMediaNames = mediaFiles.map((m) => m.name);
 
     const aiContext = body.aiContext ?? [];
     const facts = this.extractAccumulatedFields(aiContext);
@@ -52,7 +51,7 @@ export class MonolithTestController {
     const result = await this.aiService.processMessageMegaHair(
       fakeLead,
       body.message,
-      availableMediaNames,
+      mediaFiles,
       config?.customPromptMegaHair ?? undefined,
     );
 

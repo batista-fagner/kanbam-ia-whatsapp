@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Agent } from '../common/entities/agent.entity';
 import { AiService, AiResponse } from '../ai/ai.service';
+import { CatalogEntry } from '../media/media-catalog.util';
 import { Lead } from '../common/entities/lead.entity';
 import { MediaService } from '../media/media.service';
 
@@ -122,7 +123,6 @@ export class AgentsService {
     if (!message?.trim()) throw new BadRequestException('Mensagem é obrigatória');
 
     const mediaFiles = await this.mediaService.listAll(tenantId);
-    const availableMediaNames = mediaFiles.map((m) => m.name);
 
     // Em produção os fatos (name/symptoms/urgency/...) vivem nas colunas do lead,
     // persistidas a cada turno. No teste não persistimos, então reconstruímos os
@@ -137,7 +137,7 @@ export class AgentsService {
       ...facts,
     } as Lead;
 
-    const result = await this.chatForLead(tenantId, fakeLead, message, availableMediaNames, undefined, modelOverride, fallbackModelOverride);
+    const result = await this.chatForLead(tenantId, fakeLead, message, mediaFiles, undefined, modelOverride, fallbackModelOverride);
     if (!result) throw new BadRequestException('Conecte ao menos um agente ao supervisor');
 
     const updatedContext = this.aiService.buildUpdatedContext(fakeLead, message, result.aiResponse.rawJson!);
@@ -188,7 +188,7 @@ export class AgentsService {
     tenantId: string,
     lead: Lead,
     message: string,
-    availableMediaNames: string[],
+    availableMedia: CatalogEntry[],
     extraSystemContext?: string,
     modelOverride?: string,
     fallbackModelOverride?: string,
@@ -211,7 +211,7 @@ export class AgentsService {
       current = active.find((a) => a.id === agentId) ?? active[0];
     }
 
-    let response = await this.aiService.processMessageAgent(lead, message, current, availableMediaNames, extraSystemContext, { modelOverride, fallbackModelOverride });
+    let response = await this.aiService.processMessageAgent(lead, message, current, availableMedia, extraSystemContext, { modelOverride, fallbackModelOverride });
     const firstUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
     if (!response.handoff || active.length === 1) {
       this.ensureReply(response, tenantId, current.name);
@@ -226,7 +226,7 @@ export class AgentsService {
     // O agente que recebe o bastão responde com o handoff DESABILITADO estruturalmente
     // (opts.disableHandoff) — obriga uma resposta real e evita o ping-pong de
     // handoff:true + reply:"" que cai no fallback genérico.
-    response = await this.aiService.processMessageAgent(lead, message, next, availableMediaNames, extraSystemContext, { disableHandoff: true, modelOverride, fallbackModelOverride });
+    response = await this.aiService.processMessageAgent(lead, message, next, availableMedia, extraSystemContext, { disableHandoff: true, modelOverride, fallbackModelOverride });
     response.handoff = false;
     this.ensureReply(response, tenantId, next.name);
     const secondUsage = response.tokenUsage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };

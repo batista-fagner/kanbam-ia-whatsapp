@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { PromptModule } from '../common/entities/prompt-module.entity';
 import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDULING_RULES } from '../ai/ai.service';
 import { Lead } from '../common/entities/lead.entity';
+import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { MediaService } from '../media/media.service';
 
 type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog' | 'injectsDateTable'>>;
@@ -187,15 +188,16 @@ export class PromptModulesService {
   // Catálogo de mídia sempre fresco (não fica salvo no `content` do módulo,
   // que ficaria desatualizado assim que o cliente cadastrasse/renomeasse
   // vídeo — ver bug real encontrado em 2026-07-10 no alex_teste).
-  private buildMediaCatalogBlock(mediaNames: string[]): string {
-    if (!mediaNames.length) return 'CATÁLOGO DE MÍDIAS: nenhuma mídia cadastrada ainda. Não ofereça vídeos.';
-    return `CATÁLOGO DE MÍDIAS DISPONÍVEIS (lista atual, sempre atualizada):\n${mediaNames.map((n) => `- "${n}"`).join('\n')}\n\nUse em "mediaName" EXATAMENTE um dos nomes acima, copiado letra por letra (maiúsculas/minúsculas/espaços/acentos). NUNCA invente um nome fora desta lista. Se a cliente pedir algo que não bate exatamente, escolha o mais próximo (mesma textura, tamanho mais parecido) dentre os nomes acima.`;
+  private buildMediaCatalogBlock(media: CatalogEntry[]): string {
+    if (!media.length) return 'CATÁLOGO DE MÍDIAS: nenhuma mídia cadastrada ainda. Não ofereça vídeos.';
+    const base = `CATÁLOGO DE MÍDIAS DISPONÍVEIS (lista atual, sempre atualizada):\n${buildCatalogLines(media)}\n\nUse em "mediaName" EXATAMENTE um dos nomes acima, copiado letra por letra (maiúsculas/minúsculas/espaços/acentos). NUNCA invente um nome fora desta lista. Se a cliente pedir algo que não bate exatamente, escolha o mais próximo (mesma textura, tamanho mais parecido) dentre os nomes acima.`;
+    return hasAnyCaption(media) ? `${base}\n${CAPTION_PRICE_RULE}` : base;
   }
 
-  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], mediaNames: string[]): string {
+  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[]): string {
     const moduleBlocks = selected.map((m) => {
       if (!m.injectsMediaCatalog) return m.content;
-      return [m.content, this.buildMediaCatalogBlock(mediaNames)].filter(Boolean).join('\n\n');
+      return [m.content, this.buildMediaCatalogBlock(media)].filter(Boolean).join('\n\n');
     });
     // Bloco de data SEMPRE por último — é a única parte variável do prompt
     // (calculada em código, muda a cada dia/hora), então mantê-la no final
@@ -232,10 +234,10 @@ export class PromptModulesService {
     const history = slimHistory((lead.aiContext as any[]) ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
     const { selected, freshNames } = await this.selectModules(tenantId, message, allModules, lead.activeModules ?? [], priorAssistantText);
-    const mediaNames = selected.some((m) => m.injectsMediaCatalog)
-      ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
+    const media = selected.some((m) => m.injectsMediaCatalog)
+      ? await this.mediaService.listAll(tenantId)
       : [];
-    const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media);
 
     // Imagem só entra no conteúdo multimodal desta chamada — o que fica
     // persistido em lead.aiContext (via aiService.buildUpdatedContext, chamado
@@ -274,10 +276,10 @@ export class PromptModulesService {
     const history = slimHistory(aiContext ?? []);
     const priorAssistantText = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
     const { selected, freshNames } = await this.selectModules(tenantId, message, allModules, previousModuleNames ?? [], priorAssistantText);
-    const mediaNames = selected.some((m) => m.injectsMediaCatalog)
-      ? (await this.mediaService.listAll(tenantId)).map((m) => m.name)
+    const media = selected.some((m) => m.injectsMediaCatalog)
+      ? await this.mediaService.listAll(tenantId)
       : [];
-    const systemPrompt = this.buildSystemPrompt(core, selected, mediaNames);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media);
 
     const messages = [...history, { role: 'user', content: message }];
 
