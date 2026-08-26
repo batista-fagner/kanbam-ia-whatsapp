@@ -9,8 +9,11 @@ interface QueueEntry {
 // Debounce por tenant maior que o padrão — pedido pontual da demo de prospecção
 // ativa (claudia_teste@hotmail.com), o cliente dele costuma mandar várias mensagens
 // picadas e quer mais margem pra IA juntar tudo antes de responder. Não generalizar.
+// alex_teste (e624e817...): debounce reduzido pra 5s pra agilizar os testes
+// de reconhecimento de imagem no tenant sandbox — não generalizar.
 const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
   '1ff3f0b3-52d1-4e89-b7bf-552d0556de29': 25000,
+  'e624e817-5b6c-4840-b0ea-269eb78afe8d': 5000,
 };
 
 @Injectable()
