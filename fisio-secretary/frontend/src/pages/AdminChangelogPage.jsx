@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Áudio visível/tocável no Kanban + foto de perfil do WhatsApp',
+    date: '26/08/2026',
+    detail: 'Áudio (do lead e do operador) ficava invisível no CRM — só o texto transcrito aparecia, o arquivo original nunca era persistido. Agora o áudio do lead é baixado em paralelo à transcrição e salvo no R2 (toca com player no Kanban); novo botão de microfone grava e envia áudio do operador como nota de voz. Foto de perfil do WhatsApp também passou a ser buscada uma vez e persistida (a URL da uazapi expira em poucos dias). Todos os tenants são beneficiados, sem configuração.',
+  },
+  {
+    title: 'Reconhecimento de imagem desativado (tenant admin/Cabelô)',
+    date: '26/08/2026',
+    detail: 'Admin relatou que a IA reconhece textura e cor na foto, mas não a origem do cabelo (Brasileiro/Vietnamita/Indiano) — essa origem é rótulo de fornecedor, não característica visual, então nenhum ajuste de prompt resolveria de verdade. Voltou pro fluxo padrão: "ainda não consigo ver imagens, descreve pra mim".',
+  },
+  {
     title: 'Preço: legenda da mídia vira fonte de verdade (S&A Cabelos Naturais)',
     date: '26/08/2026',
     detail: 'A legenda do vídeo (o que a cliente lê na tela) agora entra no prompt junto com o preço. Antes só o nome do arquivo ia pro prompt, então a IA anunciava um preço no vídeo e cotava outro no texto — chegou a emprestar o preço de um produto pra outro parecido.',
