@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
@@ -40,6 +40,7 @@ export default function Layout({ onLogout }) {
       { icon: Users, label: 'Clientes', path: '/admin' },
       { icon: FileText, label: 'Prompts', path: '/admin/prompts' },
       { icon: ClipboardList, label: 'Onboarding', path: '/admin/onboarding' },
+      { icon: ListChecks, label: 'Status do projeto', path: '/admin/changelog' },
       { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
     ] : []),
   ]
