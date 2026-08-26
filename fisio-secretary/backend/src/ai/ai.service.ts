@@ -1084,10 +1084,8 @@ REGRAS:
     ];
 
     try {
-      // callLLM faz o failover entre provedores automaticamente. Mensagens com
-      // imagem vão direto pro OpenAI — reconhecimento de textura mais consistente
-      // na prática que o Gemini (decisão do usuário, 2026-08-26).
-      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages, undefined, undefined, undefined, imageUrl ? 'openai' : undefined);
+      // callLLM faz o failover entre provedores automaticamente.
+      const { text: rawText, inputTokens, cachedTokens, outputTokens } = await this.callLLM(systemPrompt, messages);
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'monolith');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };

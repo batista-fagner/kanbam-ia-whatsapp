@@ -272,7 +272,7 @@ export class PromptModulesService {
       : message;
     const messages = [...history, { role: 'user', content: userContent }];
 
-    const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages, undefined, imageUrl ? 'openai' : undefined);
+    const aiResponse = await this.aiService.processDynamicPrompt(tenantId, systemPrompt, messages);
     aiResponse.reply = applyPriceQuotes(stripInternalMarkers(aiResponse.reply), aiResponse.priceQuotes, priceConfig);
     const moduleNames = selected.map((m) => m.name);
     const carried = moduleNames.filter((n) => !freshNames.includes(n));
