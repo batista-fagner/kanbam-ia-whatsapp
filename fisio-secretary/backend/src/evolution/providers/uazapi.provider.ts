@@ -270,7 +270,7 @@ export class UazapiProvider implements IWhatsAppProvider {
     return response.data;
   }
 
-  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video', caption?: string, token?: string): Promise<void> {
+  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video' | 'ptt', caption?: string, token?: string): Promise<void> {
     const useToken = await this.resolveToken(token);
     try {
       await this.postWithRetry(
@@ -285,6 +285,28 @@ export class UazapiProvider implements IWhatsAppProvider {
         type,
         mediaUrl: url,
       });
+    }
+  }
+
+  // Foto de perfil do WhatsApp — URL assinada da uazapi (pps.whatsapp.net),
+  // expira em alguns dias; quem chama deve persistir num storage próprio
+  // (ver MediaService.uploadAvatar). Retorna null se o contato não tem foto
+  // ou se a chamada falhar (não deve derrubar o fluxo do Kanban).
+  async getProfilePicture(phone: string, token?: string): Promise<{ url: string | null; name?: string } | null> {
+    const useToken = await this.resolveToken(token);
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.baseUrl}/chat/details`,
+          { number: phone, preview: true },
+          { headers: { token: useToken } },
+        ),
+      );
+      const data = response.data as any;
+      return { url: data?.imagePreview || data?.image || null, name: data?.name || data?.wa_contactName || data?.wa_name };
+    } catch (err) {
+      this.logger.warn(`Erro ao buscar foto de perfil de ${phone}: ${err.message}`);
+      return null;
     }
   }
 

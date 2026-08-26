@@ -156,6 +156,46 @@ export class MediaService {
     return `${this.publicUrl}/${storagePath}`;
   }
 
+  // Extensão a partir do mime type, sanitizando parâmetros tipo
+  // "audio/webm;codecs=opus" → "webm" (mimeType.split('/').pop() sozinho
+  // devolveria "webm;codecs=opus", que quebraria a key do R2).
+  private extFromMimeType(mimeType: string, fallback = 'bin'): string {
+    return mimeType.split('/').pop()?.split(';')[0].trim() || fallback;
+  }
+
+  // Áudio de mensagem de voz — usado tanto pro áudio RECEBIDO do lead (transcrito
+  // e também guardado pra tocar no CRM) quanto pro áudio ENVIADO pelo operador
+  // gravando direto no Kanban. Mesmo prefixo pros dois lados, só quem chama
+  // muda; não precisa de linha em media_files (biblioteca é só catálogo de saída).
+  async uploadLeadAudio(buffer: Buffer, tenantId: string, leadId: string, mimeType: string): Promise<string> {
+    const ext = this.extFromMimeType(mimeType, 'ogg');
+    const storagePath = `audio/${tenantId}/${leadId}/${Date.now()}.${ext}`;
+    await this.s3.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+      Body: buffer,
+      ContentType: mimeType.split(';')[0].trim(),
+    }));
+    return `${this.publicUrl}/${storagePath}`;
+  }
+
+  // Foto de perfil do WhatsApp — key FIXA (sem timestamp) porque é upsert: a
+  // cada fetch a mesma imagem substitui a anterior no mesmo lugar, sem acumular
+  // lixo no bucket a cada re-sincronização.
+  async uploadAvatar(buffer: Buffer, tenantId: string, leadId: string, mimeType: string): Promise<string> {
+    const ext = this.extFromMimeType(mimeType, 'jpg');
+    const storagePath = `avatars/${tenantId}/${leadId}.${ext}`;
+    await this.s3.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+      Body: buffer,
+      ContentType: mimeType.split(';')[0].trim(),
+    }));
+    // Cache-bust: a URL é sempre a mesma key (upsert) — sem isso o browser
+    // continua servindo a foto antiga do cache depois de um re-fetch.
+    return `${this.publicUrl}/${storagePath}?v=${Date.now()}`;
+  }
+
   async rename(id: string, newName: string, tenantId?: string): Promise<MediaFile> {
     const record = await this.repo.findOne({ where: tenantId ? { id, tenantId } : { id } });
     if (!record) throw new NotFoundException('Mídia não encontrada');

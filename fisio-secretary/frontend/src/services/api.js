@@ -83,6 +83,20 @@ export const sendManualMedia = (phone, mediaId, caption) =>
     body: JSON.stringify({ phone, mediaId, caption }),
   }).then(json)
 
+export const sendManualAudio = (phone, base64, mimeType) =>
+  authFetch(`${BASE}/webhooks/manual-audio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, base64, mimeType }),
+  }).then(json)
+
+export const fetchAvatar = (leadId, phone) =>
+  authFetch(`${BASE}/webhooks/fetch-avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ leadId, phone }),
+  }).then(json)
+
 // ───────────────────────── Follow-up agendado ─────────────────────────
 
 // IA sugere uma mensagem baseada na conversa (operador revisa antes de agendar)

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName } from '../services/api'
+import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil, Mic, Square } from 'lucide-react'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName } from '../services/api'
+
+const MAX_AUDIO_BYTES = 5 * 1024 * 1024 // 5 MB
 
 const labelColor = {
   inativo:          'bg-red-100 text-red-600 border-red-200',
@@ -39,6 +41,8 @@ function mapMessages(messages = []) {
     id: msg.id,
     sender: msg.direction === 'inbound' ? 'lead' : (msg.sender === 'ai' ? 'ai' : 'operator'),
     content: msg.content,
+    mediaType: msg.messageType,
+    mediaUrl: msg.mediaUrl,
     time: formatTime(msg.createdAt),
   }))
 }
@@ -60,6 +64,12 @@ export default function LeadModal({ lead, onClose }) {
   const [manualText, setManualText] = useState('')
   const [sending, setSending] = useState(false)
   const [showMediaPicker, setShowMediaPicker] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordSeconds, setRecordSeconds] = useState(0)
+  const [recordError, setRecordError] = useState('')
+  const mediaRecorderRef = useRef(null)
+  const recordedChunksRef = useRef([])
+  const recordTimerRef = useRef(null)
   const [mediaList, setMediaList] = useState([])
   const [labels, setLabels] = useState(lead?.labels ?? [])
   const [observations, setObservations] = useState(lead?.observations ?? '')
@@ -89,6 +99,14 @@ export default function LeadModal({ lead, onClose }) {
     })
     getHistory(lead.id).then(h => setHistory(mapHistory(h)))
     getFollowups(lead.id).then(setFollowups).catch(() => setFollowups([]))
+
+    // Busca a foto de perfil do WhatsApp só na primeira vez (URL persistida
+    // no nosso storage não expira, então não precisa refazer a cada abertura).
+    if (!lead.avatarUrl) {
+      fetchAvatar(lead.id, lead.phone).then(({ avatarUrl }) => {
+        if (avatarUrl) lead.avatarUrl = avatarUrl
+      }).catch(() => {})
+    }
   }, [lead])
 
   useEffect(() => {
@@ -236,6 +254,76 @@ export default function LeadModal({ lead, onClose }) {
     }
   }
 
+  async function startRecording() {
+    if (isRecording) return
+    setRecordError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : 'audio/webm'
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recordedChunksRef.current = []
+      recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        clearInterval(recordTimerRef.current)
+        setRecordSeconds(0)
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType })
+        if (blob.size === 0) return
+        if (blob.size > MAX_AUDIO_BYTES) {
+          setRecordError('Áudio muito longo (máx. 5 MB)')
+          return
+        }
+        sendRecordedAudio(blob, mimeType)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setIsRecording(true)
+      recordTimerRef.current = setInterval(() => setRecordSeconds(s => s + 1), 1000)
+    } catch {
+      setRecordError('Não foi possível acessar o microfone')
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+  }
+
+  useEffect(() => () => clearInterval(recordTimerRef.current), [])
+
+  async function sendRecordedAudio(blob, mimeType) {
+    const tempId = Date.now()
+    setMessages(prev => [...prev, {
+      id: tempId,
+      sender: 'operator',
+      content: '[áudio]',
+      mediaType: 'audio',
+      mediaUrl: URL.createObjectURL(blob),
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      pending: true,
+    }])
+    setSending(true)
+    try {
+      const reader = new FileReader()
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      await sendManualAudio(lead.phone, base64, mimeType)
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: false } : m))
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setRecordError('Falha ao enviar áudio')
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (!lead) return null
 
   return (
@@ -248,9 +336,13 @@ export default function LeadModal({ lead, onClose }) {
         {/* Modal header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold">
-              {(lead.name || lead.phone).charAt(0).toUpperCase()}
-            </div>
+            {lead.avatarUrl ? (
+              <img src={lead.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold shrink-0">
+                {(lead.name || lead.phone).charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               {editingName ? (
                 <div className="flex items-center gap-1">
@@ -533,7 +625,11 @@ export default function LeadModal({ lead, onClose }) {
                           ? 'bg-teal-600 text-white rounded-tr-sm'
                           : 'bg-blue-600 text-white rounded-tr-sm'
                     }`}>
-                      {msg.content}
+                      {msg.mediaType === 'audio' && msg.mediaUrl ? (
+                        <audio src={msg.mediaUrl} controls preload="metadata" className="max-w-full h-9" />
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                     <div className={`flex items-center gap-1 mt-0.5 ${msg.sender === 'lead' ? 'justify-start' : 'justify-end'}`}>
                       {msg.sender === 'ai' && (
@@ -604,6 +700,23 @@ export default function LeadModal({ lead, onClose }) {
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={aiEnabled}
+                  title={isRecording ? 'Parar gravação' : 'Gravar áudio'}
+                  className={`p-2.5 rounded-xl border transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                    isRecording
+                      ? 'border-red-300 bg-red-50 text-red-600 animate-pulse'
+                      : 'border-gray-200 text-gray-400 hover:text-blue-600 hover:border-blue-300'
+                  }`}
+                >
+                  {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+                {isRecording && (
+                  <span className="text-xs font-medium text-red-500 tabular-nums">
+                    {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                  </span>
+                )}
                 <input
                   type="text"
                   value={manualText}
@@ -626,6 +739,9 @@ export default function LeadModal({ lead, onClose }) {
                 <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                   <Bot className="w-3 h-3" /> IA ativa — digite <span className="font-semibold text-gray-600">"opa"</span> no WhatsApp para assumir, ou use o switch ao lado
                 </p>
+              )}
+              {recordError && (
+                <p className="text-xs text-red-500 mt-1.5">{recordError}</p>
               )}
             </div>
           </div>

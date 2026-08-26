@@ -163,6 +163,7 @@ export class LeadsService implements OnApplicationBootstrap {
     content: string,
     evolutionId?: string,
     mediaUrl?: string,
+    messageType?: string,
   ): Promise<Message> {
     const msg = this.messagesRepo.create({
       conversationId,
@@ -171,6 +172,7 @@ export class LeadsService implements OnApplicationBootstrap {
       content: content?.replace(/\x00/g, '') ?? '',
       evolutionId,
       mediaUrl: mediaUrl ?? null,
+      messageType: messageType ?? (mediaUrl ? 'image' : 'text'),
     });
     const saved = await this.messagesRepo.save(msg);
 

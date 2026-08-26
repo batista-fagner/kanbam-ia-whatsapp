@@ -101,6 +101,11 @@ export class Lead {
   @Column({ name: 'active_modules', type: 'jsonb', default: [] })
   activeModules: string[];
 
+  // Foto de perfil do WhatsApp, baixada uma vez e persistida no nosso storage
+  // (a URL original do WhatsApp expira em alguns dias). Ver LeadsService.fetchAvatar.
+  @Column({ name: 'avatar_url', type: 'text', nullable: true })
+  avatarUrl: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

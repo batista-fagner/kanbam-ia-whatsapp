@@ -54,6 +54,9 @@ export class EvolutionController {
   // — consumida em processMessage() quando o debounce dispara. Só usado pelos
   // tenants em IMAGE_ANALYSIS_TENANT_IDS.
   private readonly pendingImageUrl = new Map<string, string>();
+  // URL (R2) do ÁUDIO recebido do lead (mensagem de voz) — baixado uma vez em
+  // paralelo à transcrição, pra tocar no Kanban. Ver transcribeAndEnqueue().
+  private readonly pendingAudioUrl = new Map<string, string>();
   // Usado quando a IA manda action=send_media mas o item não existe no catálogo (nome
   // inventado ou ainda não cadastrado) — a reply da IA nesse caso assume que a mídia foi
   // enviada ("olha só esse aqui"), então não pode ser usada como está.
@@ -324,11 +327,28 @@ export class EvolutionController {
     this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
 
     const queueKey = `${tenantId}:${phone}`;
+    // Persiste o áudio original (não só a transcrição) pra tocar no Kanban — antes
+    // disso o áudio do lead ficava invisível no CRM, só o texto transcrito
+    // aparecia. Best-effort: falha aqui nunca deve travar a transcrição/resposta.
+    this.downloadAndStoreInboundAudio(tenantId, phone, message.messageid, tenantToken, queueKey).catch((err) =>
+      this.logger.warn(`[AUDIO-STORE] Falha ao persistir áudio de ${phone}, seguindo só com a transcrição: ${err.message}`),
+    );
+
     this.messageQueue.enqueue(queueKey, transcribedText, (combinedText) => {
       this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
       );
     });
+  }
+
+  private async downloadAndStoreInboundAudio(tenantId: string, phone: string, messageId: string, tenantToken: string, queueKey: string) {
+    const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
+    if (!downloaded) return;
+    const { lead } = await this.leadsService.findOrCreate(phone, tenantId);
+    const audioResponse = await axios.get(downloaded.fileURL, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(audioResponse.data);
+    const audioUrl = await this.mediaService.uploadLeadAudio(buffer, tenantId, lead.id, downloaded.mimetype || 'audio/ogg');
+    this.pendingAudioUrl.set(queueKey, audioUrl);
   }
 
   // Detecta quando a IA está prestes a enviar a mesma resposta pela 3ª vez seguida (loop de repetição).
@@ -384,8 +404,14 @@ export class EvolutionController {
     const queueKey = `${tenantId}:${phone}`;
     const pendingImageUrl = this.pendingImageUrl.get(queueKey);
     if (pendingImageUrl) this.pendingImageUrl.delete(queueKey);
+    const pendingAudioUrl = this.pendingAudioUrl.get(queueKey);
+    if (pendingAudioUrl) this.pendingAudioUrl.delete(queueKey);
 
-    await this.leadsService.saveMessage(conversation.id, 'inbound', phone, combinedText, messageKeyId, pendingImageUrl);
+    await this.leadsService.saveMessage(
+      conversation.id, 'inbound', phone, combinedText, messageKeyId,
+      pendingImageUrl ?? pendingAudioUrl,
+      pendingImageUrl ? 'image' : pendingAudioUrl ? 'audio' : 'text',
+    );
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
     // Lead respondeu → reinicia o relógio de ociosidade da cadência de follow-up
     // (se houver cadência configurada pra raia atual do lead).
@@ -995,6 +1021,48 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     const updatedLead = await this.leadsService.findOne(lead.id, tenantId);
     this.leadsGateway.emitLeadUpdated(updatedLead);
     return { ok: true };
+  }
+
+  // Operador grava/envia um áudio direto no Kanban — sobe pro R2 primeiro (pra
+  // já ficar tocável no CRM, mesma URL usada pro envio) e manda como ptt (nota
+  // de voz nativa do WhatsApp, não como arquivo de áudio comum).
+  @UseGuards(JwtAuthGuard)
+  @Post('manual-audio')
+  async sendManualAudio(@Body() body: { phone: string; base64: string; mimeType: string }, @CurrentUser('tenantId') tenantId: string) {
+    const { lead, conversation } = await this.leadsService.findOrCreate(body.phone, tenantId);
+    const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+    const buffer = Buffer.from(body.base64, 'base64');
+    const audioUrl = await this.mediaService.uploadLeadAudio(buffer, tenantId, lead.id, body.mimeType || 'audio/ogg');
+    this.logger.log(`📤 [MANUAL-AUDIO] Enviando áudio gravado para ${body.phone}`);
+    await this.uazapiProvider.sendMediaByUrl(body.phone, audioUrl, 'ptt', '', tenantToken);
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', '[áudio]', undefined, audioUrl, 'audio');
+    await this.leadsService.update(lead.id, { lastMessageAt: new Date() }, tenantId);
+    const updatedLead = await this.leadsService.findOne(lead.id, tenantId);
+    this.leadsGateway.emitLeadUpdated(updatedLead);
+    return { ok: true };
+  }
+
+  // Foto de perfil do WhatsApp — baixa da uazapi (URL assinada, expira em
+  // alguns dias) e persiste no R2 (URL permanente) pra não precisar refazer
+  // essa chamada toda vez que o Kanban abrir o lead.
+  @UseGuards(JwtAuthGuard)
+  @Post('fetch-avatar')
+  async fetchAvatar(@Body() body: { leadId: string; phone: string }, @CurrentUser('tenantId') tenantId: string) {
+    const profile = await this.uazapiProvider.getProfilePicture(body.phone, await this.whatsappConfigService.getTokenByTenant(tenantId));
+    if (!profile?.url) return { avatarUrl: null };
+    try {
+      const imageResponse = await axios.get(profile.url, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(imageResponse.data);
+      const contentType = imageResponse.headers['content-type'] || 'image/jpeg';
+      const avatarUrl = await this.mediaService.uploadAvatar(buffer, tenantId, body.leadId, contentType);
+      await this.leadsService.update(body.leadId, { avatarUrl }, tenantId);
+      const updatedLead = await this.leadsService.findOne(body.leadId, tenantId);
+      if (updatedLead) this.leadsGateway.emitLeadUpdated(updatedLead);
+      return { avatarUrl };
+    } catch (err: any) {
+      this.logger.warn(`[AVATAR] Falha ao persistir foto de perfil de ${body.phone}: ${err.message}`);
+      return { avatarUrl: null };
+    }
   }
 
   /**
