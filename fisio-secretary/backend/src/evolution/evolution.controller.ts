@@ -343,12 +343,16 @@ export class EvolutionController {
 
   private async downloadAndStoreInboundAudio(tenantId: string, phone: string, messageId: string, tenantToken: string, queueKey: string) {
     const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
-    if (!downloaded) return;
+    if (!downloaded) {
+      this.logger.warn(`[AUDIO-STORE] uazapi não devolveu fileURL pro áudio de ${phone} (messageId=${messageId}) — não persistido`);
+      return;
+    }
     const { lead } = await this.leadsService.findOrCreate(phone, tenantId);
     const audioResponse = await axios.get(downloaded.fileURL, { responseType: 'arraybuffer' });
     const buffer = Buffer.from(audioResponse.data);
     const audioUrl = await this.mediaService.uploadLeadAudio(buffer, tenantId, lead.id, downloaded.mimetype || 'audio/ogg');
     this.pendingAudioUrl.set(queueKey, audioUrl);
+    this.logger.log(`🎙️ [AUDIO-STORE] Áudio de ${phone} salvo no R2: ${audioUrl}`);
   }
 
   // Detecta quando a IA está prestes a enviar a mesma resposta pela 3ª vez seguida (loop de repetição).
