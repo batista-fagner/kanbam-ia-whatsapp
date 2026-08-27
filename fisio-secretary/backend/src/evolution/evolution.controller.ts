@@ -29,17 +29,47 @@ import { FollowupService } from '../followup/followup.service';
 const STOP_FOLLOWUP_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho\s+interesse|sem\s+interesse/i;
 
+// Handoff por palavra-chave (pedido do Alex, 2026-08-27) — só pro S&A Cabelos
+// Naturais, hardcoded, sem UI no frontend. Substitui o handoff por agendamento
+// (o módulo Agendamento ainda registra action=schedule pra estágio/calendário,
+// mas não é mais ele quem decide encaminhar pro Alex). Match determinístico
+// (sem IA) direto na mensagem crua, comparado sem acento — ver
+// feedback_keyword_regex_acento na memória sobre \b não casar direito com
+// caractere acentuado na borda, por isso aqui é .includes() puro, sem regex.
+const PURCHASE_HANDOFF_TENANT_IDS = ['badfc5d9-d522-4253-a788-28b3ebe41753'];
+const PURCHASE_HANDOFF_KEYWORDS = [
+  'quero comprar', 'vou comprar', 'posso comprar',
+  'quero esse', 'quero essa', 'quero este', 'quero esta',
+  'vou ficar com esse', 'vou ficar com essa',
+  'pode separar', 'separa para mim', 'separa esse', 'separa essa',
+  'reserva para mim', 'pode reservar',
+  'quero fechar', 'vamos fechar', 'fecho agora', 'pode fechar',
+  'ja vou levar', 'vou levar',
+  'como faco para comprar', 'onde compro',
+  'manda o link', 'me passa o link',
+  'manda o pix', 'passa o pix', 'pode me enviar o pix',
+  'quero pagar', 'vou fazer o pagamento',
+];
+function stripAccents(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function matchPurchaseHandoffKeyword(text: string): string | null {
+  const normalized = stripAccents(text.toLowerCase());
+  return PURCHASE_HANDOFF_KEYWORDS.find((k) => normalized.includes(stripAccents(k))) ?? null;
+}
+
 // Reconhecimento de imagem (foto de cabelo → identifica textura pra recomendar
-// a mídia certa do catálogo) — habilitado tenant a tenant. Só alex_teste (motor
-// dynamic_modules) por enquanto. A conta admin/Cabelô principal (2c562828...)
-// foi DESATIVADA em 2026-08-26: o admin relatou que a IA reconhece textura/cor
-// mas não a origem do cabelo (Brasileiro/Vietnamita/Indiano) — essa origem é
-// rótulo de fornecedor, não uma característica visual confiável, então nenhum
-// ajuste de prompt resolve isso de verdade. Ver project_lindona_image_origin_limitation.
-// Niltoncabelos também não está habilitado (decisão do cliente, 2026-08-06) —
-// ambos usam o fluxo padrão "não consigo ver imagens, pergunta a textura por texto".
+// a mídia certa do catálogo) — habilitado tenant a tenant. A conta admin/Cabelô
+// principal (2c562828...) foi DESATIVADA em 2026-08-26: o admin relatou que a IA
+// reconhece textura/cor mas não a origem do cabelo (Brasileiro/Vietnamita/Indiano)
+// — essa origem é rótulo de fornecedor, não uma característica visual confiável,
+// então nenhum ajuste de prompt resolve isso de verdade. Ver
+// project_lindona_image_origin_limitation. Niltoncabelos também não está
+// habilitado (decisão do cliente, 2026-08-06) — ambos usam o fluxo padrão "não
+// consigo ver imagens, pergunta a textura por texto".
 const IMAGE_ANALYSIS_TENANT_IDS = [
-  'e624e817-5b6c-4840-b0ea-269eb78afe8d',
+  'e624e817-5b6c-4840-b0ea-269eb78afe8d', // alex_teste (sandbox)
+  'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
 ];
 
 @Controller('webhooks')
@@ -500,6 +530,24 @@ export class EvolutionController {
     const instanceConfig = tenantConfigForActive;
     const tenantToken = instanceConfig?.instanceToken ?? undefined;
 
+    // Handoff por palavra-chave (ver PURCHASE_HANDOFF_TENANT_IDS) — roda ANTES da
+    // IA, determinístico. Se bater, não chama IA nenhuma: responde o handoff,
+    // desliga a IA do lead e avisa o número cadastrado em Configurações.
+    if (PURCHASE_HANDOFF_TENANT_IDS.includes(tenantId)) {
+      const matchedKeyword = matchPurchaseHandoffKeyword(combinedText);
+      if (matchedKeyword) {
+        this.logger.warn(`[PURCHASE-HANDOFF] "${matchedKeyword}" detectada em "${combinedText.substring(0, 60)}" — encaminhando ${phone} sem IA`);
+        const handoffReply = 'Perfeito! Vou deixar tudo encaminhado e o Alex já continua com você pra confirmar certinho, tá bom? 😊';
+        await this.evolutionService.sendTextMessage(phone, handoffReply, tenantToken, tenantId);
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', handoffReply);
+        await this.leadsService.toggleAi(lead.id, false);
+        this.notifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, matchedKeyword);
+        const updatedLead = await this.leadsService.findOne(lead.id);
+        this.leadsGateway.emitLeadUpdated(updatedLead);
+        return;
+      }
+    }
+
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
 
@@ -857,6 +905,17 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     const text = `📅 Novo agendamento!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}`;
     this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
       .catch(err => this.logger.error(`[NOTIFY] Falha ao notificar agendamento pra ${notificationPhone}: ${err.message}`));
+  }
+
+  // Ver PURCHASE_HANDOFF_TENANT_IDS — avisa o número cadastrado em Configurações
+  // (mesmo campo notificationPhone do agendamento) quando o handoff por
+  // palavra-chave dispara. Silencioso se o campo ainda não foi preenchido.
+  private notifyPurchaseIntent(lead: any, instanceConfig: any, tenantToken: string | undefined, tenantId: string, keyword: string): void {
+    const notificationPhone = instanceConfig?.notificationPhone;
+    if (!notificationPhone) return;
+    const text = `🛒 Intenção de compra detectada!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}\nPalavra-chave: "${keyword}"`;
+    this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
+      .catch(err => this.logger.error(`[NOTIFY] Falha ao notificar intenção de compra pra ${notificationPhone}: ${err.message}`));
   }
 
   // Envia 1+ mídias cadastradas (respeitando o teto diário por tenant) e salva cada
