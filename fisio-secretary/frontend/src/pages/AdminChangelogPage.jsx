@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Soraia Dias Mega Hair: migração pro motor de módulos dinâmicos',
+    date: '27/08/2026',
+    detail: 'Os 5 agentes do multiagente (Recepção, Avaliação, Preço, Agendamento, Institucional) viraram 1 bloco fixo (Core) + 4 módulos por palavra-chave — mesmo motor já usado pelo S&A e pela Joelma. Conteúdo revisado trazendo correções já validadas em outros clientes: proibição total de cálculo de preço pela IA (o risco dela é "R$ 8,37 por grama" e o adiantamento de 35% — a IA nunca multiplica, sempre remete pra avaliação), ajuste pra "vou confirmar com a equipe" não encerrar mais o atendimento sozinho (antes perguntas simples como "aceita cartão?" desligavam a IA do lead), e regra explícita dizendo que a IA não vê fotos/links enviados pela cliente. Testado com 59 casos de roteamento de palavra-chave + 29 cenários de conversa completa (preço, agendamento, institucional, foto, link, tentativa de manipulação, cliente rude) antes de ativar. Já ativo no WhatsApp real dela — rollback é 1 update no banco.',
+  },
+  {
     title: 'Áudio visível/tocável no Kanban + foto de perfil do WhatsApp',
     date: '26/08/2026',
     detail: 'Áudio (do lead e do operador) ficava invisível no CRM — só o texto transcrito aparecia, o arquivo original nunca era persistido. Agora o áudio do lead é baixado em paralelo à transcrição e salvo no R2 (toca com player no Kanban); novo botão de microfone grava e envia áudio do operador como nota de voz. Foto de perfil do WhatsApp também passou a ser buscada uma vez e persistida (a URL da uazapi expira em poucos dias). Todos os tenants são beneficiados, sem configuração.',
