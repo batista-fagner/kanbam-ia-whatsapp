@@ -6,6 +6,10 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 // ── Follow-up automático ────────────────────────────────────────────────────
 
+// Antecedências oferecidas no lembrete de agendamento. O backend aceita qualquer
+// valor de 1 a 168h; a lista só cobre as escolhas usuais sem virar um campo livre.
+const REMINDER_HOUR_OPTIONS = [1, 2, 3, 6, 12, 24, 48, 72]
+
 const FOLLOWUP_STAGES = [
   { key: 'novo_lead', label: 'Novo Lead', defaultValue: 1 },
   { key: 'lead_frio', label: 'Lead Frio', defaultValue: 4 },
@@ -59,10 +63,11 @@ const rules = [
     title: 'Lembrete de Agendamento',
     bg: 'bg-blue-50 border-blue-200',
     headerBg: 'bg-blue-100',
-    description: 'Clientes com agendamento no calendário interno recebem uma mensagem automática ~24h antes do horário marcado. Diferente do follow-up — aqui o cliente já tem hora confirmada.',
+    description: 'Clientes com agendamento no calendário interno recebem uma mensagem automática antes do horário marcado, na antecedência configurada pelo cliente. Diferente do follow-up — aqui o cliente já tem hora confirmada.',
     items: [
-      { label: 'Antecedência',   color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: '~24h antes (janela 22h–26h)',                                         reason: 'Janela de 4h garante o envio mesmo se o cron atrasar 1 ciclo.' },
-      { label: 'Frequência',     color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Verificação a cada hora',                                              reason: 'Suficiente para um lembrete — tolerância de horas é aceitável.' },
+      { label: 'Antecedência',   color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: 'Configurável: 1h a 72h antes',                                         reason: 'Você escolhe quantas horas antes o cliente recebe o lembrete.' },
+      { label: 'Frequência',     color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Verificação a cada 5 minutos',                                         reason: 'Cadência curta para acertar o alvo mesmo com antecedência de 1h.' },
+      { label: 'Pré-requisitos', color: 'bg-rose-50 text-rose-700 border-rose-200',    rule: 'Lembrete ativado + mensagem preenchida',                               reason: 'Sem texto o lembrete não é enviado — mensagem vazia desliga o recurso.' },
       { label: 'Limite',         color: 'bg-amber-50 text-amber-700 border-amber-200', rule: '1 lembrete por agendamento',                                           reason: 'reminder_sent_at impede reenvio mesmo dentro da janela.' },
       { label: 'Status válidos', color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: 'agendado · confirmado',                                                reason: 'Cancelados e realizados são ignorados automaticamente.' },
       { label: 'Variáveis',      color: 'bg-purple-50 text-purple-700 border-purple-200', rule: '{nome} · {hora} (ex: 14:00) · {data} (ex: 28/06)',                  reason: 'Interpolados com os dados reais do agendamento.' },
@@ -130,7 +135,7 @@ export default function AlertRulesPage() {
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved]   = useState(false)
 
-  const [apptReminder, setApptReminder]   = useState({ enabled: false, message: '' })
+  const [apptReminder, setApptReminder]   = useState({ enabled: false, message: '', hoursBefore: 24 })
   const [savingReminder, setSavingReminder] = useState(false)
   const [reminderSaved, setReminderSaved]   = useState(false)
 
@@ -160,7 +165,12 @@ export default function AlertRulesPage() {
 
         const ar = data?.appointmentReminder
         if (ar && typeof ar === 'object') {
-          setApptReminder({ enabled: !!ar.enabled, message: ar.message ?? '' })
+          // hoursBefore ausente = config salva antes do campo existir; 24h era o fixo de então.
+          setApptReminder({
+            enabled: !!ar.enabled,
+            message: ar.message ?? '',
+            hoursBefore: Number(ar.hoursBefore) > 0 ? Number(ar.hoursBefore) : 24,
+          })
         }
       } catch {
         // sem instância configurada ainda — deixa defaults
@@ -206,15 +216,31 @@ export default function AlertRulesPage() {
     }
   }
 
+  // Ativado sem texto não é salvável: o backend gravaria enabled=false e a tela
+  // ficaria mostrando um lembrete "ligado" que nunca dispara.
+  const reminderError = apptReminder.enabled && !apptReminder.message.trim()
+    ? 'Escreva a mensagem do lembrete — sem texto o cliente não recebe nada.'
+    : ''
+
   const saveReminder = async () => {
+    if (reminderError) return
     setSavingReminder(true)
     setReminderSaved(false)
     try {
-      await authFetch(`${API_URL}/instance/config`, {
+      const res = await authFetch(`${API_URL}/instance/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointmentReminder: apptReminder }),
       })
+      // Reflete o que o backend realmente gravou (ele normaliza hoursBefore).
+      const saved = (await res.json())?.appointmentReminder
+      if (saved && typeof saved === 'object') {
+        setApptReminder({
+          enabled: !!saved.enabled,
+          message: saved.message ?? '',
+          hoursBefore: Number(saved.hoursBefore) > 0 ? Number(saved.hoursBefore) : 24,
+        })
+      }
       setReminderSaved(true)
       setTimeout(() => setReminderSaved(false), 2500)
     } finally {
@@ -355,8 +381,8 @@ export default function AlertRulesPage() {
               <h2 className="text-sm font-semibold text-gray-800">Lembrete de agendamento</h2>
             </div>
             <p className="text-sm text-gray-500 mb-1">
-              Envia uma mensagem automática <strong>~24h antes</strong> do horário agendado no calendário.
-              Diferente do follow-up — aqui o cliente <em>já tem hora marcada</em>.
+              Envia uma mensagem automática <strong>antes</strong> do horário agendado no calendário, na
+              antecedência que você escolher. Diferente do follow-up — aqui o cliente <em>já tem hora marcada</em>.
             </p>
             <p className="text-xs text-gray-400 mb-4">
               Use{' '}
@@ -375,20 +401,38 @@ export default function AlertRulesPage() {
                 />
                 <span className="text-sm font-medium text-gray-800">Ativar lembrete de agendamento</span>
               </label>
+
+              <div className="flex items-center gap-2 mb-3">
+                <label htmlFor="reminder-hours" className="text-sm text-gray-700">Enviar</label>
+                <select
+                  id="reminder-hours"
+                  value={apptReminder.hoursBefore}
+                  disabled={!apptReminder.enabled}
+                  onChange={e => setApptReminder(prev => ({ ...prev, hoursBefore: Number(e.target.value) }))}
+                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50 text-gray-800"
+                >
+                  {REMINDER_HOUR_OPTIONS.map(h => (
+                    <option key={h} value={h}>{h === 1 ? '1 hora' : `${h} horas`}</option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-700">antes do horário marcado</span>
+              </div>
+
               <textarea
                 value={apptReminder.message}
                 disabled={!apptReminder.enabled}
                 onChange={e => setApptReminder(prev => ({ ...prev, message: e.target.value }))}
-                placeholder="Ex: Olá {nome}! Lembrando do seu agendamento amanhã às {hora}. Confirma?"
+                placeholder="Ex: Olá {nome}! Lembrando do seu agendamento dia {data} às {hora}. Confirma?"
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400 ${reminderError ? 'border-red-300' : 'border-gray-300'}`}
               />
+              {reminderError && <p className="mt-2 text-xs text-red-600">{reminderError}</p>}
             </div>
 
             <div className="flex items-center gap-3 mt-4">
               <button
                 onClick={saveReminder}
-                disabled={savingReminder}
+                disabled={savingReminder || !!reminderError}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
               >
                 {savingReminder ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

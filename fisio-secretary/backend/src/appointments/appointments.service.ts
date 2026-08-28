@@ -85,10 +85,26 @@ export class AppointmentsService {
 
   // Busca agendamentos que devem receber lembrete ~24h antes.
   // Janela de [now+22h, now+26h] garante tolerância para variação do cron horário.
-  async findDueReminders(tenantId: string): Promise<Appointment[]> {
-    const now = new Date();
-    const windowStart = new Date(now.getTime() + 22 * 60 * 60 * 1000);
-    const windowEnd = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+  // Agendamentos que já cruzaram o limiar de antecedência configurado pelo tenant
+  // (`hoursBefore`) e ainda não receberam lembrete.
+  //
+  // A janela é aberta pra trás (tudo que falta <= hoursBefore) em vez de uma faixa
+  // fixa em torno do alvo: com antecedência configurável (1h, 12h, 24h...) uma faixa
+  // estreita perderia o agendamento se o cron atrasasse um ciclo, e uma faixa larga
+  // mandaria o lembrete de 1h com 3h de antecedência. Como o cron roda a cada 5min e
+  // reminder_sent_at trava o reenvio, disparar no primeiro tick após o limiar dá o
+  // envio mais próximo possível do alvo, sem risco de perder o agendamento.
+  //
+  // MIN_LEAD_MINUTES evita o caso do agendamento criado já dentro da janela (ex.:
+  // marcou pra daqui 20min com lembrete de 24h): lembrete em cima da hora — ou depois
+  // do horário — não reduz no-show, só incomoda.
+  private static readonly MIN_LEAD_MINUTES = 10;
+
+  async findDueReminders(tenantId: string, hoursBefore = 24): Promise<Appointment[]> {
+    const now = Date.now();
+    const windowStart = new Date(now + AppointmentsService.MIN_LEAD_MINUTES * 60 * 1000);
+    const windowEnd = new Date(now + hoursBefore * 60 * 60 * 1000);
+    if (windowEnd <= windowStart) return [];
     return this.repo
       .createQueryBuilder('a')
       .where('a.tenant_id = :tenantId', { tenantId })

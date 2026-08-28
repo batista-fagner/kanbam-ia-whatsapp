@@ -15,6 +15,7 @@ import { AiService } from '../ai/ai.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { FollowupQueueService } from './followup-queue.service';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
+import { resolveReminderGate } from '../appointments/reminder-gate';
 
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
 const ALLOWED_DELAYS = [1, 4, 24];
@@ -535,18 +536,24 @@ export class FollowupService {
     }
   }
 
-  // A cada hora: envia lembrete ~24h antes do agendamento (janela 22h–26h).
-  // reminder_sent_at impede reenvio mesmo que o cron rode múltiplas vezes na janela.
-  @Cron('0 * * * *')
+  // A cada 5 minutos: envia lembrete com a antecedência configurada pelo tenant
+  // (appointmentReminder.hoursBefore, default 24h). Cadência de 5min — e não horária —
+  // porque com antecedência curta (1h) um tick de hora em hora erraria o alvo por
+  // quase uma hora inteira. reminder_sent_at impede o reenvio a cada tick.
+  //
+  // Sem `enabled` ou sem texto o tenant é pulado: mensagem vazia é o desligamento
+  // explícito pedido pelo produto — o lead não recebe nada.
+  @Cron('*/5 * * * *')
   async processAppointmentReminders(): Promise<void> {
     const configs = await this.configRepo.find();
 
     for (const cfg of configs) {
-      const reminder = cfg.appointmentReminder;
-      if (!reminder?.enabled || !reminder.message?.trim()) continue;
+      const gate = resolveReminderGate(cfg.appointmentReminder);
+      if (gate.skip) continue;
+      const reminder = cfg.appointmentReminder!;
 
       try {
-        const appointments = await this.appointmentsService.findDueReminders(cfg.id);
+        const appointments = await this.appointmentsService.findDueReminders(cfg.id, gate.hoursBefore);
         for (const appt of appointments) {
           // Claim atômico: marca reminder_sent_at antes de enviar para evitar duplo envio.
           await this.appointmentsService.markReminderSent(appt.id);

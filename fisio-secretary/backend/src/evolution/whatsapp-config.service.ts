@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { UazapiProvider } from './providers/uazapi.provider';
+import { resolveReminderHours } from '../appointments/reminder-gate';
 
 @Injectable()
 export class WhatsappConfigService {
@@ -191,7 +192,7 @@ export class WhatsappConfigService {
       customPromptMegaHair?: string | null;
       autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
       autoFollowupEnabled?: boolean;
-      appointmentReminder?: { enabled?: boolean; message?: string } | null;
+      appointmentReminder?: { enabled?: boolean; message?: string; hoursBefore?: number } | null;
       multiAgentEnabled?: boolean;
       deactivationKeyword?: string | null;
       activationKeyword?: string | null;
@@ -223,9 +224,17 @@ export class WhatsappConfigService {
     return trimmed || fallback;
   }
 
-  private sanitizeAppointmentReminder(raw: { enabled?: boolean; message?: string } | null | undefined): WhatsappConfig['appointmentReminder'] {
+  // `hoursBefore`: antecedência do lembrete em horas. Clamp 1..168 (7 dias); valor
+  // ausente/inválido cai em 24 — a antecedência que os tenants já tinham antes de o
+  // campo existir, então config antiga continua se comportando igual.
+  // `enabled` só vale com mensagem preenchida: sem texto o lembrete nunca sai, e
+  // gravar enabled=true com texto vazio deixaria a UI mentindo pro cliente.
+  private sanitizeAppointmentReminder(
+    raw: { enabled?: boolean; message?: string; hoursBefore?: number } | null | undefined,
+  ): WhatsappConfig['appointmentReminder'] {
     if (!raw || typeof raw !== 'object') return null;
-    return { enabled: !!raw.enabled, message: String(raw.message ?? '').slice(0, 1000) };
+    const message = String(raw.message ?? '').slice(0, 1000);
+    return { enabled: !!raw.enabled && !!message.trim(), message, hoursBefore: resolveReminderHours(raw.hoursBefore) };
   }
 
   // Aceita apenas as 3 raias conhecidas; força tipos e limites seguros.

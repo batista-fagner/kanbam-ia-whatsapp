@@ -44,9 +44,10 @@ export class WhatsappConfig {
   @Column({ name: 'auto_followup_enabled', type: 'boolean', default: true })
   autoFollowupEnabled: boolean;
 
-  // Lembrete de agendamento: enviado ~24h antes. Ex: { enabled, message }
+  // Lembrete de agendamento. `hoursBefore` = antecedência escolhida pelo cliente
+  // (1..168h, default 24). Só dispara com enabled=true E message preenchida.
   @Column({ name: 'appointment_reminder', type: 'jsonb', nullable: true })
-  appointmentReminder: { enabled: boolean; message: string } | null;
+  appointmentReminder: { enabled: boolean; message: string; hoursBefore: number } | null;
 
   // Cadência de follow-up (múltiplos toques) por raia. Cada passo dispara depois de
   // `offsetMinutes` de silêncio contados a partir da última mensagem do lead — reinicia
