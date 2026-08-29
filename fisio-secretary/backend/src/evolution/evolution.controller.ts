@@ -18,6 +18,7 @@ import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
 import { FollowupService } from '../followup/followup.service';
+import { FinanceiroWhatsappService } from '../financeiro-whatsapp/financeiro-whatsapp.service';
 
 // Rede de segurança DETERMINÍSTICA (não depende da IA classificar certo) pro STOP
 // de follow-up do cliente Marcel (Pro Cleaning, tenant claudia_teste) — "nunca
@@ -108,6 +109,7 @@ export class EvolutionController {
     private readonly agentsService: AgentsService,
     private readonly promptModulesService: PromptModulesService,
     private readonly followupService: FollowupService,
+    private readonly financeiroWhatsappService: FinanceiroWhatsappService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -1003,6 +1005,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     return res.status(403).send('Forbidden');
   }
 
+  // Esse número Meta (0415) só é usado hoje pra cobrança/financeiro (ver
+  // payments.service.ts _sendMetaTemplate) — nunca fala com lead. Por isso a
+  // resposta do cliente vai direto pro FinanceiroWhatsappService (tela
+  // "Financeiro WhatsApp", só admin) em vez do fluxo leadsService.findOrCreate()
+  // + IA (Sofia) usado pelo webhook uazapi. Antes disso caía em processMessage()
+  // e virava um lead falso no Kanban do tenant "mais recente".
   @Post('whatsapp')
   async handleMetaWebhook(@Body() body: any) {
     if (body.object !== 'whatsapp_business_account') return { ok: true };
@@ -1018,10 +1026,6 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const rawPhone: string = message.from ?? '';
       const phone = rawPhone.replace(/\D/g, '');
       if (!phone) continue;
-
-      // Meta é instância única — usa o tenant default (config mais recente).
-      const metaConfig = await this.whatsappConfigService.get();
-      const tenantId = metaConfig?.id ?? '';
 
       // Ignora mensagens antigas
       const ageSeconds = (Date.now() / 1000) - Number(message.timestamp);
@@ -1040,13 +1044,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
 
       const isAudio = message.type === 'audio';
-      this.lastMessageWasAudio.set(`${tenantId}:${phone}`, isAudio);
 
       if (isAudio) {
         const mediaId: string = message.audio?.id;
         if (!mediaId) continue;
-        this.transcribeAndEnqueueMeta(tenantId, phone, mediaId, messageId).catch((err) =>
-          this.logger.error(`Erro ao transcrever áudio Meta de ${phone}: ${err.message}`),
+        this.transcribeAndSaveFinanceiro(phone, mediaId).catch((err) =>
+          this.logger.error(`Erro ao transcrever áudio financeiro de ${phone}: ${err.message}`),
         );
         continue;
       }
@@ -1054,27 +1057,20 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const text: string = message.text?.body ?? '';
       if (!text) continue;
 
-      this.logger.log(`Mensagem Meta recebida de ${phone}: ${text}`);
-      this.messageQueue.enqueue(`${tenantId}:${phone}`, text, (combinedText) => {
-        this.processMessage(tenantId, phone, combinedText, messageId).catch((err) =>
-          this.logger.error(`Erro ao processar mensagem Meta de ${phone}: ${err.message}`),
-        );
-      });
+      this.logger.log(`[FINANCEIRO] Mensagem recebida de ${phone}: ${text}`);
+      const saved = await this.financeiroWhatsappService.saveInbound(phone, text, messageId);
+      this.leadsGateway.emitFinanceiroMessage(saved);
     }
 
     return { ok: true };
   }
 
-  private async transcribeAndEnqueueMeta(tenantId: string, phone: string, mediaId: string, messageId: string) {
-    this.logger.log(`Transcrevendo áudio Meta de ${phone}...`);
+  private async transcribeAndSaveFinanceiro(phone: string, mediaId: string) {
+    this.logger.log(`[FINANCEIRO] Transcrevendo áudio de ${phone}...`);
     const transcribedText = await this.evolutionService.transcribeAudio(mediaId);
-    this.logger.log(`Áudio Meta transcrito de ${phone}: "${transcribedText}"`);
-
-    this.messageQueue.enqueue(`${tenantId}:${phone}`, transcribedText, (combinedText) => {
-      this.processMessage(tenantId, phone, combinedText, messageId).catch((err) =>
-        this.logger.error(`Erro ao processar áudio Meta de ${phone}: ${err.message}`),
-      );
-    });
+    this.logger.log(`[FINANCEIRO] Áudio transcrito de ${phone}: "${transcribedText}"`);
+    const saved = await this.financeiroWhatsappService.saveInbound(phone, `[áudio] ${transcribedText}`, null);
+    this.leadsGateway.emitFinanceiroMessage(saved);
   }
 
   @UseGuards(JwtAuthGuard)

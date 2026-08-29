@@ -47,4 +47,10 @@ export class LeadsGateway implements OnGatewayConnection {
     const room = tenantId ? `tenant:${tenantId}` : 'tenant:__all__';
     this.server.to(room).emit('lead:deleted', leadId);
   }
+
+  // Financeiro WhatsApp (número Meta 0415) só é visível pro admin da plataforma
+  // — reaproveita a sala 'tenant:__all__' onde só quem loga sem tenantId entra.
+  emitFinanceiroMessage(message: any) {
+    this.server.to('tenant:__all__').emit('financeiro:message', message);
+  }
 }

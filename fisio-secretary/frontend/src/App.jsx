@@ -21,6 +21,7 @@ import ProfilePage from './pages/ProfilePage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
 import PixRenewalPage from './pages/PixRenewalPage'
+import FinanceiroWhatsappPage from './pages/FinanceiroWhatsappPage'
 import Layout from './components/Layout'
 
 function Routing() {
@@ -60,6 +61,7 @@ function Routing() {
         <Route path="/admin/changelog" element={<AdminChangelogPage />} />
         <Route path="/admin/onboarding" element={<OnboardingPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
+        <Route path="/financeiro-whatsapp" element={<FinanceiroWhatsappPage />} />
         <Route path="/alert-rules" element={<AlertRulesPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/agents" element={<AgentBuilderPage />} />

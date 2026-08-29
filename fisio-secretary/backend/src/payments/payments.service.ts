@@ -20,6 +20,7 @@ import { BillingEvent } from '../common/entities/billing-event.entity';
 import { UsersService } from '../auth/users.service';
 import { PixQueueService } from './pix-queue.service';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
+import { FinanceiroWhatsappService } from '../financeiro-whatsapp/financeiro-whatsapp.service';
 
 const CURRENCY = 'brl';
 
@@ -63,6 +64,8 @@ export class PaymentsService implements OnModuleInit {
     private readonly usersService: UsersService,
     // Último parâmetro de propósito: polling.spec.ts instancia o serviço por posição.
     private readonly pixQueue: PixQueueService,
+    // Opcional — specs antigos instanciam o serviço por posição sem esse param.
+    private readonly financeiroWhatsappService?: FinanceiroWhatsappService,
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     this.stripe = stripeKey ? new Stripe(stripeKey) : null;
@@ -1284,6 +1287,11 @@ export class PaymentsService implements OnModuleInit {
           { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
         ),
       );
+      // Registra na tela Financeiro WhatsApp pra manter o histórico da conversa —
+      // opcional (specs antigos não injetam esse service, ver constructor).
+      this.financeiroWhatsappService
+        ?.saveOutbound(to, `[template: ${templateName}]`)
+        .catch((err) => this.logger.error(`[FINANCEIRO] Falha ao registrar outbound "${templateName}" para ${to}: ${err.message}`));
     } catch (err) {
       this.logger.error(
         `[PAYMENTS] Falha ao enviar template "${templateName}" para ${to} [HTTP ${err?.response?.status ?? 'N/A'}]: ${JSON.stringify(err?.response?.data ?? err.message)}`,

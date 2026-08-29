@@ -48,6 +48,12 @@ export const updateStage = (id, stage) =>
     body: JSON.stringify({ stage }),
   }).then(json)
 
+export const getFinanceiroConversations = () =>
+  authFetch(`${BASE}/financeiro-whatsapp/conversations`).then(json)
+
+export const getFinanceiroMessages = (phone) =>
+  authFetch(`${BASE}/financeiro-whatsapp/messages/${phone}`).then(json)
+
 export const updateName = (id, name) =>
   authFetch(`${BASE}/leads/${id}/name`, {
     method: 'PATCH',

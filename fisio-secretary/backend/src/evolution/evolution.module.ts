@@ -29,6 +29,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
 import { AgentsModule } from '../agents/agents.module';
 import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
 import { FollowupModule } from '../followup/followup.module';
+import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-whatsapp.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { FollowupModule } from '../followup/followup.module';
     AgentsModule,
     PromptModulesModule,
     FollowupModule,
+    FinanceiroWhatsappModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [

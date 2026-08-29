@@ -16,7 +16,7 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
     const configService = { get: jest.fn() };
     controller = new EvolutionController(
       {} as any, {} as any, {} as any, uazapiProvider, leadsService, {} as any, {} as any,
-      {} as any, {} as any, mediaService, configService as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, mediaService, configService as any, {} as any, {} as any, {} as any, {} as any, {} as any,
     );
   });
 
