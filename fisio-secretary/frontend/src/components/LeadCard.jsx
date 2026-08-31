@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Trash2, Edit2, Calendar, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { updateName } from '../services/api'
+import { useDemoMode, displayPhone } from '../hooks/useDemoMode'
 
 // Raias avançadas/finais (agendado, vendas, desliza_hair) ficam fora da regra de "sem resposta"
 const NO_REPLY_ACTIVE_STAGES = ['novo_lead', 'lead_frio', 'lead_quente']
@@ -56,6 +57,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
   const inputRef = useRef(null)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id })
   const noReplyLevel = getNoReplyLevel(lead)
+  const demoMode = useDemoMode()
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -125,7 +127,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
             ) : (
               <p className="text-sm font-semibold text-gray-800 leading-tight truncate">{(lead.name && lead.name !== 'null') ? lead.name : 'Sem nome'}</p>
             )}
-            <p className="text-xs text-gray-400 truncate">{lead.phone}</p>
+            <p className="text-xs text-gray-400 truncate">{displayPhone(lead.phone, demoMode)}</p>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">

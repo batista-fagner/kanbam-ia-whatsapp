@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil, Mic, Square } from 'lucide-react'
 import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName } from '../services/api'
+import { useDemoMode, displayPhone } from '../hooks/useDemoMode'
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024 // 5 MB
 
@@ -72,6 +73,7 @@ export default function LeadModal({ lead, onClose }) {
   const recordTimerRef = useRef(null)
   const [mediaList, setMediaList] = useState([])
   const [labels, setLabels] = useState(lead?.labels ?? [])
+  const demoMode = useDemoMode()
   const [observations, setObservations] = useState(lead?.observations ?? '')
   const [obsStatus, setObsStatus] = useState('idle') // 'idle' | 'saving' | 'saved'
   const obsInitialRef = useRef(lead?.observations ?? '')
@@ -363,7 +365,7 @@ export default function LeadModal({ lead, onClose }) {
                   <Pencil className="w-3 h-3 text-gray-300 group-hover:text-teal-500 transition" />
                 </div>
               )}
-              <p className="text-xs text-gray-400">{lead.phone}</p>
+              <p className="text-xs text-gray-400">{displayPhone(lead.phone, demoMode)}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">

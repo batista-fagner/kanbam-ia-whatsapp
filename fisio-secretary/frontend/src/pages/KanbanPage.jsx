@@ -7,11 +7,12 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X, UserPlus } from 'lucide-react'
+import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X, UserPlus, Eye, EyeOff } from 'lucide-react'
 
 import { getColumns } from '../data/mockData'
 import { useAuth } from '../context/AuthContext'
 import { useLeads } from '../hooks/useLeads'
+import { useDemoMode, setDemoMode } from '../hooks/useDemoMode'
 import { updateStage, deleteLead } from '../services/api'
 import KanbanColumn from '../components/KanbanColumn'
 import LeadCard from '../components/LeadCard'
@@ -29,6 +30,7 @@ export default function KanbanPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [addingLead, setAddingLead] = useState(false)
   const searchRef = useRef(null)
+  const demoMode = useDemoMode()
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -145,6 +147,16 @@ export default function KanbanPage() {
                 Ver lead
               </button>
             )}
+            <button
+              onClick={() => setDemoMode(!demoMode)}
+              title={demoMode ? 'Mostrar números dos leads' : 'Ocultar números dos leads (modo demonstração)'}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition ${
+                demoMode ? 'bg-amber-50 border-amber-200 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              {demoMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {demoMode ? 'Números ocultos' : 'Ocultar números'}
+            </button>
             <button
               onClick={() => setAddingLead(true)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium"
