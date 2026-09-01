@@ -901,7 +901,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
 
   // Notifica o número configurado pelo cliente (Configurações) sempre que um lead
   // vira "agendado" — disparo best-effort, não pode derrubar o fluxo de resposta ao lead.
+  // Só dispara com schedulingHandoffEnabled=true — cliente que só quer aviso de
+  // intenção de compra (ver PURCHASE_HANDOFF_TENANT_IDS, ex: S&A Cabelos Naturais)
+  // desliga esse switch em Configurações pra não ser notificado de todo auto-agendamento.
   private notifyAppointmentScheduled(lead: any, instanceConfig: any, tenantToken: string | undefined, tenantId: string): void {
+    if (!instanceConfig?.schedulingHandoffEnabled) return;
     const notificationPhone = instanceConfig?.notificationPhone;
     if (!notificationPhone) return;
     const text = `📅 Novo agendamento!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}`;
