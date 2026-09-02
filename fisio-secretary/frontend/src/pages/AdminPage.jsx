@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
+
+// Link público do checkout — mesmo formulário pra qualquer cliente, sem dado pré-preenchido.
+// Usado pra gerar o QR Code exibido/baixado na aba Checkout (ex: pra mostrar numa live).
+const CHECKOUT_URL = 'https://app.converthair.com.br/checkout'
 
 function daysUntil(dateStr) {
   if (!dateStr) return null
@@ -46,6 +51,8 @@ export default function AdminPage() {
   const [billingEvents, setBillingEvents] = useState([])
   const [loadingBilling, setLoadingBilling] = useState(false)
   const [billingFilter, setBillingFilter] = useState('')
+  const [linkCopied, setLinkCopied] = useState(false)
+  const qrCanvasRef = useRef(null)
 
   const load = async () => {
     try {
@@ -122,6 +129,21 @@ export default function AdminPage() {
       setCheckoutSaved(true)
       setTimeout(() => setCheckoutSaved(false), 2500)
     } catch (e) { setError(e.message) } finally { setSavingCheckout(false) }
+  }
+
+  function copyCheckoutLink() {
+    navigator.clipboard.writeText(CHECKOUT_URL)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
+  function downloadQrCode() {
+    const canvas = qrCanvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.download = 'qrcode-checkout-converthair.png'
+    link.href = canvas.toDataURL('image/png')
+    link.click()
   }
 
   async function handleCreate(e) {
@@ -318,7 +340,27 @@ export default function AdminPage() {
 
       {/* Aba: Checkout */}
       {activeTab === 'checkout' && (
-        <div className="max-w-lg">
+        <div className="max-w-lg space-y-5">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-1">Link e QR Code de pagamento</h3>
+            <p className="text-xs text-gray-400 mb-4">Use pra divulgar numa live ou compartilhar direto — leva pro checkout público com os planos/valores configurados abaixo.</p>
+            <div className="flex items-center gap-2 mb-4">
+              <input readOnly value={CHECKOUT_URL}
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 bg-gray-50 focus:outline-none" />
+              <button onClick={copyCheckoutLink}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition shrink-0">
+                <Copy className="w-3.5 h-3.5" /> {linkCopied ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
+            <div className="flex flex-col items-center gap-3 p-4 bg-gray-50 rounded-lg">
+              <QRCodeCanvas ref={qrCanvasRef} value={CHECKOUT_URL} size={200} level="M" marginSize={2} />
+              <button onClick={downloadQrCode}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-teal-700 hover:bg-teal-50 transition">
+                <Download className="w-3.5 h-3.5" /> Baixar QR Code
+              </button>
+            </div>
+          </div>
+
           {loadingCheckout && !checkoutForm && (
             <div className="flex items-center gap-2 text-gray-400 text-sm py-8"><Loader2 className="w-4 h-4 animate-spin" /> Carregando configurações...</div>
           )}
