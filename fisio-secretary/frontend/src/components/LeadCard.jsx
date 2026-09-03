@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Trash2, Edit2, Calendar, Clock } from 'lucide-react'
@@ -59,6 +59,18 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
   const noReplyLevel = getNoReplyLevel(lead)
   const demoMode = useDemoMode()
 
+  // Busca do Kanban: rola até o card (coluna vertical + página horizontal) em vez
+  // de só destacar a cor — antes o usuário achava o lead mas tinha que catar o
+  // card na mão quando ele estava fora da área visível.
+  const cardRef = useRef(null)
+  const setRefs = useCallback((node) => {
+    cardRef.current = node
+    setNodeRef(node)
+  }, [setNodeRef])
+  useEffect(() => {
+    if (highlighted) cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  }, [highlighted])
+
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : dimmed ? 0.3 : 1,
@@ -99,7 +111,7 @@ export default function LeadCard({ lead, onClick, onDelete, onLeadUpdate, highli
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       style={style}
       {...listeners}
       {...attributes}
