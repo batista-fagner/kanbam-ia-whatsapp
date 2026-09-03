@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { FileText, Loader2, AlertCircle, ChevronDown, Bot, Boxes, X } from 'lucide-react'
-import { getAdminPrompts, getAdminMonolithPrompt, getAdminAgentPrompt, getAdminModulePrompt } from '../services/api'
+import { getAdminPrompts, getAdminMonolithPrompt, getAdminAgentPrompt, getAdminPromptModules, updateAdminPromptModule } from '../services/api'
 import PromptSearchViewer from '../components/PromptSearchViewer'
 
 const CHAR_LIMIT = 5000 // trava futura do plano de R$310 — por enquanto só alerta visual
@@ -49,12 +49,30 @@ export default function AdminPromptsPage() {
   }
 
   async function openModule(tenantId, moduleId, title) {
-    setViewer({ title, text: '', loading: true })
+    setViewer({ title, text: '', loading: true, editable: true, tenantId, moduleId })
     try {
-      const { text } = await getAdminModulePrompt(tenantId, moduleId)
-      setViewer({ title, text, loading: false })
+      const modules = await getAdminPromptModules(tenantId)
+      const mod = modules.find(m => m.id === moduleId)
+      if (!mod) throw new Error('Módulo não encontrado')
+      setViewer({ title, text: mod.content ?? '', loading: false, editable: true, tenantId, moduleId })
     } catch (e) {
-      setViewer({ title, text: `Erro ao carregar: ${e.message}`, loading: false })
+      setViewer({ title, text: `Erro ao carregar: ${e.message}`, loading: false, editable: false })
+    }
+  }
+
+  async function handleSaveModule() {
+    if (!viewer?.editable) return
+    setViewer(v => ({ ...v, saving: true, saveError: '' }))
+    try {
+      await updateAdminPromptModule(viewer.tenantId, viewer.moduleId, { content: viewer.text })
+      setViewer(v => ({ ...v, saving: false, saved: true }))
+      setTenants(prev => prev.map(t => t.tenantId !== viewer.tenantId ? t : {
+        ...t,
+        dynamicModules: t.dynamicModules.map(m => m.moduleId !== viewer.moduleId ? m : { ...m, length: viewer.text.length }),
+      }))
+      setTimeout(() => setViewer(v => (v ? { ...v, saved: false } : v)), 2000)
+    } catch (e) {
+      setViewer(v => ({ ...v, saving: false, saveError: e.message }))
     }
   }
 
@@ -200,10 +218,31 @@ export default function AdminPromptsPage() {
               </div>
             ) : (
               <>
-                <div className="mb-2"><LengthBadge length={viewer.text.length} /></div>
-                <div className="flex-1 overflow-hidden">
-                  <PromptSearchViewer value={viewer.text} readOnly heightClass="h-[55vh]" />
+                <div className="mb-2 flex items-center gap-2">
+                  <LengthBadge length={viewer.text.length} />
+                  {viewer.editable && <span className="text-xs text-purple-600 font-medium">Editando módulo — as mudanças valem pra IA em produção</span>}
                 </div>
+                <div className="flex-1 overflow-hidden">
+                  <PromptSearchViewer
+                    value={viewer.text}
+                    readOnly={!viewer.editable}
+                    onChange={viewer.editable ? (text) => setViewer(v => ({ ...v, text })) : undefined}
+                    heightClass="h-[55vh]"
+                  />
+                </div>
+                {viewer.editable && (
+                  <div className="flex items-center gap-3 pt-3">
+                    <button
+                      onClick={handleSaveModule}
+                      disabled={viewer.saving}
+                      className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                    >
+                      {viewer.saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : 'Salvar módulo'}
+                    </button>
+                    {viewer.saved && <span className="text-sm text-green-600 font-medium">✓ Salvo</span>}
+                    {viewer.saveError && <span className="text-sm text-red-600">{viewer.saveError}</span>}
+                  </div>
+                )}
               </>
             )}
           </div>

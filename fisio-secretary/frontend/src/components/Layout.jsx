@@ -1,13 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { getInstanceConfig } from '../services/api'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
   const { user } = useAuth()
+  const [promptEngine, setPromptEngine] = useState(null)
+
+  // Cliente já rodando em módulos dinâmicos precisa ver o menu mesmo sem estar
+  // na lista de e-mail beta abaixo (ela existe só pra dar acesso ANTES da
+  // migração, pra montar módulos com antecedência) — sem isso o cliente não
+  // acha onde editar o próprio prompt (ver memória bug Joelma/Charm's Cabelos).
+  useEffect(() => {
+    if (user?.role === 'admin') return
+    getInstanceConfig().then(cfg => setPromptEngine(cfg?.promptEngine ?? null)).catch(() => {})
+  }, [user?.role])
   const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
   // Multi-agente em rollout controlado: visível em localhost e para contas beta.
   // Todos os outros clientes seguem no monólito (o backend também só ativa via
@@ -21,7 +32,7 @@ export default function Layout({ onLogout }) {
   // construtor pra montar os módulos, mas prompt_engine segue 'legacy' — o
   // WhatsApp real dela continua no multiagente até o conteúdo ser aprovado.
   const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
-  const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email)
+  const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email) || promptEngine === 'dynamic_modules'
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Kanban', path: '/' },

@@ -1553,8 +1553,10 @@ export default function SettingsPage() {
         <MonolithTestCard />
       )}
 
-      {/* Card módulos dinâmicos — protótipo, rollout ainda mais restrito */}
-      {!bootstrapping && instanceConfig && canSeeDynamicModules && (
+      {/* Card módulos dinâmicos — protótipo em rollout controlado, mas sempre visível
+          pra quem JÁ está em módulos dinâmicos (senão o cliente não acha onde editar
+          o próprio prompt e mexe no campo antigo abaixo, que não faz mais nada). */}
+      {!bootstrapping && instanceConfig && (canSeeDynamicModules || instanceConfig?.promptEngine === 'dynamic_modules') && (
         <DynamicModulesToggleCard config={instanceConfig} onSaved={fetchConfig} />
       )}
 
@@ -1583,6 +1585,16 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 mt-4">
           <h2 className="text-sm font-semibold text-gray-800 mb-1">Prompt da Lindona (Mega Hair)</h2>
           <p className="text-sm text-gray-500 mb-4">Personalize o comportamento da Lindona (personalidade, fluxo, regras). Datas, mídias disponíveis e formato técnico de resposta são adicionados automaticamente pelo sistema.</p>
+
+          {instanceConfig?.promptEngine === 'dynamic_modules' && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg mb-4">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Esse campo está <strong>desativado</strong> — sua IA está rodando em "Módulos Dinâmicos" (veja o card acima), que ignora esse prompt antigo. Edite o prompt real em{' '}
+                <a href="/modules-test" className="underline font-medium">Configurar módulos</a>.
+              </span>
+            </div>
+          )}
 
           <div className="flex gap-4">
             {/* Coluna esquerda: editor do prompt */}

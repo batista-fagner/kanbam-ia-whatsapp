@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PromptModule as PromptModuleEntity } from '../common/entities/prompt-module.entity';
 import { PriceConfig } from '../common/entities/price-config.entity';
-import { PromptModulesController } from './prompt-modules.controller';
+import { PromptModulesController, AdminPromptModulesController } from './prompt-modules.controller';
 import { PromptModulesService } from './prompt-modules.service';
 import { AuthModule } from '../auth/auth.module';
 import { AiModule } from '../ai/ai.module';
@@ -10,7 +10,7 @@ import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([PromptModuleEntity, PriceConfig]), AuthModule, AiModule, MediaModule],
-  controllers: [PromptModulesController],
+  controllers: [PromptModulesController, AdminPromptModulesController],
   providers: [PromptModulesService],
   exports: [PromptModulesService],
 })

@@ -258,6 +258,22 @@ export const getAdminAgentPrompt = (tenantId, agentId) =>
 export const getAdminModulePrompt = (tenantId, moduleId) =>
   authFetch(`${BASE}/admin/prompts/${tenantId}/module/${moduleId}`).then(json)
 
+// Config da própria instância (tenant do usuário logado) — usado pelo Layout pra
+// decidir se mostra o menu "Módulos" sem depender de lista de e-mail hardcoded.
+export const getInstanceConfig = () =>
+  authFetch(`${BASE}/instance/config`).then(json)
+
+// --- Admin: edição de módulos dinâmicos de qualquer tenant (sem precisar logar como o cliente) ---
+export const getAdminPromptModules = (tenantId) =>
+  authFetch(`${BASE}/admin/prompt-modules/${tenantId}`).then(json)
+
+export const updateAdminPromptModule = (tenantId, moduleId, body) =>
+  authFetch(`${BASE}/admin/prompt-modules/${tenantId}/${moduleId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(json)
+
 // --- Onboarding: form recebido → rascunho de prompt → revisão (agente de CS, Fase 1) ---
 export const listOnboardingForms = () =>
   authFetch(`${BASE}/admin/prompt-drafts/forms`).then(json)
