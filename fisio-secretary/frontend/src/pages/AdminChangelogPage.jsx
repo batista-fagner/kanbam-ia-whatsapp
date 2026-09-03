@@ -7,6 +7,26 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Admin pode editar módulo dinâmico de qualquer cliente sem logar como ele',
+    date: '03/09/2026',
+    detail: 'Nova rota /admin/prompt-modules/:tenantId (guardada por AdminGuard) + edição inline na tela Prompts. Também corrigido: card de módulos e o menu "Módulos (beta)" só apareciam em localhost ou pra uma lista fixa de e-mails de teste — agora aparecem em produção pra qualquer tenant já em prompt_engine=dynamic_modules (afetava a Joelma/Charm\'s Cabelos, que editava o prompt monólito antigo sem efeito nenhum).',
+  },
+  {
+    title: 'Link + QR Code de pagamento na aba Checkout do admin',
+    date: '02/09/2026',
+    detail: 'Pra divulgar em lives: QR Code (qrcode.react) + botão de copiar link, ambos apontando pro checkout público (app.converthair.com.br/checkout). QR pode ser baixado como PNG.',
+  },
+  {
+    title: 'Limite de vídeo até 40MB liberado só pra Telma (Marcele Blz Hair)',
+    date: '01/09/2026',
+    detail: 'Catálogo dela tinha vídeos de até 31MB falhando silenciosamente na entrega pelo WhatsApp ("não consegui visualizar"). Limite de upload sobe de 30MB pra 40MB só nesse tenant até o catálogo ser comprimido.',
+  },
+  {
+    title: 'Prompt do Ricardo/Ingrid Hair: handoff pra Ingrid acontecia cedo demais',
+    date: '02/09/2026',
+    detail: '"Quero fazer um orçamento" (mensagem padrão de anúncio) disparava handoff imediato pra Ingrid, sem qualificar nada — 100% dos leads recentes caíram nisso. Agora essa frase sozinha vira saudação normal; antes de encaminhar, a IA pergunta o método de colocação e pede as 3 fotos (molhado, frente, trás) que a Ingrid sempre acabava pedindo depois.',
+  },
+  {
     title: 'Soraia Dias Mega Hair: migração pro motor de módulos dinâmicos',
     date: '27/08/2026',
     detail: 'Os 5 agentes do multiagente (Recepção, Avaliação, Preço, Agendamento, Institucional) viraram 1 bloco fixo (Core) + 4 módulos por palavra-chave — mesmo motor já usado pelo S&A e pela Joelma. Conteúdo revisado trazendo correções já validadas em outros clientes: proibição total de cálculo de preço pela IA (o risco dela é "R$ 8,37 por grama" e o adiantamento de 35% — a IA nunca multiplica, sempre remete pra avaliação), ajuste pra "vou confirmar com a equipe" não encerrar mais o atendimento sozinho (antes perguntas simples como "aceita cartão?" desligavam a IA do lead), e regra explícita dizendo que a IA não vê fotos/links enviados pela cliente. Testado com 59 casos de roteamento de palavra-chave + 29 cenários de conversa completa (preço, agendamento, institucional, foto, link, tentativa de manipulação, cliente rude) antes de ativar. Já ativo no WhatsApp real dela — rollback é 1 update no banco.',
@@ -62,6 +82,21 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Módulo dinâmico ativo mas sem tela de edição em produção (Joelma)',
+    detail: 'Admin editava o prompt "Lindona (Mega Hair)" em Configurações, mas esse campo é ignorado quando prompt_engine=dynamic_modules — dava impressão de "não salvar". Card de módulos e menu ficavam ocultos em produção.',
+    status: 'corrigido',
+  },
+  {
+    title: 'Vídeo grande falha silenciosa no envio (Telma/Marcele Blz Hair)',
+    detail: 'sendMediaByUrl engolia erro da uazapi sem lançar exceção — vídeo de 21MB era registrado como "enviado" no banco mesmo sem tocar no celular da cliente.',
+    status: 'corrigido',
+  },
+  {
+    title: 'Notificação de agendamento disparava mesmo com handoff só por intenção de compra (S&A)',
+    detail: 'notifyAppointmentScheduled() ignorava o switch schedulingHandoffEnabled — cliente recebia aviso de "novo agendamento" toda vez que a IA auto-agendava.',
+    status: 'corrigido',
+  },
   {
     title: 'Preço emprestado de outro produto (S&A Cabelos Naturais)',
     detail: 'Pelo menos 2 leads no mesmo dia (25-26/08) receberam preço de um cabelo diferente do que estava sendo anunciado no vídeo — chegou a acontecer da IA dizer que o preço do próprio anúncio "não corresponde" quando a cliente contestou.',
