@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Busca do Kanban leva até o card, não só destaca',
+    date: '03/09/2026',
+    detail: 'Ao buscar por número/nome, o card já ficava destacado com cor, mas se estivesse fora da tela (coluna longa ou fora do lado visível) tinha que catar na mão pra excluir. Agora rola automaticamente até o card certo.',
+  },
+  {
     title: 'Admin pode editar módulo dinâmico de qualquer cliente sem logar como ele',
     date: '03/09/2026',
     detail: 'Nova rota /admin/prompt-modules/:tenantId (guardada por AdminGuard) + edição inline na tela Prompts. Também corrigido: card de módulos e o menu "Módulos (beta)" só apareciam em localhost ou pra uma lista fixa de e-mails de teste — agora aparecem em produção pra qualquer tenant já em prompt_engine=dynamic_modules (afetava a Joelma/Charm\'s Cabelos, que editava o prompt monólito antigo sem efeito nenhum).',
