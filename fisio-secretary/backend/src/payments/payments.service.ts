@@ -903,6 +903,22 @@ export class PaymentsService implements OnModuleInit {
     });
     const saved = await this.configRepo.save(tenant);
 
+    // Registra no histórico de cobrança (aba "Cobranças" no Admin) — antes só o PIX
+    // era registrado ali (via _activatePaidTenant), pagamento por cartão nunca
+    // aparecia na tela mesmo com a assinatura ativa de verdade no Stripe.
+    if (paymentMethod === 'card') {
+      const settings = await this.getCheckoutSettings();
+      await this._logBillingEvent(
+        saved.id,
+        'pagamento',
+        'confirmado',
+        Number(settings.planoPrice ?? 397),
+        extra.stripeSubscriptionId ?? extra.stripeCustomerId ?? saved.id,
+        undefined,
+        name,
+      );
+    }
+
     const password = this._generatePassword();
     await this.usersService.create({
       email,

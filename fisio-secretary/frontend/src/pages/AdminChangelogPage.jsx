@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Assinatura Convert Hair: preço atualizado para R$397/mês',
+    date: '03/09/2026',
+    detail: 'Novo produto e preço criados no Stripe pro lançamento de hoje. Atualizada a variável STRIPE_PRICE_ID_MONTHLY em produção (o valor cobrado de verdade) e o campo de preço exibido na tela de checkout (que vem de uma fonte separada, no banco) — os dois precisam bater.',
+  },
+  {
     title: 'Busca do Kanban leva até o card, não só destaca',
     date: '03/09/2026',
     detail: 'Ao buscar por número/nome, o card já ficava destacado com cor, mas se estivesse fora da tela (coluna longa ou fora do lado visível) tinha que catar na mão pra excluir. Agora rola automaticamente até o card certo.',
@@ -76,7 +81,6 @@ const DONE = [
 const PENDING = [
   { title: 'Provisionar Redis em produção + ligar as filas (BullMQ)', detail: 'Código já deployado, mas QUEUE_ENGINE=legacy-cron em prod por falta de Redis no Railway.' },
   { title: 'Webhook Efí Bank com mTLS', detail: 'Substituiria o polling de PIX por confirmação instantânea — precisa de proxy mTLS de entrada (Nginx/Caddy ou Cloudflare) na frente do Railway.' },
-  { title: 'Stripe Live (cartão)', detail: 'Falta configurar credenciais sk_live_, price ID e webhook secret no Railway — código já pronto.' },
   { title: 'Notificações WhatsApp ao vendedor', detail: 'Campo notificationPhone já existe; falta disparar quando stage muda pra lead_quente/agendado/shouldIgnore=true.' },
   { title: 'Lembrete de consulta 1 dia antes (Sofia)', detail: 'Cron diário buscando leads com consulta amanhã, perguntando "sim/não".' },
   { title: 'Follow-up automático por cadência (sem gatilho manual)', detail: 'Base em backend/src/followup/ já pronta — falta o gatilho automático por inatividade.' },
@@ -87,6 +91,16 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Pagamento por cartão não aparecia em Cobranças (Lucileia Santos)',
+    detail: 'Assinatura por cartão sempre funcionou (conta era criada e ativada certinho), mas só o PIX registrava um evento na aba "Cobranças" — cartão nunca gerava esse registro, dando a impressão de que o pagamento tinha sumido. Lucileia (lucileiareis@hotmail.com) comprou no lançamento de hoje e não aparecia lá; registro dela adicionado manualmente e o cadastro corrigido pra próximos pagamentos por cartão aparecerem sozinhos.',
+    status: 'corrigido',
+  },
+  {
+    title: 'Redeploy não pegava a variável de preço nova (checkout continuava com valor antigo)',
+    detail: 'Rodar o restart do serviço em produção não estava de fato reiniciando o processo — o preço antigo (R$310) continuava aparecendo mesmo depois de trocar o valor e reiniciar. Precisou repetir o restart pra sair um deployment novo de verdade.',
+    status: 'corrigido',
+  },
   {
     title: 'Módulo dinâmico ativo mas sem tela de edição em produção (Joelma)',
     detail: 'Admin editava o prompt "Lindona (Mega Hair)" em Configurações, mas esse campo é ignorado quando prompt_engine=dynamic_modules — dava impressão de "não salvar". Card de módulos e menu ficavam ocultos em produção.',
