@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Catálogo de vídeos da Telma (Marcele Blz Hair) comprimido — resolvia o "vídeo não abre"',
+    date: '04/09/2026',
+    detail: 'Achado o motivo real: os 11 vídeos maiores do catálogo dela eram 4K vertical (2160x3840) a ~13-14 Mbps, filmados direto do celular sem compressão — 12-18s de vídeo virava 17-31MB. Isso falhava na entrega pelo WhatsApp mesmo com o limite de upload liberado (o vídeo era aceito pela uazapi mas não abria no celular do cliente — aconteceu com pelo menos 3 leads no mesmo dia). Recomprimidos pra 1080p com teto de bitrate: caíram pra 3,5-7,8MB cada, mesma qualidade visível numa tela de celular, mesma URL/nome (nada mudou pro prompt). Testado com envio real via API confirmando entrega no WhatsApp.',
+  },
+  {
     title: 'Assinatura Convert Hair: preço atualizado para R$397/mês',
     date: '03/09/2026',
     detail: 'Novo produto e preço criados no Stripe pro lançamento de hoje. Atualizada a variável STRIPE_PRICE_ID_MONTHLY em produção (o valor cobrado de verdade) e o campo de preço exibido na tela de checkout (que vem de uma fonte separada, no banco) — os dois precisam bater.',
@@ -92,6 +97,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Vídeos da Telma (Marcele Blz Hair) não abriam no WhatsApp do cliente',
+    date: '04/09/2026',
+    detail: 'Vídeos 4K de 17-31MB do catálogo dela chegavam a ser aceitos pela uazapi (status 200) mas não tocavam no celular do cliente — reportado por pelo menos 3 leads no mesmo dia. Causa: filmagem em 4K vertical sem nenhuma compressão. Catálogo recomprimido pra 1080p (3,5-7,8MB cada).',
+    status: 'corrigido',
+  },
   {
     title: 'Cliente que assinou hoje aparecia com "vence hoje" na tela de Clientes',
     date: '04/09/2026',
