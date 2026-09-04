@@ -281,34 +281,76 @@ export class PaymentsService implements OnModuleInit {
   // falhou simplesmente não aparece em lugar nenhum — parecia que o cadastro "sumiu",
   // quando na verdade o Stripe nunca recebeu o dinheiro (motivo: erro do 04/09/2026,
   // caso Eliene da Silva/mariednasilvaandrade@gmail.com).
+  // Manda pros dois canais — não é fallback um do outro, os dois são independentes:
+  // WhatsApp é pra ver na hora, e-mail fica registrado (histórico) mesmo se o número
+  // de WhatsApp estiver restrito (já aconteceu — ver commit anterior).
   private async _onPaymentIntentFailed(pi: any): Promise<void> {
     try {
       const adminPhone = this.config.get<string>('ADMIN_ALERT_PHONE');
-      if (!adminPhone) return;
+      const adminEmail = this.config.get<string>('ADMIN_ALERT_EMAIL');
+      if (!adminPhone && !adminEmail) return;
 
       const billing = pi.last_payment_error?.payment_method?.billing_details ?? {};
-      const name = billing.name || pi.metadata?.name || 'Nome não informado';
-      const email = billing.email || pi.receipt_email || 'e-mail não informado';
+      const clientName = billing.name || pi.metadata?.name || 'Nome não informado';
+      const clientEmail = billing.email || pi.receipt_email || 'e-mail não informado';
       const amount = typeof pi.amount === 'number' ? (pi.amount / 100).toFixed(2).replace('.', ',') : '?';
       const reason = pi.last_payment_error?.message || 'motivo não informado pelo Stripe';
       const isRenewal = Boolean(pi.invoice);
+      const kind = isRenewal ? 'renovação' : '1ª cobrança — checkout';
 
-      const alertText =
-        `🔴 *Pagamento por cartão falhou (${isRenewal ? 'renovação' : '1ª cobrança — checkout'})*\n\n` +
-        `Nome: *${name}*\n` +
-        `E-mail: ${email}\n` +
-        `Valor tentado: R$ ${amount}\n` +
-        `Motivo: ${reason}\n\n` +
-        `Nenhuma cobrança foi efetivada — não vai aparecer em Clientes/Cobranças até ela tentar de novo com sucesso.`;
+      if (adminPhone) {
+        const alertText =
+          `🔴 *Pagamento por cartão falhou (${kind})*\n\n` +
+          `Nome: *${clientName}*\n` +
+          `E-mail: ${clientEmail}\n` +
+          `Valor tentado: R$ ${amount}\n` +
+          `Motivo: ${reason}\n\n` +
+          `Nenhuma cobrança foi efetivada — não vai aparecer em Clientes/Cobranças até ela tentar de novo com sucesso.`;
+        const sent = await this._sendText(adminPhone, alertText);
+        if (sent) {
+          this.logger.warn(`[STRIPE] Pagamento falhou (pi ${pi.id}) — alerta enviado pro admin via WhatsApp`);
+        } else {
+          this.logger.error(`[STRIPE] Pagamento falhou (pi ${pi.id}) — NÃO conseguiu avisar o admin via WhatsApp (ver erro de envio acima). Cheque manualmente.`);
+        }
+      }
 
-      const sent = await this._sendText(adminPhone, alertText);
-      if (sent) {
-        this.logger.warn(`[STRIPE] Pagamento falhou (pi ${pi.id}) — alerta enviado pro admin`);
-      } else {
-        this.logger.error(`[STRIPE] Pagamento falhou (pi ${pi.id}) — NÃO conseguiu avisar o admin via WhatsApp (ver erro de envio acima). Cheque manualmente.`);
+      if (adminEmail) {
+        await this._sendPaymentFailureEmail(adminEmail, { clientName, clientEmail, amount, reason, kind, piId: pi.id });
       }
     } catch (err) {
       this.logger.error(`[STRIPE] Falha ao processar/alertar payment_intent.payment_failed: ${err.message}`);
+    }
+  }
+
+  private async _sendPaymentFailureEmail(
+    to: string,
+    info: { clientName: string; clientEmail: string; amount: string; reason: string; kind: string; piId: string },
+  ): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn('[EMAIL] RESEND_API_KEY não configurada — pulando alerta de pagamento falho por e-mail');
+      return;
+    }
+    const from = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'Convert Hair <onboarding@resend.dev>';
+    try {
+      await this.resend.emails.send({
+        from,
+        to,
+        subject: `🔴 Pagamento falhou — ${info.clientName} (${info.kind})`,
+        html: `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f1f1f; line-height: 1.6;">
+            <h2 style="color: #dc2626;">Pagamento por cartão falhou</h2>
+            <p><strong>Tipo:</strong> ${info.kind}</p>
+            <p><strong>Nome:</strong> ${info.clientName}</p>
+            <p><strong>E-mail:</strong> ${info.clientEmail}</p>
+            <p><strong>Valor tentado:</strong> R$ ${info.amount}</p>
+            <p><strong>Motivo:</strong> ${info.reason}</p>
+            <p><strong>Payment Intent:</strong> ${info.piId}</p>
+            <p style="color: #6b7280; margin-top: 20px;">Nenhuma cobrança foi efetivada — não vai aparecer em Clientes/Cobranças até ela tentar de novo com sucesso.</p>
+          </div>`,
+      });
+      this.logger.log(`[EMAIL] Alerta de pagamento falho enviado para ${to}`);
+    } catch (err) {
+      this.logger.error(`[EMAIL] Falha ao enviar alerta de pagamento falho para ${to}: ${err.message}`);
     }
   }
 
