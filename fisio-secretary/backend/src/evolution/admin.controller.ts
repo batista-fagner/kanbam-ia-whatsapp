@@ -16,6 +16,7 @@ import { AgentsService } from '../agents/agents.service';
 import { NotFoundException } from '@nestjs/common';
 import { BillingEvent } from '../common/entities/billing-event.entity';
 import { PromptModule } from '../common/entities/prompt-module.entity';
+import { MediaSendError } from '../common/entities/media-send-error.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -34,6 +35,7 @@ export class AdminController {
     @InjectRepository(Conversation) private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(BillingEvent) private readonly billingEventRepo: Repository<BillingEvent>,
     @InjectRepository(PromptModule) private readonly promptModuleRepo: Repository<PromptModule>,
+    @InjectRepository(MediaSendError) private readonly mediaSendErrorRepo: Repository<MediaSendError>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -444,9 +446,61 @@ export class AdminController {
       ORDER BY date ASC
     `);
 
-    const totalToday = byTenant.reduce((sum: number, t: any) => sum + Number(t.videos_sent), 0);
+    // Erros de envio de mídia por tenant no dia — separado da query acima porque um
+    // tenant pode só ter erro (0 vídeos enviados com sucesso) e ainda assim precisa
+    // aparecer aqui (ver bug real: vídeo 4K da Telma que "enviava" mas não abria).
+    const errorsByTenant = await this.mediaSendErrorRepo.query(`
+      SELECT
+        e.tenant_id,
+        COALESCE(wc.display_name, wc.profile_name, e.tenant_id::text) AS tenant_name,
+        COUNT(e.id)::int AS errors_today,
+        COUNT(e.id) FILTER (WHERE e.reason = 'not_found')::int   AS not_found_today,
+        COUNT(e.id) FILTER (WHERE e.reason = 'send_failed')::int AS send_failed_today
+      FROM media_send_errors e
+      JOIN whatsapp_config wc ON e.tenant_id = wc.id
+      WHERE (e.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = $1
+      GROUP BY e.tenant_id, wc.display_name, wc.profile_name
+      ORDER BY errors_today DESC
+    `, [day]);
 
-    return { date: day, total_today: totalToday, by_tenant: byTenant, history };
+    // Últimos eventos de erro do dia, pra investigação rápida (nome da mídia, lead, motivo).
+    const recentErrors = await this.mediaSendErrorRepo.query(`
+      SELECT
+        e.id, e.tenant_id,
+        COALESCE(wc.display_name, wc.profile_name, e.tenant_id::text) AS tenant_name,
+        e.phone, e.media_name, e.reason, e.error_message, e.created_at
+      FROM media_send_errors e
+      JOIN whatsapp_config wc ON e.tenant_id = wc.id
+      WHERE (e.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = $1
+      ORDER BY e.created_at DESC
+      LIMIT 50
+    `, [day]);
+
+    // Junta vídeos enviados + erros por tenant num só array (um tenant pode aparecer
+    // só numa das duas queries — ex: só erro, zero sucesso, ou vice-versa).
+    const byTenantMap = new Map<string, any>();
+    for (const t of byTenant) {
+      byTenantMap.set(t.tenant_id, { ...t, errors_today: 0, not_found_today: 0, send_failed_today: 0 });
+    }
+    for (const e of errorsByTenant) {
+      const existing = byTenantMap.get(e.tenant_id);
+      if (existing) {
+        existing.errors_today = e.errors_today;
+        existing.not_found_today = e.not_found_today;
+        existing.send_failed_today = e.send_failed_today;
+      } else {
+        byTenantMap.set(e.tenant_id, {
+          tenant_id: e.tenant_id, tenant_name: e.tenant_name, daily_limit: null, videos_sent: 0,
+          errors_today: e.errors_today, not_found_today: e.not_found_today, send_failed_today: e.send_failed_today,
+        });
+      }
+    }
+    const byTenantMerged = Array.from(byTenantMap.values()).sort((a, b) => b.errors_today - a.errors_today || b.videos_sent - a.videos_sent);
+
+    const totalToday = byTenant.reduce((sum: number, t: any) => sum + Number(t.videos_sent), 0);
+    const totalErrorsToday = errorsByTenant.reduce((sum: number, t: any) => sum + Number(t.errors_today), 0);
+
+    return { date: day, total_today: totalToday, total_errors_today: totalErrorsToday, by_tenant: byTenantMerged, history, recent_errors: recentErrors };
   }
 
   // ────────────────────────────────────────────────────────────────────────

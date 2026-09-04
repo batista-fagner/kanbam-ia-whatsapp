@@ -1,9 +1,12 @@
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -110,6 +113,8 @@ export class EvolutionController {
     private readonly promptModulesService: PromptModulesService,
     private readonly followupService: FollowupService,
     private readonly financeiroWhatsappService: FinanceiroWhatsappService,
+    @InjectRepository(MediaSendError)
+    private readonly mediaSendErrorRepo: Repository<MediaSendError>,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -978,12 +983,20 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (!mediaFile) {
         this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
         notFound.push(names[i]);
+        void this.mediaSendErrorRepo.save({
+          tenantId, phone, mediaName: names[i], reason: 'not_found',
+        }).catch(err => this.logger.error(`Falha ao registrar media_send_error (not_found): ${err.message}`));
         continue;
       }
       const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
       // Legenda configurável por vídeo (MediaPage). Sem legenda cadastrada → usa padrão.
       const caption = mediaFile.caption?.trim() || DEFAULT_CAPTION;
-      await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
+      const sendResult = await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
+      if (!sendResult.ok) {
+        void this.mediaSendErrorRepo.save({
+          tenantId, phone, mediaName: mediaFile.name, reason: 'send_failed', errorMessage: sendResult.error ?? null,
+        }).catch(err => this.logger.error(`Falha ao registrar media_send_error (send_failed): ${err.message}`));
+      }
       await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`);
       sentCount++;
       // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Erros de envio de mídia agora aparecem no Monitoramento, por cliente',
+    date: '04/09/2026',
+    detail: 'Antes, quando um vídeo/imagem falhava no envio (a IA pedia um nome que não existe no catálogo, ou a uazapi rejeitava o arquivo), isso só aparecia no log do Railway — ninguém via até o cliente reclamar (foi assim que o bug da Telma foi descoberto). Agora toda falha é registrada e aparece na aba Mídias do Monitoramento: card com o total do dia, coluna "Erros" na tabela por cliente, e uma lista com lead, mídia, motivo e detalhe de cada erro.',
+  },
+  {
     title: 'Catálogo de vídeos da Telma (Marcele Blz Hair) comprimido — resolvia o "vídeo não abre"',
     date: '04/09/2026',
     detail: 'Achado o motivo real: os 11 vídeos maiores do catálogo dela eram 4K vertical (2160x3840) a ~13-14 Mbps, filmados direto do celular sem compressão — 12-18s de vídeo virava 17-31MB. Isso falhava na entrega pelo WhatsApp mesmo com o limite de upload liberado (o vídeo era aceito pela uazapi mas não abria no celular do cliente — aconteceu com pelo menos 3 leads no mesmo dia). Recomprimidos pra 1080p com teto de bitrate: caíram pra 3,5-7,8MB cada, mesma qualidade visível numa tela de celular, mesma URL/nome (nada mudou pro prompt). Testado com envio real via API confirmando entrega no WhatsApp.',

@@ -8,15 +8,18 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
   let mediaService: any;
   let uazapiProvider: any;
   let leadsService: any;
+  let mediaSendErrorRepo: any;
 
   beforeEach(() => {
     mediaService = { findByName: jest.fn() };
-    uazapiProvider = { sendMediaByUrl: jest.fn().mockResolvedValue(undefined) };
+    uazapiProvider = { sendMediaByUrl: jest.fn().mockResolvedValue({ ok: true }) };
     leadsService = { countTodayOutboundMedia: jest.fn().mockResolvedValue(0), saveMessage: jest.fn().mockResolvedValue(undefined) };
     const configService = { get: jest.fn() };
+    mediaSendErrorRepo = { save: jest.fn().mockResolvedValue(undefined) };
     controller = new EvolutionController(
       {} as any, {} as any, {} as any, uazapiProvider, leadsService, {} as any, {} as any,
       {} as any, {} as any, mediaService, configService as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      mediaSendErrorRepo as any,
     );
   });
 
@@ -49,5 +52,29 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
 
     expect(result.sentCount).toBe(1);
     expect(result.notFound).toEqual(['nao existe']);
+  });
+
+  it('mídia não encontrada: registra media_send_error com reason=not_found', async () => {
+    mediaService.findByName.mockResolvedValue(null);
+
+    await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', {}, 'Vietnamita Select Liso 60 cm');
+
+    expect(mediaSendErrorRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant1', mediaName: 'Vietnamita Select Liso 60 cm', reason: 'not_found',
+    }));
+  });
+
+  it('falha no envio (uazapi): registra media_send_error com reason=send_failed', async () => {
+    mediaService.findByName.mockResolvedValue({
+      id: 'm1', name: 'Vietnamita Select Liso 60 cm', url: 'https://x/video.mp4', mimeType: 'video/mp4', caption: null,
+    });
+    uazapiProvider.sendMediaByUrl.mockResolvedValue({ ok: false, error: 'HTTP 500: timeout' });
+
+    const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', {}, 'Vietnamita Select Liso 60 cm');
+
+    expect(result.sentCount).toBe(1); // continua contando como "enviado" — não sabemos se abriu ou não no lead
+    expect(mediaSendErrorRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant1', mediaName: 'Vietnamita Select Liso 60 cm', reason: 'send_failed', errorMessage: 'HTTP 500: timeout',
+    }));
   });
 });

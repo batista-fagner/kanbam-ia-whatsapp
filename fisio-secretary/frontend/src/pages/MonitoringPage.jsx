@@ -209,6 +209,13 @@ export default function MonitoringPage() {
           sub="enviados pela IA"
           color="bg-orange-500"
         />
+        <OverviewCard
+          icon={AlertTriangle}
+          label={`Erros de mídia ${periodLabel}`}
+          value={media?.total_errors_today ?? 0}
+          sub="falha no envio ou nome não encontrado"
+          color={media?.total_errors_today > 0 ? 'bg-red-500' : 'bg-gray-400'}
+        />
       </div>
 
       {/* Alertas de loop */}
@@ -336,14 +343,16 @@ export default function MonitoringPage() {
                 <th className="text-right px-4 py-3">Enviados</th>
                 <th className="text-right px-4 py-3">Limite/dia</th>
                 <th className="text-left px-4 py-3 w-48">Uso</th>
+                <th className="text-right px-4 py-3">Erros</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {(media?.by_tenant ?? []).map(t => {
                 const pct = Math.min(100, Math.round((t.videos_sent / (t.daily_limit ?? 100)) * 100))
                 const barColor = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-orange-400' : 'bg-orange-300'
+                const hasErrors = t.errors_today > 0
                 return (
-                  <tr key={t.tenant_id} className={`hover:bg-gray-50 ${pct >= 100 ? 'bg-red-50' : ''}`}>
+                  <tr key={t.tenant_id} className={`hover:bg-gray-50 ${pct >= 100 ? 'bg-red-50' : hasErrors ? 'bg-red-50/40' : ''}`}>
                     <td className="px-5 py-3 font-medium text-gray-800">{t.tenant_name}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-800">{t.videos_sent}</td>
                     <td className="px-4 py-3 text-right text-gray-500">{t.daily_limit ?? 100}</td>
@@ -355,16 +364,72 @@ export default function MonitoringPage() {
                         <span className={`text-xs font-medium w-8 text-right ${pct >= 100 ? 'text-red-600' : 'text-gray-500'}`}>{pct}%</span>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      {hasErrors ? (
+                        <span
+                          className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700"
+                          title={`${t.not_found_today} não encontrada(s) · ${t.send_failed_today} falha(s) de envio`}
+                        >
+                          {t.errors_today}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">0</span>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
               {(media?.by_tenant ?? []).length === 0 && (
-                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Nenhum vídeo enviado neste dia</td></tr>
+                <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400">Nenhum vídeo enviado neste dia</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Erros de envio de mídia — detalhe pra investigação */}
+      {(media?.recent_errors ?? []).length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            <h2 className="text-sm font-semibold text-gray-800">Erros de envio de mídia ({periodLabel})</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                  <th className="text-left px-5 py-3">Cliente</th>
+                  <th className="text-left px-4 py-3">Lead</th>
+                  <th className="text-left px-4 py-3">Mídia</th>
+                  <th className="text-left px-4 py-3">Motivo</th>
+                  <th className="text-left px-4 py-3">Detalhe</th>
+                  <th className="text-right px-5 py-3">Quando</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {media.recent_errors.map(e => (
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-5 py-3 font-medium text-gray-800">{e.tenant_name}</td>
+                    <td className="px-4 py-3 text-gray-500">{e.phone ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-700">{e.media_name ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        e.reason === 'not_found' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {e.reason === 'not_found' ? 'não encontrada' : 'falha no envio'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate" title={e.error_message ?? ''}>{e.error_message ?? '—'}</td>
+                    <td className="px-5 py-3 text-right text-gray-400 text-xs whitespace-nowrap">
+                      {new Date(e.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Top leads por mensagens */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

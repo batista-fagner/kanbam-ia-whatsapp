@@ -270,7 +270,10 @@ export class UazapiProvider implements IWhatsAppProvider {
     return response.data;
   }
 
-  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video' | 'ptt', caption?: string, token?: string): Promise<void> {
+  // Retorna { ok: false } (em vez de lançar) numa falha — o chamador decide o que
+  // fazer com isso (ex: registrar em media_send_errors pra aparecer no Monitoramento).
+  // Nunca derruba o fluxo de resposta ao lead por causa de falha no envio de mídia.
+  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video' | 'ptt', caption?: string, token?: string): Promise<{ ok: boolean; error?: string }> {
     const useToken = await this.resolveToken(token);
     try {
       await this.postWithRetry(
@@ -278,6 +281,7 @@ export class UazapiProvider implements IWhatsAppProvider {
         { number: phone, file: url, type, text: caption ?? '', delay: 1000 },
         useToken,
       );
+      return { ok: true };
     } catch (err) {
       this.logHttpError(`Erro ao enviar mídia para ${phone}`, err, {
         url: `${this.baseUrl}/send/media`,
@@ -285,6 +289,9 @@ export class UazapiProvider implements IWhatsAppProvider {
         type,
         mediaUrl: url,
       });
+      const status = err?.response?.status ?? err?.status;
+      const errorMsg = `HTTP ${status ?? 'N/A'}: ${err.message}`;
+      return { ok: false, error: errorMsg };
     }
   }
 
