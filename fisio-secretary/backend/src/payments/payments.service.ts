@@ -301,8 +301,12 @@ export class PaymentsService implements OnModuleInit {
         `Motivo: ${reason}\n\n` +
         `Nenhuma cobrança foi efetivada — não vai aparecer em Clientes/Cobranças até ela tentar de novo com sucesso.`;
 
-      await this._sendText(adminPhone, alertText);
-      this.logger.warn(`[STRIPE] Pagamento falhou (pi ${pi.id}) — alerta enviado pro admin`);
+      const sent = await this._sendText(adminPhone, alertText);
+      if (sent) {
+        this.logger.warn(`[STRIPE] Pagamento falhou (pi ${pi.id}) — alerta enviado pro admin`);
+      } else {
+        this.logger.error(`[STRIPE] Pagamento falhou (pi ${pi.id}) — NÃO conseguiu avisar o admin via WhatsApp (ver erro de envio acima). Cheque manualmente.`);
+      }
     } catch (err) {
       this.logger.error(`[STRIPE] Falha ao processar/alertar payment_intent.payment_failed: ${err.message}`);
     }
@@ -1272,13 +1276,18 @@ export class PaymentsService implements OnModuleInit {
     return this.config.get<string>('UAZAPI_TOKEN') ?? '';
   }
 
-  private async _sendText(phone: string, text: string): Promise<void> {
+  // Retorna se o envio realmente saiu (não só se a chamada não estourou exceção) —
+  // quem dispara um alerta crítico (ex.: falha de pagamento) precisa saber se
+  // aconteceu de verdade antes de logar "enviado", em vez de assumir sucesso.
+  private async _sendText(phone: string, text: string): Promise<boolean> {
     const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
     const token = await this._resolveSenderToken();
     try {
       await firstValueFrom(this.http.post(`${baseUrl}/send/text`, { number: phone, text }, { headers: { token } }));
+      return true;
     } catch (err) {
       this.logger.error(`[PAYMENTS] Falha ao enviar texto para ${phone} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
+      return false;
     }
   }
 
