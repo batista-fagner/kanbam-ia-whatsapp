@@ -214,6 +214,9 @@ export class PaymentsService implements OnModuleInit {
       case 'invoice.payment_failed':
         await this._onInvoiceFailed(event.data.object);
         break;
+      case 'payment_intent.payment_failed':
+        await this._onPaymentIntentFailed(event.data.object);
+        break;
       case 'customer.subscription.deleted':
         await this._onSubscriptionDeleted(event.data.object);
         break;
@@ -270,6 +273,39 @@ export class PaymentsService implements OnModuleInit {
       stripeCustomerId: customerId ?? null,
       stripeSubscriptionId: subscriptionId,
     });
+  }
+
+  // Avisa o admin (ADMIN_ALERT_PHONE) na hora quando um pagamento por cartão falha —
+  // seja na 1ª tentativa (checkout ainda nem virou assinatura, ex.: 3D Secure recusado
+  // pelo banco) ou numa renovação. Sem isso, um cliente que realmente tentou pagar e
+  // falhou simplesmente não aparece em lugar nenhum — parecia que o cadastro "sumiu",
+  // quando na verdade o Stripe nunca recebeu o dinheiro (motivo: erro do 04/09/2026,
+  // caso Eliene da Silva/mariednasilvaandrade@gmail.com).
+  private async _onPaymentIntentFailed(pi: any): Promise<void> {
+    try {
+      const adminPhone = this.config.get<string>('ADMIN_ALERT_PHONE');
+      if (!adminPhone) return;
+
+      const billing = pi.last_payment_error?.payment_method?.billing_details ?? {};
+      const name = billing.name || pi.metadata?.name || 'Nome não informado';
+      const email = billing.email || pi.receipt_email || 'e-mail não informado';
+      const amount = typeof pi.amount === 'number' ? (pi.amount / 100).toFixed(2).replace('.', ',') : '?';
+      const reason = pi.last_payment_error?.message || 'motivo não informado pelo Stripe';
+      const isRenewal = Boolean(pi.invoice);
+
+      const alertText =
+        `🔴 *Pagamento por cartão falhou (${isRenewal ? 'renovação' : '1ª cobrança — checkout'})*\n\n` +
+        `Nome: *${name}*\n` +
+        `E-mail: ${email}\n` +
+        `Valor tentado: R$ ${amount}\n` +
+        `Motivo: ${reason}\n\n` +
+        `Nenhuma cobrança foi efetivada — não vai aparecer em Clientes/Cobranças até ela tentar de novo com sucesso.`;
+
+      await this._sendText(adminPhone, alertText);
+      this.logger.warn(`[STRIPE] Pagamento falhou (pi ${pi.id}) — alerta enviado pro admin`);
+    } catch (err) {
+      this.logger.error(`[STRIPE] Falha ao processar/alertar payment_intent.payment_failed: ${err.message}`);
+    }
   }
 
   private async _onInvoiceFailed(invoice: any): Promise<void> {

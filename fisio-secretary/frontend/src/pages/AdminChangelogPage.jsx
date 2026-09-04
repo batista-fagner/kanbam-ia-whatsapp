@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Alerta automático quando um pagamento por cartão falha',
+    date: '04/09/2026',
+    detail: 'Uma cliente (Eliene da Silva) avisou que tinha pagado, mas não aparecia em lugar nenhum — investigado: o cartão dela falhou na autenticação (3D Secure recusado pelo banco), nenhuma cobrança foi efetivada, e o Stripe nunca avisava a gente disso porque o evento payment_intent.payment_failed não estava habilitado no webhook. Agora está habilitado e o admin (WhatsApp) recebe um alerta na hora — nome, e-mail, valor tentado e motivo — tanto numa 1ª tentativa de checkout quanto numa renovação que falhar.',
+  },
+  {
     title: 'Erros de envio de mídia agora aparecem no Monitoramento, por cliente',
     date: '04/09/2026',
     detail: 'Antes, quando um vídeo/imagem falhava no envio (a IA pedia um nome que não existe no catálogo, ou a uazapi rejeitava o arquivo), isso só aparecia no log do Railway — ninguém via até o cliente reclamar (foi assim que o bug da Telma foi descoberto). Agora toda falha é registrada e aparece na aba Mídias do Monitoramento: card com o total do dia, coluna "Erros" na tabela por cliente, e uma lista com lead, mídia, motivo e detalhe de cada erro.',
