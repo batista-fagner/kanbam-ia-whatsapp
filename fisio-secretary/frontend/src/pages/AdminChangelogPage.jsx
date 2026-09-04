@@ -88,9 +88,16 @@ const PENDING = [
   { title: 'UI de troca de senha pro cliente', detail: 'Endpoint /auth/change-password já existe; falta o formulário em Configurações.' },
   { title: 'Fechar brecha residual do motor de preço (S&A)', detail: 'A IA ainda pode mencionar de forma livre um valor de acréscimo (ex: "no cartão fica +R$75") fora do placeholder — observado correto até agora, mas não é garantido pelo motor. Reforçar prompt se acontecer de novo.' },
   { title: 'Guard-rail de mídia ausente (Niltoncabelos)', detail: 'IA disse "não tenho" pra item sem vídeo mas existente na loja — fix de prompt aplicado; guard-rail em código só se voltar a acontecer.' },
+  { title: 'Renovação por cartão não atualiza a data de vencimento exibida', detail: 'A correção do "vence hoje" (04/09) grava a data certa na assinatura e na 1ª cobrança/renovação por PIX. Renovação automática por cartão (Stripe cobra sozinho) ainda não tem um gatilho que avance essa data — não afeta a cobrança em si (o Stripe cobra certo), só a data mostrada na tela de Clientes depois da 1ª renovação.' },
 ]
 
 const BUGS = [
+  {
+    title: 'Cliente que assinou hoje aparecia com "vence hoje" na tela de Clientes',
+    date: '04/09/2026',
+    detail: 'O sistema calculava o vencimento como "próxima vez que o dia-do-mês bater com o dia de hoje" — e no dia da assinatura esse dia É hoje, então todo mundo que assinava aparecia precisando renovar imediatamente, mesmo tendo acabado de pagar (afetou os clientes do lançamento de 03/09: Pamylys, Kemily, Lucileia, Adélia, Elizangela). Agora o sistema grava a data real do próximo vencimento (1 mês a partir do pagamento) em vez de recalcular pelo dia do mês — os 5 já foram corrigidos manualmente, e novas assinaturas já nascem certas.',
+    status: 'corrigido',
+  },
   {
     title: 'Pagamento por cartão não aparecia em Cobranças (Lucileia Santos)',
     detail: 'Assinatura por cartão sempre funcionou (conta era criada e ativada certinho), mas só o PIX registrava um evento na aba "Cobranças" — cartão nunca gerava esse registro, dando a impressão de que o pagamento tinha sumido. Lucileia (lucileiareis@hotmail.com) comprou no lançamento de hoje e não aparecia lá; registro dela adicionado manualmente e o cadastro corrigido pra próximos pagamentos por cartão aparecerem sozinhos.',

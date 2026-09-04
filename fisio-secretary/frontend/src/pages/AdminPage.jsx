@@ -204,7 +204,17 @@ export default function AdminPage() {
     finally { setResetting(false) }
   }
 
-  function nextDueDate(billingDay) {
+  // Prioriza nextPaymentDate (data real gravada no pagamento/renovação) — só recai pro
+  // cálculo "próxima ocorrência do dia X" em clientes antigos que nunca tiveram esse
+  // campo preenchido. Sem isso, um cliente que ACABOU de assinar hoje aparecia com
+  // "vence hoje" (billingDay bate com o dia de hoje só porque foi setado na assinatura).
+  function nextDueDate(client) {
+    if (client?.nextPaymentDate) {
+      const d = new Date(client.nextPaymentDate)
+      d.setHours(0, 0, 0, 0)
+      return d
+    }
+    const billingDay = client?.billingDay
     if (!billingDay) return null
     const now = new Date(); now.setHours(0, 0, 0, 0)
     const y = now.getFullYear(), m = now.getMonth()
@@ -218,8 +228,8 @@ export default function AdminPage() {
     return due
   }
 
-  function daysUntilDay(billingDay) {
-    const due = nextDueDate(billingDay)
+  function daysUntilDay(client) {
+    const due = nextDueDate(client)
     if (!due) return null
     const today = new Date(); today.setHours(0, 0, 0, 0)
     return Math.round((due - today) / 86400000)
@@ -548,9 +558,9 @@ export default function AdminPage() {
           <div className="p-8 text-center text-gray-400 text-sm">Nenhum cliente ainda. Crie o primeiro.</div>
         )}
         {clients.map(c => {
-          const dleft = daysUntilDay(c.billingDay)
+          const dleft = daysUntilDay(c)
           const dueSoon = dleft !== null && dleft <= 2
-          const due = nextDueDate(c.billingDay)
+          const due = nextDueDate(c)
           return (
             <div key={c.id} className="p-4 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">

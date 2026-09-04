@@ -403,7 +403,8 @@ export class PaymentsService implements OnModuleInit {
     }
     if (!phone) throw new BadRequestException('WhatsApp é obrigatório para enviar o PIX');
 
-    const billingDay = new Date().getDate();
+    const now = new Date();
+    const billingDay = now.getDate();
     const tenant = await this.configRepo.save(this.configRepo.create({
       displayName: name,
       profileName: name,
@@ -414,6 +415,7 @@ export class PaymentsService implements OnModuleInit {
       planStatus: 'pending',
       billingPhone: phone,
       billingDay,
+      nextPaymentDate: this._addOneMonth(now),
     }));
 
     // Cria usuário já com senha temporária. Senha real só é gerada/enviada após pagamento.
@@ -695,7 +697,7 @@ export class PaymentsService implements OnModuleInit {
     const claim = await this.configRepo
       .createQueryBuilder()
       .update(WhatsappConfig)
-      .set({ isActive: true, planStatus: 'active', lastPixSentAt: new Date() })
+      .set({ isActive: true, planStatus: 'active', lastPixSentAt: new Date(), nextPaymentDate: this._addOneMonth(new Date()) })
       .where('id = :id AND plan_status = :pending', { id: tenant.id, pending: 'pending' })
       .execute();
 
@@ -886,7 +888,8 @@ export class PaymentsService implements OnModuleInit {
       return;
     }
 
-    const billingDay = new Date().getDate();
+    const now = new Date();
+    const billingDay = now.getDate();
 
     const tenant = this.configRepo.create({
       displayName: name,
@@ -898,6 +901,7 @@ export class PaymentsService implements OnModuleInit {
       planStatus: 'active',
       billingPhone: phone || null,
       billingDay,
+      nextPaymentDate: this._addOneMonth(now),
       stripeCustomerId: extra.stripeCustomerId ?? null,
       stripeSubscriptionId: extra.stripeSubscriptionId ?? null,
     });
@@ -1198,6 +1202,20 @@ export class PaymentsService implements OnModuleInit {
   </table>
 </body>
 </html>`;
+  }
+
+  // Vencimento de verdade (1 mês a partir de agora), clampado no último dia do mês
+  // de destino (ex.: 31/01 -> 28 ou 29/02). Usado no lugar de recalcular "próxima
+  // ocorrência do dia X" a partir de billingDay sozinho — essa recalculagem confunde
+  // um cliente que ACABOU de assinar hoje com um cliente cujo ciclo vence hoje de
+  // verdade, já que nos dois casos billingDay bate com o dia de hoje.
+  private _addOneMonth(date: Date): Date {
+    const targetMonthIndex = date.getMonth() + 1;
+    const year = date.getFullYear() + Math.floor(targetMonthIndex / 12);
+    const month = ((targetMonthIndex % 12) + 12) % 12;
+    const lastDayOfTargetMonth = new Date(year, month + 1, 0).getDate();
+    const day = Math.min(date.getDate(), lastDayOfTargetMonth);
+    return new Date(year, month, day, date.getHours(), date.getMinutes(), date.getSeconds());
   }
 
   private _generatePassword(): string {
