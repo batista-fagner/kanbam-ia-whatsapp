@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Atribuição automática de venda pro Facebook (convertHairCRM)',
+    date: '05/09/2026',
+    detail: 'Quando um cliente novo paga (PIX ou cartão), o sistema agora avisa automaticamente o convertHairCRM pra ele marcar o lead de origem como convertido e mandar o evento de venda pro Facebook — antes isso exigia entrar lá e clicar em "Converter Lead" na mão, venda por venda. Só dispara na 1ª ativação (renovação mensal não conta). Se o telefone não bater com nenhum lead de lá, chega um aviso por e-mail em vez de passar batido em silêncio.',
+  },
+  {
     title: 'Financeiro: cadastro de ferramentas e custos operacionais',
     date: '05/09/2026',
     detail: 'A margem do mês só descontava o custo de IA — os custos fixos da operação (Supabase, uazapi, etc.) não entravam na conta. Agora dá pra cadastrar cada ferramenta com valor mensal e, opcionalmente, o dia de vencimento, direto na aba Financeiro (seção "Ferramentas & custos"). O total mensal dessas ferramentas passa a ser descontado automaticamente da margem, junto com o custo de IA.',
