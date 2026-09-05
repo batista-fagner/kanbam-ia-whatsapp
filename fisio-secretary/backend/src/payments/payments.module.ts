@@ -15,6 +15,7 @@ import { PixPollProcessor } from './pix-poll.processor';
 import { PIX_QUEUE_NAME } from '../queue/queue.constants';
 import { queueEngineEnabled } from '../queue/queue.enabled';
 import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-whatsapp.module';
+import { OnboardingModule } from '../onboarding/onboarding.module';
 
 // Fila e worker só existem no modo bullmq — no legado não há conexão Redis registrada,
 // e declarar a fila aqui faria o boot falhar por dependência ausente.
@@ -30,6 +31,7 @@ const queueProviders = queueEngineEnabled ? [PixPollProcessor] : [];
     TypeOrmModule.forFeature([WhatsappConfig, ImplantacaoPayment, CheckoutSettings, BillingEvent]),
     AuthModule, // exporta UsersService + JwtModule (guards)
     FinanceiroWhatsappModule,
+    OnboardingModule, // grupo automático + boas-vindas após pagamento confirmado
   ],
   providers: [PaymentsService, PixQueueService, ...queueProviders],
   controllers: [PaymentsController],

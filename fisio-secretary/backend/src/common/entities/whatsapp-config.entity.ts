@@ -124,6 +124,12 @@ export class WhatsappConfig {
   @Column({ name: 'payment_method', type: 'varchar', default: 'manual' })
   paymentMethod: string;
 
+  // JID do grupo "Projeto <cliente>" criado automaticamente quando o pagamento é confirmado.
+  // Serve de trava de idempotência (webhook duplicado do Stripe não cria grupo de novo) e é o
+  // destino da 2ª mensagem de onboarding. Ver onboarding.service.ts.
+  @Column({ name: 'onboarding_group_jid', type: 'varchar', nullable: true })
+  onboardingGroupJid: string | null;
+
   // 'active' | 'past_due' | 'pending' | 'canceled'
   @Column({ name: 'plan_status', type: 'varchar', default: 'active' })
   planStatus: string;

@@ -22,6 +22,7 @@ import { PromptModule as PromptModuleEntity } from './common/entities/prompt-mod
 import { CheckoutSettings } from './common/entities/checkout-settings.entity';
 import { BillingEvent } from './common/entities/billing-event.entity';
 import { MediaSendError } from './common/entities/media-send-error.entity';
+import { OnboardingSettings } from './common/entities/onboarding-settings.entity';
 import { OnboardingForm } from './common/entities/onboarding-form.entity';
 import { GeneratedPrompt } from './common/entities/generated-prompt.entity';
 import { FinanceiroWhatsappMessage } from './common/entities/financeiro-whatsapp-message.entity';
@@ -30,6 +31,7 @@ import { CreateOnboardingForms1785800000000 } from './migrations/1785800000000-C
 import { CreateGeneratedPrompts1785900000000 } from './migrations/1785900000000-CreateGeneratedPrompts';
 import { CreateFinanceiroWhatsappMessages1786000000000 } from './migrations/1786000000000-CreateFinanceiroWhatsappMessages';
 import { CreateMediaSendErrors1786700000000 } from './migrations/1786700000000-CreateMediaSendErrors';
+import { CreateOnboardingSettings1786800000000 } from './migrations/1786800000000-CreateOnboardingSettings';
 import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
 import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
 import { AddBillingDay1780200000000 } from './migrations/1780200000000-AddBillingDay';
@@ -85,6 +87,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { PaymentsModule } from './payments/payments.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { FollowupModule } from './followup/followup.module';
 import { TemplatesModule } from './templates/templates.module';
 import { AgentsModule } from './agents/agents.module';
@@ -113,18 +116,19 @@ import { FinanceiroWhatsappModule } from './financeiro-whatsapp/financeiro-whats
         url: config.get('SUPABASE_DATABASE_URL'),
         // Postgres local (dev) não usa SSL; Supabase (prod) exige. Controlado por DATABASE_SSL.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings, BillingEvent, OnboardingForm, GeneratedPrompt, PriceConfig, FinanceiroWhatsappMessage, MediaSendError],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings, BillingEvent, OnboardingForm, GeneratedPrompt, PriceConfig, FinanceiroWhatsappMessage, MediaSendError, OnboardingSettings],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000, AddPromptModules1784200000000, AddPromptModuleMediaCatalog1784300000000, AddPromptModuleDateTable1784400000000, CreateCheckoutSettings1784700000000, AddPlanoEnabled1784800000000, CreateOnboardingForms1785800000000, CreateGeneratedPrompts1785900000000, CreateFinanceiroWhatsappMessages1786000000000, AddPlanValue1784557763106, AddLastPixTxid1784561485405, CreateBillingEvents1784567469499, BillingEventsNullableTenant1784573592794, AddFollowupCadence1784775618371, AddImplantacaoEmail1784900000000, IncreaseMediaLimitTo1001785000000, AddMessageMediaUrl1785100000000, AddNotificationPhone1785300000000, AddAutoFollowupEnabled1785788276436, AddLastPixQrCodeAndCode1786000000000, AddLastPixValue1786100000000, ChangeLastPixSentAtToTimestamp1786200000000, AddSchedulingHandoffEnabled1786300000000, CreatePriceConfigs1786400000000, AddLeadAvatarUrl1786500000000, AddAppointmentReminderHoursBefore1786600000000, CreateMediaSendErrors1786700000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000, AddPromptModules1784200000000, AddPromptModuleMediaCatalog1784300000000, AddPromptModuleDateTable1784400000000, CreateCheckoutSettings1784700000000, AddPlanoEnabled1784800000000, CreateOnboardingForms1785800000000, CreateGeneratedPrompts1785900000000, CreateFinanceiroWhatsappMessages1786000000000, AddPlanValue1784557763106, AddLastPixTxid1784561485405, CreateBillingEvents1784567469499, BillingEventsNullableTenant1784573592794, AddFollowupCadence1784775618371, AddImplantacaoEmail1784900000000, IncreaseMediaLimitTo1001785000000, AddMessageMediaUrl1785100000000, AddNotificationPhone1785300000000, AddAutoFollowupEnabled1785788276436, AddLastPixQrCodeAndCode1786000000000, AddLastPixValue1786100000000, ChangeLastPixSentAtToTimestamp1786200000000, AddSchedulingHandoffEnabled1786300000000, CreatePriceConfigs1786400000000, AddLeadAvatarUrl1786500000000, AddAppointmentReminderHoursBefore1786600000000, CreateMediaSendErrors1786700000000, CreateOnboardingSettings1786800000000],
         migrationsRun: true,
         logging: false,
       }),
     }),
     AuthModule,
     PaymentsModule,
+    OnboardingModule,
     BillingModule,
     FormsModule,
     PromptDraftsModule,

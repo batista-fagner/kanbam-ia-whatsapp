@@ -21,6 +21,7 @@ import { UsersService } from '../auth/users.service';
 import { PixQueueService } from './pix-queue.service';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 import { FinanceiroWhatsappService } from '../financeiro-whatsapp/financeiro-whatsapp.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 const CURRENCY = 'brl';
 
@@ -66,6 +67,8 @@ export class PaymentsService implements OnModuleInit {
     private readonly pixQueue: PixQueueService,
     // Opcional — specs antigos instanciam o serviço por posição sem esse param.
     private readonly financeiroWhatsappService?: FinanceiroWhatsappService,
+    // Idem: opcional e no fim pra não quebrar os specs que instanciam por posição.
+    private readonly onboarding?: OnboardingService,
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     this.stripe = stripeKey ? new Stripe(stripeKey) : null;
@@ -806,6 +809,13 @@ export class PaymentsService implements OnModuleInit {
         await this._sendCredentials(tenant.billingPhone, user.email, password, tenant.displayName ?? 'Cliente');
       }
       this.logger.log(`[EFI] Pagamento confirmado → tenant ${tenant.id} ATIVADO (1ª vez) + credenciais enviadas`);
+      // Onboarding automático — só na 1ª ativação (renovação não cria grupo). Isolado em
+      // try/catch: falhar em criar grupo não pode derrubar a ativação da conta.
+      try {
+        await this.onboarding?.createProjectGroup(tenant.id, tenant.displayName ?? 'Cliente', tenant.billingPhone);
+      } catch (err) {
+        this.logger.error(`[EFI] Falha no onboarding automático do tenant ${tenant.id}: ${err.message}`);
+      }
     } else {
       // Renovação: só confirma o pagamento, não mexe em senha/credenciais
       if (tenant.billingPhone) {
@@ -1017,6 +1027,16 @@ export class PaymentsService implements OnModuleInit {
     this.logger.log(`[PAYMENTS] Conta criada → tenant ${saved.id} (${email}, ${paymentMethod})`);
 
     await this._sendCredentials(phone || null, email, password, name);
+
+    // Onboarding automático (grupo "Projeto <cliente>" + boas-vindas + link do formulário).
+    // Este é o ponto onde os dois eventos de cartão convergem e roda uma vez só por cliente
+    // novo (guard de e-mail duplicado no topo). Isolado em try/catch de propósito: falhar em
+    // criar grupo não pode impedir a conta/credenciais que já foram entregues.
+    try {
+      await this.onboarding?.createProjectGroup(saved.id, name, phone || null);
+    } catch (err) {
+      this.logger.error(`[PAYMENTS] Falha no onboarding automático do tenant ${saved.id}: ${err.message}`);
+    }
   }
 
   // Envia as credenciais de acesso pelos dois canais disponíveis: WhatsApp (se houver telefone) e e-mail.

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings } from '../services/api'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup } from '../services/api'
 
 // Link público do checkout — mesmo formulário pra qualquer cliente, sem dado pré-preenchido.
 // Usado pra gerar o QR Code exibido/baixado na aba Checkout (ex: pra mostrar numa live).
@@ -53,6 +53,13 @@ export default function AdminPage() {
   const [billingFilter, setBillingFilter] = useState('')
   const [linkCopied, setLinkCopied] = useState(false)
   const qrCanvasRef = useRef(null)
+  const [onboardingForm, setOnboardingForm] = useState(null)
+  const [loadingOnboarding, setLoadingOnboarding] = useState(false)
+  const [savingOnboarding, setSavingOnboarding] = useState(false)
+  const [onboardingSaved, setOnboardingSaved] = useState(false)
+  const [testingGroup, setTestingGroup] = useState(false)
+  const [testGroupResult, setTestGroupResult] = useState('')
+  const [newTeamPhone, setNewTeamPhone] = useState('')
 
   const load = async () => {
     try {
@@ -129,6 +136,60 @@ export default function AdminPage() {
       setCheckoutSaved(true)
       setTimeout(() => setCheckoutSaved(false), 2500)
     } catch (e) { setError(e.message) } finally { setSavingCheckout(false) }
+  }
+
+  // --- Onboarding (grupo automático pós-pagamento) ---
+
+  const loadOnboarding = async () => {
+    setLoadingOnboarding(true)
+    try {
+      const s = await getAdminOnboardingSettings()
+      setOnboardingForm({
+        groupEnabled: s.groupEnabled,
+        teamPhones: s.teamPhones ?? [],
+        welcomeMessage: s.welcomeMessage ?? '',
+        formMessageEnabled: s.formMessageEnabled,
+        formMessage: s.formMessage ?? '',
+        formDelayMinutes: s.formDelayMinutes ?? 60,
+        formUrl: s.formUrl ?? '',
+        formEntryField: s.formEntryField ?? '',
+      })
+    } catch (e) { setError(e.message) } finally { setLoadingOnboarding(false) }
+  }
+
+  useEffect(() => { if (activeTab === 'onboarding' && !onboardingForm) loadOnboarding() }, [activeTab])
+
+  async function handleSaveOnboarding(e) {
+    e.preventDefault()
+    setError('')
+    setSavingOnboarding(true); setOnboardingSaved(false)
+    try {
+      const updated = await updateAdminOnboardingSettings({
+        ...onboardingForm,
+        formDelayMinutes: Number(onboardingForm.formDelayMinutes),
+      })
+      setOnboardingForm({ ...onboardingForm, teamPhones: updated.teamPhones ?? [] })
+      setOnboardingSaved(true)
+      setTimeout(() => setOnboardingSaved(false), 2500)
+    } catch (e) { setError(e.message) } finally { setSavingOnboarding(false) }
+  }
+
+  function addTeamPhone() {
+    const digits = newTeamPhone.replace(/\D/g, '')
+    if (digits.length < 10) return
+    if (onboardingForm.teamPhones.includes(digits)) { setNewTeamPhone(''); return }
+    setOnboardingForm({ ...onboardingForm, teamPhones: [...onboardingForm.teamPhones, digits] })
+    setNewTeamPhone('')
+  }
+
+  async function handleTestGroup() {
+    setTestingGroup(true); setTestGroupResult(''); setError('')
+    try {
+      const res = await createOnboardingTestGroup()
+      setTestGroupResult(res.jid
+        ? `Grupo "${res.name}" criado com ${res.participants.length} participante(s). Confere no WhatsApp.`
+        : `A API não devolveu o identificador do grupo — confere no WhatsApp mesmo assim.`)
+    } catch (e) { setError(e.message) } finally { setTestingGroup(false) }
   }
 
   function copyCheckoutLink() {
@@ -259,6 +320,10 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('billing')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'billing' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
             <Send className="w-4 h-4" /> Cobranças
+          </button>
+          <button onClick={() => setActiveTab('onboarding')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'onboarding' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <MessageSquare className="w-4 h-4" /> Onboarding
           </button>
         </div>
         {activeTab === 'clients' && (
@@ -446,6 +511,139 @@ export default function AdminPage() {
                   <span className="flex items-center gap-1 text-green-600 text-sm"><Check className="w-4 h-4" /> Salvo</span>
                 )}
               </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* Aba: Onboarding (grupo automático criado quando o pagamento é confirmado) */}
+      {activeTab === 'onboarding' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          {loadingOnboarding || !onboardingForm ? (
+            <p className="text-sm text-gray-400">Carregando configurações...</p>
+          ) : (
+            <form onSubmit={handleSaveOnboarding} className="space-y-6 max-w-2xl">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Grupo automático</h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  Assim que um pagamento é confirmado (PIX ou cartão), o sistema cria o grupo <span className="font-medium">Projeto {'{nome da cliente}'}</span> com ela e a equipe. Só vale pra clientes novos — renovação não cria grupo.
+                </p>
+                <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                  <span className="text-sm text-gray-700">Criar grupo automaticamente</span>
+                  <input type="checkbox" checked={onboardingForm.groupEnabled}
+                    onChange={e => setOnboardingForm({ ...onboardingForm, groupEnabled: e.target.checked })}
+                    className="w-4 h-4 accent-teal-700" />
+                </label>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Números da equipe</h3>
+                <p className="text-xs text-gray-400 mb-3">Entram em todo grupo junto com a cliente. Só dígitos (com DDD; o 55 é adicionado sozinho).</p>
+                <div className="space-y-2 mb-2">
+                  {onboardingForm.teamPhones.length === 0 && (
+                    <p className="text-xs text-gray-400">Nenhum número cadastrado.</p>
+                  )}
+                  {onboardingForm.teamPhones.map(phone => (
+                    <div key={phone} className="flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg">
+                      <span className="text-sm text-gray-700 font-mono">{phone}</span>
+                      <button type="button"
+                        onClick={() => setOnboardingForm({ ...onboardingForm, teamPhones: onboardingForm.teamPhones.filter(p => p !== phone) })}
+                        className="text-gray-400 hover:text-red-500">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="tel" value={newTeamPhone}
+                    onChange={e => setNewTeamPhone(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTeamPhone() } }}
+                    placeholder="ex: 71992867765"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  <button type="button" onClick={addTeamPhone}
+                    className="flex items-center gap-1 text-sm text-teal-700 hover:bg-teal-50 px-3 py-2 rounded-lg transition">
+                    <Plus className="w-4 h-4" /> Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Mensagem de boas-vindas</h3>
+                <p className="text-xs text-gray-400 mb-2">Enviada no grupo assim que ele é criado. Use <span className="font-mono bg-gray-100 px-1 rounded">{'{nome}'}</span> pro nome da cliente.</p>
+                <textarea value={onboardingForm.welcomeMessage}
+                  onChange={e => setOnboardingForm({ ...onboardingForm, welcomeMessage: e.target.value })}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y" />
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Segunda mensagem (formulário)</h3>
+                <p className="text-xs text-gray-400 mb-3">Enviada no mesmo grupo depois do tempo abaixo, com o link do formulário já preenchido pra essa cliente.</p>
+                <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg mb-3">
+                  <span className="text-sm text-gray-700">Enviar a segunda mensagem</span>
+                  <input type="checkbox" checked={onboardingForm.formMessageEnabled}
+                    onChange={e => setOnboardingForm({ ...onboardingForm, formMessageEnabled: e.target.checked })}
+                    className="w-4 h-4 accent-teal-700" />
+                </label>
+                <div className="mb-3">
+                  <label className="block text-xs text-gray-500 mb-1">Enviar depois de (minutos)</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0" step="1" value={onboardingForm.formDelayMinutes}
+                      onChange={e => setOnboardingForm({ ...onboardingForm, formDelayMinutes: e.target.value })}
+                      className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                    {[30, 60, 360, 1440].map(m => (
+                      <button key={m} type="button"
+                        onClick={() => setOnboardingForm({ ...onboardingForm, formDelayMinutes: m })}
+                        className={`text-xs px-2.5 py-1 rounded-full transition ${Number(onboardingForm.formDelayMinutes) === m ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                        {m === 30 ? '30min' : m === 60 ? '1h' : m === 360 ? '6h' : '24h'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mb-2">Use <span className="font-mono bg-gray-100 px-1 rounded">{'{nome}'}</span> e <span className="font-mono bg-gray-100 px-1 rounded">{'{link}'}</span>.</p>
+                <textarea value={onboardingForm.formMessage}
+                  onChange={e => setOnboardingForm({ ...onboardingForm, formMessage: e.target.value })}
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y" />
+              </div>
+
+              <details className="border border-gray-200 rounded-lg px-3 py-2">
+                <summary className="text-sm text-gray-600 cursor-pointer">Avançado — formulário de onboarding</summary>
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">URL do formulário</label>
+                    <input type="url" value={onboardingForm.formUrl}
+                      onChange={e => setOnboardingForm({ ...onboardingForm, formUrl: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Campo oculto que recebe o código do cliente</label>
+                    <input type="text" value={onboardingForm.formEntryField}
+                      onChange={e => setOnboardingForm({ ...onboardingForm, formEntryField: e.target.value })}
+                      placeholder="entry.123456789"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
+                </div>
+              </details>
+
+              <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                <button type="submit" disabled={savingOnboarding}
+                  className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+                  {savingOnboarding ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : 'Salvar'}
+                </button>
+                {onboardingSaved && (
+                  <span className="flex items-center gap-1 text-green-600 text-sm"><Check className="w-4 h-4" /> Salvo</span>
+                )}
+                <button type="button" onClick={handleTestGroup} disabled={testingGroup}
+                  className="flex items-center gap-2 text-sm text-teal-700 hover:bg-teal-50 disabled:opacity-60 px-3 py-2 rounded-lg transition ml-auto"
+                  title="Cria um grupo só com a equipe (sem cliente) pra testar">
+                  {testingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                  Criar grupo de teste
+                </button>
+              </div>
+              {testGroupResult && (
+                <p className="text-xs text-green-600">{testGroupResult}</p>
+              )}
             </form>
           )}
         </div>

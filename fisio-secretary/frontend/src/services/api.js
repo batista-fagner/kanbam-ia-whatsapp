@@ -341,6 +341,20 @@ export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEn
     body: JSON.stringify(payload),
   }).then(json)
 
+// --- Admin: onboarding pós-pagamento (grupo automático + mensagens) ---
+export const getAdminOnboardingSettings = () =>
+  authFetch(`${BASE}/admin/onboarding/settings`).then(json)
+
+export const updateAdminOnboardingSettings = (payload) => // { groupEnabled?, teamPhones?, welcomeMessage?, formMessageEnabled?, formMessage?, formDelayMinutes?, formUrl?, formEntryField? }
+  authFetch(`${BASE}/admin/onboarding/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
+export const createOnboardingTestGroup = () =>
+  authFetch(`${BASE}/admin/onboarding/test-group`, { method: 'POST' }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)

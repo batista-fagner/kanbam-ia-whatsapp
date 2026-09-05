@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Grupo do projeto criado sozinho quando o pagamento é confirmado',
+    date: '04/09/2026',
+    detail: 'O onboarding era todo na mão: criar o grupo com a cliente + equipe, mandar boas-vindas, e depois mandar o link do formulário. Agora, assim que o pagamento é confirmado (PIX ou cartão), o sistema cria o grupo "Projeto {nome da cliente}" com ela e os números da equipe, manda a mensagem de boas-vindas, e agenda a segunda mensagem com o link do formulário dela pro tempo que você definir. Tudo editável na nova aba "Onboarding" do Admin: ligar/desligar, números da equipe, os dois textos ({nome} e {link} viram os dados da cliente) e o tempo de espera. Renovação de plano não cria grupo — só cliente novo. Se a cliente tiver privacidade que impede ser adicionada, ela recebe o link de convite no privado e você é avisado.',
+  },
+  {
     title: 'Alerta automático quando um pagamento por cartão falha',
     date: '04/09/2026',
     detail: 'Uma cliente (Eliene da Silva) avisou que tinha pagado, mas não aparecia em lugar nenhum — investigado: o cartão dela falhou na autenticação (3D Secure recusado pelo banco), nenhuma cobrança foi efetivada, e o Stripe nunca avisava a gente disso porque o evento payment_intent.payment_failed não estava habilitado no webhook. Agora está habilitado e o admin (WhatsApp) recebe um alerta na hora — nome, e-mail, valor tentado e motivo — tanto numa 1ª tentativa de checkout quanto numa renovação que falhar.',
