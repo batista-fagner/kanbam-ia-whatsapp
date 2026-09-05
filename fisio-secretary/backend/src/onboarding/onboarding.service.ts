@@ -112,7 +112,7 @@ export class OnboardingService {
       return;
     }
 
-    const jid: string | null = created?.JID ?? created?.jid ?? null;
+    const jid = created.JID;
     if (!jid) {
       this.logger.error(`[ONBOARDING] uazapi não devolveu JID pro grupo "${groupName}" (tenant ${tenantId})`);
       await this._alertAdmin(`🔴 Grupo *${groupName}* pode ter sido criado, mas a API não devolveu o identificador — confere no WhatsApp.`);
@@ -173,23 +173,32 @@ export class OnboardingService {
     const participants = this._buildParticipants(null, settings.teamPhones);
     const name = `Projeto TESTE ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
     const created = await this._createGroup(name, participants);
-    const jid: string | null = created?.JID ?? created?.jid ?? null;
-    if (jid && settings.welcomeMessage?.trim()) {
-      await this._sendText(jid, this._applyVars(settings.welcomeMessage, { nome: 'Teste' }));
+    if (created.JID && settings.welcomeMessage?.trim()) {
+      await this._sendText(created.JID, this._applyVars(settings.welcomeMessage, { nome: 'Teste' }));
     }
-    this.logger.log(`[ONBOARDING] Grupo de teste "${name}" criado (${jid})`);
-    return { jid, name, participants };
+    this.logger.log(`[ONBOARDING] Grupo de teste "${name}" criado (${created.JID})`);
+    return { jid: created.JID, name, participants };
   }
 
   // ───────────────────────── uazapi ─────────────────────────
 
-  private async _createGroup(name: string, participants: string[]): Promise<any> {
+  // A uazapi responde { failed: [...], group: { JID, Participants, ... } } — não achata os
+  // campos do grupo na raiz como a documentação da rota sugere. Normaliza aqui, uma vez só,
+  // pra quem chama não precisar saber desse detalhe.
+  private async _createGroup(name: string, participants: string[]): Promise<{ JID: string | null; Participants: any[]; invite_link: string | null; failed: string[] }> {
     const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
     const token = await this._resolveSenderToken();
     const res = await firstValueFrom(
       this.http.post(`${baseUrl}/group/create`, { name, participants }, { headers: { token } }),
     );
-    return res.data;
+    const data = res.data ?? {};
+    const group = data.group ?? data; // fallback pro formato "achatado" caso a API mude de novo
+    return {
+      JID: group.JID ?? group.jid ?? null,
+      Participants: Array.isArray(group.Participants) ? group.Participants : [],
+      invite_link: group.invite_link ?? data.invite_link ?? null,
+      failed: Array.isArray(data.failed) ? data.failed : [],
+    };
   }
 
   // Mesma resolução usada pelos envios da empresa (payments.service.ts _resolveSenderToken):
@@ -245,18 +254,28 @@ export class OnboardingService {
       .replace(/\{link\}/gi, vars.link ?? '');
   }
 
-  // A uazapi devolve a lista de participantes com o resultado de cada um. Se a cliente não
-  // entrou (privacidade de grupo), manda o link de convite no privado dela.
-  private async _handleClientNotAdded(created: any, clientPhone: string | null, name: string, groupName: string): Promise<void> {
+  // A uazapi devolve os números que falharam em "failed" e a lista completa em "Participants"
+  // (cada um com Error=0 se deu certo). Se a cliente não entrou (privacidade de grupo), manda
+  // o link de convite no privado dela.
+  private async _handleClientNotAdded(
+    created: { Participants: any[]; invite_link: string | null; failed: string[] },
+    clientPhone: string | null,
+    name: string,
+    groupName: string,
+  ): Promise<void> {
     if (!clientPhone) return;
     const clientDigits = this._normalizePhone(clientPhone);
-    const participants: any[] = Array.isArray(created?.Participants) ? created.Participants : [];
-    const entry = participants.find((p) => String(p?.JID ?? p?.PhoneNumber ?? '').replace(/\D/g, '').includes(clientDigits));
-    // Sem entrada na lista, ou entrada com erro explícito → não entrou.
-    const added = entry && !entry.Error && entry.Error !== 403;
+    const failedDigits = created.failed.map((p) => String(p).replace(/\D/g, ''));
+    const inFailedList = failedDigits.some((d) => d.includes(clientDigits) || clientDigits.includes(d));
+
+    const entry = created.Participants.find((p) => String(p?.JID ?? p?.PhoneNumber ?? '').replace(/\D/g, '').includes(clientDigits));
+    // Entrada com Error=0 → confirmado que entrou. Sem entrada nenhuma e sem constar em
+    // "failed" também é tratado como sucesso (algumas respostas da uazapi vêm sem a lista
+    // completa de participantes). Só trata como falha quando há sinal explícito de erro.
+    const added = !inFailedList && (!entry || Number(entry.Error) === 0);
     if (added) return;
 
-    const inviteLink: string | null = created?.invite_link ?? null;
+    const inviteLink = created.invite_link;
     this.logger.warn(`[ONBOARDING] Cliente ${clientDigits} não entrou automaticamente no grupo "${groupName}"`);
     if (inviteLink) {
       await this._sendText(clientDigits, `Oi ${name}! Esse é o grupo do seu projeto com a nossa equipe — entra por aqui: ${inviteLink}`);
