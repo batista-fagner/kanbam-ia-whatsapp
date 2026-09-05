@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Financeiro: cadastro de ferramentas e custos operacionais',
+    date: '05/09/2026',
+    detail: 'A margem do mês só descontava o custo de IA — os custos fixos da operação (Supabase, uazapi, etc.) não entravam na conta. Agora dá pra cadastrar cada ferramenta com valor mensal e, opcionalmente, o dia de vencimento, direto na aba Financeiro (seção "Ferramentas & custos"). O total mensal dessas ferramentas passa a ser descontado automaticamente da margem, junto com o custo de IA.',
+  },
+  {
     title: 'Financeiro: excluir teste/lead, marcar churn e lançar serviços extras',
     date: '05/09/2026',
     detail: 'A tela Financeiro contava contas de teste do time e leads que nunca pagaram como se fossem clientes reais, inflando o MRR. Agora dá pra marcar uma conta como "teste/lead" e ela some por completo do financeiro (Wesley, claudia_teste_multiagente, Claudia Studio Hair, alex_teste, Is_cabelosnaturais e a conta do Tiago já saíram). Também criada a categoria "Churn": cliente que pagou pelo menos uma vez e saiu — sai do MRR/ativos, mas a receita que já gerou continua contando no histórico, servindo pra medir a saúde da empresa e lembrar de tentar recuperar (Scarlett, Bel e Mayara/Oriah já marcadas). E um jeito de lançar serviço extra além da assinatura (ex.: upgrade pra tráfego pago) — entra na receita do cliente na hora. Tudo isso fica num painel lateral novo ("Ver detalhes" na lista de Clientes, ou clicando numa linha do Financeiro) — primeiro do tipo no admin.',
