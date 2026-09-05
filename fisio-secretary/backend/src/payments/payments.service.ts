@@ -386,6 +386,60 @@ export class PaymentsService implements OnModuleInit {
     }
   }
 
+  // Avisa o convertHairCRM que um cliente novo pagou (1ª ativação, nunca renovação) pra ele
+  // atribuir o evento Purchase ao lead de origem automaticamente — sem isso, alguém tinha
+  // que entrar lá e clicar em "Converter Lead" na mão pra cada venda. Nunca bloqueia a
+  // ativação da conta: qualquer falha aqui (rede, config faltando, etc.) só loga e segue.
+  private async _notifyConvertHairCrmPurchase(phone: string | null, value: number, clientName: string): Promise<void> {
+    if (!phone) return;
+    const baseUrl = this.config.get<string>('CONVERTHAIRCRM_API_URL');
+    const token = this.config.get<string>('INTERNAL_API_TOKEN');
+    if (!baseUrl || !token) {
+      this.logger.warn('[AUTO-CONVERT] CONVERTHAIRCRM_API_URL ou INTERNAL_API_TOKEN não configurados — pulando atribuição automática');
+      return;
+    }
+    try {
+      const res = await firstValueFrom(
+        this.http.post(
+          `${baseUrl.replace(/\/$/, '')}/leads/auto-convert`,
+          { phone, value },
+          { headers: { 'x-internal-token': token } },
+        ),
+      );
+      const data = res.data as { matched: boolean; alreadyConverted?: boolean; leadId?: string };
+      if (data.matched) {
+        this.logger.log(`[AUTO-CONVERT] Purchase atribuído ao lead ${data.leadId} do convertHairCRM (${clientName})`);
+      } else {
+        this.logger.warn(`[AUTO-CONVERT] Nenhum lead encontrado no convertHairCRM pro telefone de ${clientName} — avisando por e-mail`);
+        await this._sendNoMatchAlertEmail(clientName, phone, value);
+      }
+    } catch (err) {
+      this.logger.error(`[AUTO-CONVERT] Falha ao notificar convertHairCRM (${clientName}): ${err.message}`);
+    }
+  }
+
+  private async _sendNoMatchAlertEmail(clientName: string, phone: string, value: number): Promise<void> {
+    const adminEmail = this.config.get<string>('ADMIN_ALERT_EMAIL');
+    if (!adminEmail || !this.resend) return;
+    const from = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'Convert Hair <onboarding@resend.dev>';
+    try {
+      await this.resend.emails.send({
+        from,
+        to: adminEmail,
+        subject: `⚠️ Venda sem lead de origem — ${clientName}`,
+        html: `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f1f1f; line-height: 1.6;">
+            <p><strong>${clientName}</strong> pagou R$ ${value.toFixed(2)}, mas nenhum lead com esse telefone foi encontrado no convertHairCRM.</p>
+            <p>Telefone do checkout: <strong>${phone}</strong></p>
+            <p>Pode ser que o número digitado no cadastro seja diferente do que entrou no grupo do WhatsApp — vale conferir manualmente e, se achar o lead certo, converter na mão por lá.</p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      this.logger.error(`[AUTO-CONVERT] Falha ao enviar e-mail de alerta (sem lead correspondente) pra ${clientName}: ${err.message}`);
+    }
+  }
+
   private async _sendPaymentFailureEmail(
     to: string,
     info: { clientName: string; clientEmail: string; amount: string; reason: string; kind: string; piId: string },
@@ -894,6 +948,7 @@ export class PaymentsService implements OnModuleInit {
       } catch (err) {
         this.logger.error(`[EFI] Falha no onboarding automático do tenant ${tenant.id}: ${err.message}`);
       }
+      void this._notifyConvertHairCrmPurchase(tenant.billingPhone, Number(tenant.planValue ?? '390.00'), tenant.displayName ?? 'Cliente');
     } else {
       // Renovação: só confirma o pagamento, não mexe em senha/credenciais
       if (tenant.billingPhone) {
@@ -1133,6 +1188,11 @@ export class PaymentsService implements OnModuleInit {
       await this.onboarding?.createProjectGroup(saved.id, name, phone || null);
     } catch (err) {
       this.logger.error(`[PAYMENTS] Falha no onboarding automático do tenant ${saved.id}: ${err.message}`);
+    }
+
+    if (paymentMethod === 'card') {
+      const settings = await this.getCheckoutSettings();
+      void this._notifyConvertHairCrmPurchase(phone || null, Number(settings.planoPrice ?? 397), name);
     }
   }
 
