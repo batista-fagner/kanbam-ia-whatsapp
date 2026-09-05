@@ -29,6 +29,14 @@ export interface CheckoutResult {
   url?: string; // cartão: redirecionar para Stripe
 }
 
+// UTM capturado na URL do checkout. Opcional em todo lugar: quando o link não vem taggeado,
+// a origem é preenchida depois pelo sync com o convertHairCRM (tela Financeiro do Admin).
+export interface ClientOrigin {
+  originSource?: string | null;
+  originMedium?: string | null;
+  originCampaign?: string | null;
+}
+
 @Injectable()
 export class PaymentsService implements OnModuleInit {
   private readonly logger = new Logger(PaymentsService.name);
@@ -171,7 +179,7 @@ export class PaymentsService implements OnModuleInit {
 
   // ───────────────────────── Checkout (público) ─────────────────────────
 
-  async createCardCheckout(name: string, email: string, phone: string): Promise<CheckoutResult> {
+  async createCardCheckout(name: string, email: string, phone: string, origin?: ClientOrigin): Promise<CheckoutResult> {
     const settings = await this.getCheckoutSettings();
     if (!settings.planoEnabled) throw new BadRequestException('Plano mensal está desabilitado no momento.');
     if (!settings.cardEnabled) throw new BadRequestException('Pagamento por cartão está desabilitado no momento.');
@@ -184,7 +192,16 @@ export class PaymentsService implements OnModuleInit {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: email,
-      metadata: { name, phone, method: 'card' },
+      // A origem viaja no metadata porque a conta só é criada lá no webhook
+      // (checkout.session.completed) — é o único jeito de o UTM sobreviver até lá.
+      metadata: {
+        name,
+        phone,
+        method: 'card',
+        originSource: origin?.originSource ?? '',
+        originMedium: origin?.originMedium ?? '',
+        originCampaign: origin?.originCampaign ?? '',
+      },
       subscription_data: { metadata: { name, phone, email } },
       success_url: `${frontendUrl}/checkout/success`,
       cancel_url: `${frontendUrl}/checkout`,
@@ -213,6 +230,9 @@ export class PaymentsService implements OnModuleInit {
         break;
       case 'customer.subscription.created':
         await this._onSubscriptionCreated(event.data.object);
+        break;
+      case 'invoice.payment_succeeded':
+        await this._onInvoicePaid(event.data.object);
         break;
       case 'invoice.payment_failed':
         await this._onInvoiceFailed(event.data.object);
@@ -246,6 +266,10 @@ export class PaymentsService implements OnModuleInit {
     await this._createClientFromPayment(meta.name ?? 'Cliente', email, meta.phone ?? '', 'card', {
       stripeCustomerId: customerId ?? null,
       stripeSubscriptionId: subscriptionId ?? null,
+      // Metadata do Stripe só guarda string — '' vira null aqui.
+      originSource: meta.originSource || null,
+      originMedium: meta.originMedium || null,
+      originCampaign: meta.originCampaign || null,
     });
   }
 
@@ -322,6 +346,43 @@ export class PaymentsService implements OnModuleInit {
       }
     } catch (err) {
       this.logger.error(`[STRIPE] Falha ao processar/alertar payment_intent.payment_failed: ${err.message}`);
+    }
+  }
+
+  // Renovação mensal do cartão paga com sucesso. O Stripe cobra sozinho e, até aqui, NADA
+  // disso entrava no banco: a receita de cartão parava na 1ª cobrança e a data de vencimento
+  // exibida nunca avançava. Registra o pagamento e empurra o próximo vencimento em 1 mês.
+  private async _onInvoicePaid(invoice: any): Promise<void> {
+    try {
+      const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+      const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+      if (!subscriptionId && !customerId) return;
+
+      const tenant = subscriptionId
+        ? await this.configRepo.findOne({ where: { stripeSubscriptionId: subscriptionId } })
+        : await this.configRepo.findOne({ where: { stripeCustomerId: customerId } });
+      if (!tenant) {
+        this.logger.warn(`[STRIPE] invoice.payment_succeeded sem tenant correspondente (sub ${subscriptionId ?? '-'} / cus ${customerId ?? '-'})`);
+        return;
+      }
+
+      // A 1ª fatura da assinatura é a mesma cobrança que _createClientFromPayment já registrou
+      // no checkout — registrar de novo duplicaria a receita do cliente.
+      if (invoice.billing_reason === 'subscription_create') {
+        this.logger.log(`[STRIPE] 1ª fatura da assinatura ${subscriptionId} — já registrada no checkout, ignorando`);
+        return;
+      }
+
+      const amount = typeof invoice.amount_paid === 'number' ? invoice.amount_paid / 100 : Number(tenant.planValue ?? '397.00');
+      await this._logBillingEvent(tenant.id, 'pagamento', 'confirmado', amount, invoice.id ?? null, undefined, tenant.displayName ?? undefined);
+
+      tenant.planStatus = 'active';
+      tenant.nextPaymentDate = this._addOneMonth(new Date());
+      await this.configRepo.save(tenant);
+
+      this.logger.log(`[STRIPE] Renovação de cartão confirmada → tenant ${tenant.id} (R$ ${amount.toFixed(2)}), próximo vencimento ${tenant.nextPaymentDate.toISOString().slice(0, 10)}`);
+    } catch (err) {
+      this.logger.error(`[STRIPE] Falha ao processar invoice.payment_succeeded: ${err.message}`);
     }
   }
 
@@ -479,7 +540,7 @@ export class PaymentsService implements OnModuleInit {
   // Pré-cria a conta (isActive=false, pending) e dispara o envio do QR pelo WhatsApp em background.
   // Responde IMEDIATAMENTE — não espera a Efí Bank. O QR chega no WhatsApp em até ~2 min.
   // A confirmação do pagamento é feita por polling (pollPendingPix), não por webhook → sem mTLS.
-  async createPixCheckout(name: string, email: string, phone: string): Promise<{ ok: true; phone: string }> {
+  async createPixCheckout(name: string, email: string, phone: string, origin?: ClientOrigin): Promise<{ ok: true; phone: string }> {
     const settings = await this.getCheckoutSettings();
     if (!settings.planoEnabled) throw new BadRequestException('Plano mensal está desabilitado no momento.');
     if (!settings.pixEnabled) throw new BadRequestException('Pagamento por PIX está desabilitado no momento.');
@@ -501,6 +562,9 @@ export class PaymentsService implements OnModuleInit {
       billingPhone: phone,
       billingDay,
       nextPaymentDate: this._addOneMonth(now),
+      originSource: origin?.originSource ?? null,
+      originMedium: origin?.originMedium ?? null,
+      originCampaign: origin?.originCampaign ?? null,
     }));
 
     // Cria usuário já com senha temporária. Senha real só é gerada/enviada após pagamento.
@@ -568,7 +632,11 @@ export class PaymentsService implements OnModuleInit {
     if (!phone) throw new BadRequestException('WhatsApp é obrigatório');
     if (!email) throw new BadRequestException('E-mail é obrigatório');
 
-    const payment = await this.implantacaoRepo.save(this.implantacaoRepo.create({ name, phone, email, status: 'pending' }));
+    // Congela o valor cobrado na própria linha: o preço em checkout_settings pode mudar
+    // depois, e a receita histórica precisa refletir o que foi realmente cobrado.
+    const payment = await this.implantacaoRepo.save(
+      this.implantacaoRepo.create({ name, phone, email, status: 'pending', amount: Number(settings.implantacaoPrice).toFixed(2) }),
+    );
     void this._sendImplantacaoPix(payment.id, name, phone, email);
     return { ok: true, phone };
   }
@@ -624,12 +692,22 @@ export class PaymentsService implements OnModuleInit {
 
     if (claim.affected !== 1) return;
 
+    // Registra a implantação como receita confirmada (antes só ficava como 'pix/sent', que é
+    // "QR enviado", não "pago") e tenta ligar ao tenant — sem isso a tela Financeiro não
+    // conseguia atribuir a taxa de implantação a nenhum cliente.
+    const valor = Number(payment.amount ?? (await this.getCheckoutSettings()).implantacaoPrice ?? 400);
+    const tenantId = payment.tenantId ?? (await this._findTenantIdForImplantacao(payment));
+    if (tenantId && !payment.tenantId) {
+      await this.implantacaoRepo.update(payment.id, { tenantId });
+    }
+    await this._logBillingEvent(tenantId, 'pagamento', 'confirmado', valor, payment.id.replace(/-/g, ''), undefined, payment.name);
+
     const msg =
       `🎉 Pagamento de implantação confirmado, ${payment.name}!\n\n` +
       `Em breve nossa equipe entrará em contato para configurar seu sistema *Convert Hair*. 🚀\n\n` +
       `Obrigado pela confiança! 🙏`;
     await this._sendText(payment.phone, msg);
-    this.logger.log(`[EFI] Implantação paga → payment ${payment.id} CONFIRMADO`);
+    this.logger.log(`[EFI] Implantação paga → payment ${payment.id} CONFIRMADO${tenantId ? ` (tenant ${tenantId})` : ' (sem tenant vinculado ainda)'}`);
   }
 
   private _isPixExpiredLocally(sentAt: Date | null | undefined): boolean {
@@ -963,12 +1041,28 @@ export class PaymentsService implements OnModuleInit {
 
   // ───────────────────────── Helpers ─────────────────────────
 
+  // A implantação é paga ANTES da conta existir, então não tem FK pro tenant. Quando o
+  // pagamento é confirmado (ou quando a conta é criada depois), tenta casar por telefone —
+  // comparando só os 8 últimos dígitos, porque os números são gravados em formatos diferentes
+  // (com/sem 55, com/sem o 9) dependendo da origem.
+  private async _findTenantIdForImplantacao(payment: ImplantacaoPayment): Promise<string | null> {
+    const last8 = String(payment.phone ?? '').replace(/\D/g, '').slice(-8);
+    if (last8.length < 8) return null;
+    const rows = await this.configRepo.query(
+      `SELECT id FROM whatsapp_config
+       WHERE regexp_replace(COALESCE(billing_phone, ''), '\\D', '', 'g') LIKE '%' || $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [last8],
+    );
+    return rows?.[0]?.id ?? null;
+  }
+
   private async _createClientFromPayment(
     name: string,
     email: string,
     phone: string,
     paymentMethod: 'card' | 'pix',
-    extra: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null },
+    extra: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null } & ClientOrigin,
   ): Promise<void> {
     if (!email) {
       this.logger.error('[PAYMENTS] Pagamento sem email — não foi possível criar conta');
@@ -996,6 +1090,9 @@ export class PaymentsService implements OnModuleInit {
       nextPaymentDate: this._addOneMonth(now),
       stripeCustomerId: extra.stripeCustomerId ?? null,
       stripeSubscriptionId: extra.stripeSubscriptionId ?? null,
+      originSource: extra.originSource ?? null,
+      originMedium: extra.originMedium ?? null,
+      originCampaign: extra.originCampaign ?? null,
     });
     const saved = await this.configRepo.save(tenant);
 

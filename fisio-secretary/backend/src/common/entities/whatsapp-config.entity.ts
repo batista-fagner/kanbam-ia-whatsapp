@@ -167,6 +167,22 @@ export class WhatsappConfig {
   @Column({ name: 'prompt_form_submitted_at', type: 'timestamp', nullable: true })
   promptFormSubmittedAt: Date | null;
 
+  // --- Origem do cliente (tela Financeiro) ---
+  // Duas fontes: UTM da URL do checkout (quando o link vem taggeado) ou sync por telefone
+  // com o convertHairCRM, onde o lead original tem o UTM da campanha que trouxe a pessoa.
+  @Column({ name: 'origin_source', type: 'varchar', nullable: true })
+  originSource: string | null;
+
+  @Column({ name: 'origin_medium', type: 'varchar', nullable: true })
+  originMedium: string | null;
+
+  @Column({ name: 'origin_campaign', type: 'varchar', nullable: true })
+  originCampaign: string | null;
+
+  // Última vez que o sync com o convertHairCRM preencheu esses campos (null = veio do checkout).
+  @Column({ name: 'origin_synced_at', type: 'timestamp', nullable: true })
+  originSyncedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

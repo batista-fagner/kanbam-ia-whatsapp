@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tela Financeiro: mapeamento de clientes, receita, custo e margem',
+    date: '05/09/2026',
+    detail: 'Nova aba "Financeiro" no Admin: MRR, receita acumulada, margem do mês, ativos vs perdidos, gráfico de receita por mês, tabela de clientes com origem/campanha, plano, vencimento, receita gerada, custo de IA e margem (filtro Ativos/Em atraso/Perdidos), e ranking de quem mais custa em token. Origem do cliente agora é capturada no checkout (link com ?utm_source=...) e dá pra completar retroativamente com o botão "Atualizar origens" (cruza por telefone com o convertHairCRM). No caminho, corrigidos 3 furos que faziam a receita registrada ficar menor que a real: renovação mensal de cartão nunca era registrada (só a 1ª cobrança — corrigido escutando invoice.payment_succeeded, que também corrige o vencimento exibido pra clientes de cartão), taxa de implantação paga não virava receita confirmada, e implantação não tinha valor nem vínculo com o cliente salvos. Refeito o histórico: achado e registrado R$ 1.410 em pagamentos de cartão reais (Soraia, Claudia, Ricardo) que nunca tinham entrado no banco — conferido fatura por fatura contra o Stripe antes de gravar.',
+  },
+  {
     title: 'Grupo do projeto criado sozinho quando o pagamento é confirmado',
     date: '04/09/2026',
     detail: 'O onboarding era todo na mão: criar o grupo com a cliente + equipe, mandar boas-vindas, e depois mandar o link do formulário. Agora, assim que o pagamento é confirmado (PIX ou cartão), o sistema cria o grupo "Projeto {nome da cliente}" com ela e os números da equipe, manda a mensagem de boas-vindas, e agenda a segunda mensagem com o link do formulário dela pro tempo que você definir. Tudo editável na nova aba "Onboarding" do Admin: ligar/desligar, números da equipe, os dois textos ({nome} e {link} viram os dados da cliente) e o tempo de espera. Renovação de plano não cria grupo — só cliente novo. Se a cliente tiver privacidade que impede ser adicionada, ela recebe o link de convite no privado e você é avisado.',
@@ -108,7 +113,6 @@ const PENDING = [
   { title: 'UI de troca de senha pro cliente', detail: 'Endpoint /auth/change-password já existe; falta o formulário em Configurações.' },
   { title: 'Fechar brecha residual do motor de preço (S&A)', detail: 'A IA ainda pode mencionar de forma livre um valor de acréscimo (ex: "no cartão fica +R$75") fora do placeholder — observado correto até agora, mas não é garantido pelo motor. Reforçar prompt se acontecer de novo.' },
   { title: 'Guard-rail de mídia ausente (Niltoncabelos)', detail: 'IA disse "não tenho" pra item sem vídeo mas existente na loja — fix de prompt aplicado; guard-rail em código só se voltar a acontecer.' },
-  { title: 'Renovação por cartão não atualiza a data de vencimento exibida', detail: 'A correção do "vence hoje" (04/09) grava a data certa na assinatura e na 1ª cobrança/renovação por PIX. Renovação automática por cartão (Stripe cobra sozinho) ainda não tem um gatilho que avance essa data — não afeta a cobrança em si (o Stripe cobra certo), só a data mostrada na tela de Clientes depois da 1ª renovação.' },
 ]
 
 const BUGS = [

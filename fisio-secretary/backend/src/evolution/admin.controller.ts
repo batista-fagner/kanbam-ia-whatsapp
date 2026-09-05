@@ -94,6 +94,7 @@ export class AdminController {
         paymentMethod: t.paymentMethod,
         planStatus: t.planStatus,
         planValue: t.planValue,
+        createdAt: t.createdAt, // "cliente desde" — usado na aba Financeiro
         leadsCount,
         usersCount: users.length,
       });
@@ -183,6 +184,151 @@ export class AdminController {
       ORDER BY tu.date DESC, tu.cost_usd DESC
     `, [dateFrom, dateTo]);
     return rows;
+  }
+
+  // ─── Financeiro: mapeamento de clientes, receita, custo e margem ──────────
+
+  // Tudo que a aba "Financeiro" precisa, em 3 queries agregadas (nada de N+1 como o
+  // /admin/clients faz). Receita = SÓ billing_events channel='pagamento' + status='confirmado';
+  // os outros canais ('pix'/'whatsapp'/'email') são tentativa de ENVIO de cobrança, não
+  // dinheiro que entrou — somar tudo infla a receita em ~4x.
+  @Get('finance/overview')
+  async financeOverview(@Query('from') from?: string, @Query('to') to?: string) {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    // Período padrão do custo de token = mês corrente (a receita acumulada é sempre desde o início).
+    const dateFrom = from ?? `${today.slice(0, 7)}-01`;
+    const dateTo = to ?? today;
+    const usdBrl = Number(this.config.get<string>('USD_BRL_RATE') ?? 5.5);
+
+    const clients = await this.billingEventRepo.query(`
+      WITH revenue AS (
+        SELECT tenant_id, SUM(amount) AS total, MAX(created_at) AS last_payment_at
+        FROM billing_events
+        WHERE channel = 'pagamento' AND status = 'confirmado' AND tenant_id IS NOT NULL
+        GROUP BY tenant_id
+      ),
+      tokens AS (
+        SELECT tenant_id, SUM(cost_usd) AS cost_usd
+        FROM token_usage
+        WHERE date BETWEEN $1 AND $2
+        GROUP BY tenant_id
+      )
+      SELECT
+        wc.id,
+        COALESCE(wc.display_name, wc.profile_name, '(sem nome)') AS name,
+        wc.origin_source, wc.origin_medium, wc.origin_campaign,
+        wc.payment_method, wc.plan_status, wc.is_active,
+        COALESCE(wc.plan_value, 390)::float AS plan_value,
+        TO_CHAR(wc.next_payment_date, 'YYYY-MM-DD') AS next_payment_date,
+        wc.billing_day,
+        TO_CHAR(wc.created_at, 'YYYY-MM-DD') AS client_since,
+        COALESCE(r.total, 0)::float AS revenue_total,
+        TO_CHAR(r.last_payment_at, 'YYYY-MM-DD') AS last_payment_at,
+        COALESCE(t.cost_usd, 0)::float AS token_cost_usd
+      FROM whatsapp_config wc
+      LEFT JOIN revenue r ON r.tenant_id = wc.id
+      LEFT JOIN tokens t ON t.tenant_id = wc.id
+      ORDER BY COALESCE(r.total, 0) DESC, wc.created_at DESC
+    `, [dateFrom, dateTo]);
+
+    // Receita da empresa inclui os pagamentos sem tenant vinculado (implantação paga antes
+    // da conta existir), por isso não é só a soma da coluna por cliente.
+    const [totals] = await this.billingEventRepo.query(`
+      SELECT
+        COALESCE(SUM(amount), 0)::float AS revenue_all_time,
+        COALESCE(SUM(amount) FILTER (WHERE created_at >= DATE_TRUNC('month', NOW())), 0)::float AS revenue_this_month
+      FROM billing_events
+      WHERE channel = 'pagamento' AND status = 'confirmado'
+    `);
+
+    const monthly = await this.billingEventRepo.query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+             SUM(amount)::float AS total
+      FROM billing_events
+      WHERE channel = 'pagamento' AND status = 'confirmado'
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    const rows = clients.map((c: any) => {
+      const tokenCostBrl = Number(c.token_cost_usd) * usdBrl;
+      return {
+        ...c,
+        token_cost_brl: tokenCostBrl,
+        // Margem do período: o que o plano dele rende por mês menos o que ele custa de API.
+        margin_brl: Number(c.plan_value) - tokenCostBrl,
+      };
+    });
+
+    const activeRows = rows.filter((c: any) => c.plan_status === 'active' && c.is_active);
+    const mrr = activeRows.reduce((sum: number, c: any) => sum + Number(c.plan_value), 0);
+    const tokenCostPeriodBrl = rows.reduce((sum: number, c: any) => sum + c.token_cost_brl, 0);
+
+    return {
+      period: { from: dateFrom, to: dateTo, usdBrl },
+      kpis: {
+        mrr,
+        revenueAllTime: Number(totals?.revenue_all_time ?? 0),
+        revenueThisMonth: Number(totals?.revenue_this_month ?? 0),
+        tokenCostPeriodBrl,
+        marginThisMonth: Number(totals?.revenue_this_month ?? 0) - tokenCostPeriodBrl,
+        activeCount: activeRows.length,
+        pastDueCount: rows.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
+        lostCount: rows.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
+        totalCount: rows.length,
+      },
+      monthly,
+      clients: rows,
+    };
+  }
+
+  // Preenche a origem (UTM) dos clientes cruzando por telefone com o banco do convertHairCRM,
+  // onde o lead original guarda a campanha que trouxe a pessoa. Roda sob demanda (botão na
+  // tela) — o app não fica acoplado ao outro banco em runtime.
+  @Post('finance/sync-origins')
+  async syncOrigins() {
+    const url = this.config.get<string>('CONVERTHAIRCRM_DATABASE_URL');
+    if (!url) throw new BadRequestException('CONVERTHAIRCRM_DATABASE_URL não configurada');
+
+    // Só clientes que ainda não têm origem — quem veio com UTM do checkout não é sobrescrito.
+    const pending = await this.billingEventRepo.query(`
+      SELECT id, billing_phone
+      FROM whatsapp_config
+      WHERE origin_source IS NULL AND billing_phone IS NOT NULL
+    `);
+    if (pending.length === 0) return { checked: 0, updated: 0, notFound: 0 };
+
+    const { Client } = await import('pg');
+    const crm = new Client({ connectionString: url });
+    await crm.connect();
+    let updated = 0;
+    try {
+      for (const row of pending) {
+        // Compara pelos 8 últimos dígitos: os dois bancos gravam o telefone em formatos
+        // diferentes (com/sem 55, com/sem o 9 extra).
+        const last8 = String(row.billing_phone).replace(/\D/g, '').slice(-8);
+        if (last8.length < 8) continue;
+        const found = await crm.query(
+          `SELECT utm_source, utm_medium, utm_campaign, quiz_slug
+           FROM leads
+           WHERE regexp_replace(phone, '\\D', '', 'g') LIKE '%' || $1
+           ORDER BY created_at ASC LIMIT 1`,
+          [last8],
+        );
+        const lead = found.rows[0];
+        if (!lead?.utm_source && !lead?.quiz_slug) continue;
+        await this.billingEventRepo.query(
+          `UPDATE whatsapp_config
+           SET origin_source = $2, origin_medium = $3, origin_campaign = $4, origin_synced_at = NOW()
+           WHERE id = $1`,
+          [row.id, lead.utm_source ?? 'organico', lead.utm_medium ?? null, lead.utm_campaign ?? lead.quiz_slug ?? null],
+        );
+        updated++;
+      }
+    } finally {
+      await crm.end();
+    }
+    return { checked: pending.length, updated, notFound: pending.length - updated };
   }
 
   // ─── Auditoria de prompts (visão do super-admin sobre todos os tenants) ──

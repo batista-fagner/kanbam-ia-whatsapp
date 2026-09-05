@@ -4,13 +4,23 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { PaymentsService } from './payments.service';
 
+// UTM lidos da URL do checkout (CheckoutPage.jsx readOrigin) — opcionais.
+type OriginFields = {
+  originSource?: string | null;
+  originMedium?: string | null;
+  originCampaign?: string | null;
+};
+
+type ImplantacaoBody = { name: string; phone: string; email: string } & OriginFields;
+type CheckoutBody = { name: string; email: string; phone: string; method: 'card' | 'pix' } & OriginFields;
+
 @Controller()
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   // Público: taxa de implantação (R$400 único, apenas PIX, sem criar conta)
   @Post('payments/implantacao')
-  async implantacao(@Body() body: { name: string; phone: string; email: string }) {
+  async implantacao(@Body() body: ImplantacaoBody) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
     if (!body?.phone?.trim()) throw new BadRequestException('WhatsApp é obrigatório');
     if (!body?.email?.trim()) throw new BadRequestException('E-mail é obrigatório');
@@ -22,7 +32,7 @@ export class PaymentsController {
 
   // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank enviado no WhatsApp)
   @Post('payments/checkout')
-  async checkout(@Body() body: { name: string; email: string; phone: string; method: 'card' | 'pix' }) {
+  async checkout(@Body() body: CheckoutBody) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
     if (!body?.email?.trim()) throw new BadRequestException('E-mail é obrigatório');
     if (!body?.phone?.trim()) throw new BadRequestException('WhatsApp é obrigatório');
@@ -31,11 +41,19 @@ export class PaymentsController {
     const email = body.email.trim().toLowerCase();
     const phone = body.phone.replace(/\D/g, '');
 
+    // UTM da URL do checkout, quando o link vem taggeado. Sem isso a origem fica null e é
+    // preenchida depois pelo sync com o convertHairCRM (tela Financeiro do Admin).
+    const origin = {
+      originSource: body.originSource?.trim() || null,
+      originMedium: body.originMedium?.trim() || null,
+      originCampaign: body.originCampaign?.trim() || null,
+    };
+
     if (body.method === 'pix') {
-      return this.payments.createPixCheckout(name, email, phone);
+      return this.payments.createPixCheckout(name, email, phone, origin);
     }
 
-    return this.payments.createCardCheckout(name, email, phone);
+    return this.payments.createCardCheckout(name, email, phone, origin);
   }
 
   // Público: recebe eventos do Stripe (assinatura verificada via raw body)

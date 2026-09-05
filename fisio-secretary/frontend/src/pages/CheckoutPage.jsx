@@ -16,6 +16,23 @@ function formatPhone(digits) {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
 }
 
+// Origem da visita, lida da URL (ex: /checkout?utm_source=instagram&utm_campaign=workshop).
+// Sem parâmetro na URL fica tudo null e o cliente entra sem origem — nesse caso a tela
+// Financeiro do Admin preenche depois pelo sync com o convertHairCRM (casando por telefone).
+function readOrigin() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const get = (k) => (params.get(k) || '').trim().slice(0, 120) || null
+    return {
+      originSource: get('utm_source'),
+      originMedium: get('utm_medium'),
+      originCampaign: get('utm_campaign'),
+    }
+  } catch {
+    return { originSource: null, originMedium: null, originCampaign: null }
+  }
+}
+
 export default function CheckoutPage() {
   const [settings, setSettings] = useState(null) // { pixEnabled, cardEnabled, implantacaoEnabled, implantacaoPrice, planoPrice }
   const [settingsError, setSettingsError] = useState('')
@@ -63,10 +80,11 @@ export default function CheckoutPage() {
     setLoading(true)
     try {
       let res
+      const origin = readOrigin()
       if (isImplantacao) {
-        res = await createImplantacaoCheckout({ name: form.name, phone: form.phone, email: form.email })
+        res = await createImplantacaoCheckout({ name: form.name, phone: form.phone, email: form.email, ...origin })
       } else {
-        res = await createCheckout({ ...form, method })
+        res = await createCheckout({ ...form, method, ...origin })
       }
       if (res.url) {
         window.location.href = res.url          // cartão → Stripe

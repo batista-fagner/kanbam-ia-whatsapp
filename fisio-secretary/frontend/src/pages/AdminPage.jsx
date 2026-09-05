@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup } from '../services/api'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins } from '../services/api'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 // Link público do checkout — mesmo formulário pra qualquer cliente, sem dado pré-preenchido.
 // Usado pra gerar o QR Code exibido/baixado na aba Checkout (ex: pra mostrar numa live).
@@ -16,6 +17,33 @@ function daysUntil(dateStr) {
 
 // Data de hoje no fuso de Brasília ('YYYY-MM-DD'). toISOString() usa UTC e adianta o dia à noite.
 const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+
+// --- Helpers da aba Financeiro ---
+
+const fmtBRL = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+// "Perdido" = assinatura cancelada OU conta suspensa; "em atraso" cobre os estados de
+// cobrança pendente (o PIX expirado também cai aqui).
+function statusLabel(c) {
+  if (c.plan_status === 'canceled' || !c.is_active) return 'perdido'
+  if (['past_due', 'expired', 'pending'].includes(c.plan_status)) return 'em atraso'
+  return 'ativo'
+}
+
+function filterFinanceClients(clients, filter) {
+  if (filter === 'all') return clients
+  if (filter === 'active') return clients.filter(c => statusLabel(c) === 'ativo')
+  if (filter === 'past_due') return clients.filter(c => statusLabel(c) === 'em atraso')
+  return clients.filter(c => statusLabel(c) === 'perdido')
+}
+
+// Cor por origem: pago (facebook/ctwa) x base (whatsapp/sdr) x resto.
+function originBadgeClass(source) {
+  const s = String(source).toLowerCase()
+  if (s.includes('facebook') || s.includes('instagram') || s.includes('ctwa')) return 'bg-violet-100 text-violet-700'
+  if (s.includes('whatsapp') || s.includes('organico') || s.includes('sdr')) return 'bg-emerald-100 text-emerald-700'
+  return 'bg-gray-100 text-gray-600'
+}
 
 // Google Form de onboarding (agente de CS) — link pré-preenchido por tenant via campo oculto
 // "Código interno". Ver agente-suporte-cs.md e backend/src/forms/forms.controller.ts.
@@ -60,6 +88,11 @@ export default function AdminPage() {
   const [testingGroup, setTestingGroup] = useState(false)
   const [testGroupResult, setTestGroupResult] = useState('')
   const [newTeamPhone, setNewTeamPhone] = useState('')
+  const [finance, setFinance] = useState(null)
+  const [loadingFinance, setLoadingFinance] = useState(false)
+  const [financeStatusFilter, setFinanceStatusFilter] = useState('all')
+  const [syncingOrigins, setSyncingOrigins] = useState(false)
+  const [syncResult, setSyncResult] = useState('')
 
   const load = async () => {
     try {
@@ -136,6 +169,24 @@ export default function AdminPage() {
       setCheckoutSaved(true)
       setTimeout(() => setCheckoutSaved(false), 2500)
     } catch (e) { setError(e.message) } finally { setSavingCheckout(false) }
+  }
+
+  // --- Financeiro (mapeamento de clientes, receita, custo, margem) ---
+
+  const loadFinance = async () => {
+    setLoadingFinance(true)
+    try { setFinance(await getFinanceOverview()) } catch (e) { setError(e.message) } finally { setLoadingFinance(false) }
+  }
+
+  useEffect(() => { if (activeTab === 'finance' && !finance) loadFinance() }, [activeTab])
+
+  async function handleSyncOrigins() {
+    setSyncingOrigins(true); setSyncResult(''); setError('')
+    try {
+      const res = await syncClientOrigins()
+      setSyncResult(`${res.updated} origem(ns) preenchida(s) de ${res.checked} cliente(s) sem origem.`)
+      await loadFinance()
+    } catch (e) { setError(e.message) } finally { setSyncingOrigins(false) }
   }
 
   // --- Onboarding (grupo automático pós-pagamento) ---
@@ -325,6 +376,10 @@ export default function AdminPage() {
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'onboarding' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
             <MessageSquare className="w-4 h-4" /> Onboarding
           </button>
+          <button onClick={() => setActiveTab('finance')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'finance' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <DollarSign className="w-4 h-4" /> Financeiro
+          </button>
         </div>
         {activeTab === 'clients' && (
           <button
@@ -512,6 +567,162 @@ export default function AdminPage() {
                 )}
               </div>
             </form>
+          )}
+        </div>
+      )}
+
+      {/* Aba: Financeiro (mapeamento de clientes, receita, custo de token e margem) */}
+      {activeTab === 'finance' && (
+        <div>
+          {loadingFinance || !finance ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm py-8">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando financeiro...
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {/* KPIs */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-400 mb-1">MRR (recorrente/mês)</p>
+                  <p className="text-2xl font-bold text-gray-800 tabular-nums">{fmtBRL(finance.kpis.mrr)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{finance.kpis.activeCount} cliente(s) ativo(s)</p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-400 mb-1">Receita acumulada</p>
+                  <p className="text-2xl font-bold text-gray-800 tabular-nums">{fmtBRL(finance.kpis.revenueAllTime)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{fmtBRL(finance.kpis.revenueThisMonth)} neste mês</p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-400 mb-1">Margem do mês</p>
+                  <p className={`text-2xl font-bold tabular-nums ${finance.kpis.marginThisMonth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {fmtBRL(finance.kpis.marginThisMonth)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">custo de IA: {fmtBRL(finance.kpis.tokenCostPeriodBrl)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-400 mb-1">Clientes</p>
+                  <p className="text-2xl font-bold text-gray-800 tabular-nums">
+                    {finance.kpis.activeCount}<span className="text-base text-gray-400 font-normal"> / {finance.kpis.totalCount}</span>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {finance.kpis.pastDueCount} em atraso · {finance.kpis.lostCount} perdido(s)
+                  </p>
+                </div>
+              </div>
+
+              {/* Receita por mês */}
+              {finance.monthly?.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-teal-600" /> Receita por mês
+                  </h3>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={finance.monthly}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v) => fmtBRL(v)} />
+                      <Bar dataKey="total" fill="#0f766e" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Filtro + sync */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <select value={financeStatusFilter} onChange={e => setFinanceStatusFilter(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                  <option value="all">Todos os clientes</option>
+                  <option value="active">Ativos</option>
+                  <option value="past_due">Em atraso</option>
+                  <option value="lost">Perdidos</option>
+                </select>
+                <button onClick={loadFinance} className="text-xs text-teal-600 hover:underline">Atualizar</button>
+                <button onClick={handleSyncOrigins} disabled={syncingOrigins}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition ml-auto"
+                  title="Preenche a origem cruzando por telefone com o convertHairCRM">
+                  {syncingOrigins ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Atualizar origens
+                </button>
+              </div>
+              {syncResult && <p className="text-xs text-green-600">{syncResult}</p>}
+
+              {/* Tabela de clientes */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 font-medium">Cliente</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Origem</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Plano</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Vencimento</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Receita gerada</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Custo IA</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Margem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filterFinanceClients(finance.clients, financeStatusFilter).length === 0 ? (
+                      <tr><td colSpan={7} className="text-center text-gray-400 py-8">Nenhum cliente neste filtro.</td></tr>
+                    ) : filterFinanceClients(finance.clients, financeStatusFilter).map(c => {
+                      const dleft = daysUntil(c.next_payment_date)
+                      return (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5">
+                            <div className="font-medium text-gray-800">{c.name}</div>
+                            <div className="text-xs text-gray-400">
+                              cliente desde {c.client_since ? new Date(c.client_since + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                              {c.payment_method && c.payment_method !== 'manual' && ` · ${c.payment_method === 'card' ? '💳 cartão' : '⚡ pix'}`}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {c.origin_source ? (
+                              <>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full ${originBadgeClass(c.origin_source)}`}>{c.origin_source}</span>
+                                {c.origin_campaign && <div className="text-xs text-gray-400 mt-0.5 max-w-[180px] truncate" title={c.origin_campaign}>{c.origin_campaign}</div>}
+                              </>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{fmtBRL(c.plan_value)}</td>
+                          <td className="px-4 py-2.5">
+                            {c.next_payment_date ? (
+                              <span className={`text-xs ${dleft !== null && dleft < 0 ? 'text-red-600 font-medium' : dleft !== null && dleft <= 3 ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                {new Date(c.next_payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                {dleft !== null && (dleft < 0 ? ` (${Math.abs(dleft)}d atrasado)` : dleft === 0 ? ' (hoje)' : dleft <= 3 ? ` (${dleft}d)` : '')}
+                              </span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                            <div className="text-xs text-gray-400 mt-0.5">{statusLabel(c)}</div>
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums font-medium text-gray-800">{fmtBRL(c.revenue_total)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{fmtBRL(c.token_cost_brl)}</td>
+                          <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${c.margin_brl >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtBRL(c.margin_brl)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Quem mais custa */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Quem mais custa em IA</h3>
+                <p className="text-xs text-gray-400 mb-3">Consumo de token no período ({finance.period.from} a {finance.period.to}) · dólar a R$ {finance.period.usdBrl}</p>
+                <div className="divide-y divide-gray-100">
+                  {[...finance.clients].sort((a, b) => b.token_cost_brl - a.token_cost_brl).slice(0, 10).filter(c => c.token_cost_brl > 0).map((c, i) => (
+                    <div key={c.id} className="flex items-center justify-between py-2">
+                      <span className="text-sm text-gray-700"><span className="text-gray-300 mr-2 tabular-nums">{i + 1}.</span>{c.name}</span>
+                      <span className="text-sm tabular-nums text-gray-600">
+                        {fmtBRL(c.token_cost_brl)}
+                        <span className="text-xs text-gray-400 ml-2">({((c.token_cost_brl / (c.plan_value || 1)) * 100).toFixed(1)}% do plano)</span>
+                      </span>
+                    </div>
+                  ))}
+                  {finance.clients.every(c => c.token_cost_brl <= 0) && (
+                    <p className="text-sm text-gray-400 py-3">Nenhum consumo registrado no período.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -341,6 +341,18 @@ export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEn
     body: JSON.stringify(payload),
   }).then(json)
 
+// --- Admin: financeiro (mapeamento de clientes, receita, custo, margem) ---
+export const getFinanceOverview = (from, to) => {
+  const qs = new URLSearchParams()
+  if (from) qs.set('from', from)
+  if (to) qs.set('to', to)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return authFetch(`${BASE}/admin/finance/overview${suffix}`).then(json)
+}
+
+export const syncClientOrigins = () =>
+  authFetch(`${BASE}/admin/finance/sync-origins`, { method: 'POST' }).then(json)
+
 // --- Admin: onboarding pós-pagamento (grupo automático + mensagens) ---
 export const getAdminOnboardingSettings = () =>
   authFetch(`${BASE}/admin/onboarding/settings`).then(json)
