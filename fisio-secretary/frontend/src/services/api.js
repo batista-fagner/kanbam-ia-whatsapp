@@ -227,6 +227,34 @@ export const updateClientBilling = (id, payload) => // payload: { nextPaymentDat
 export const clearClientPastDue = (id) =>
   authFetch(`${BASE}/admin/clients/${id}/clear-past-due`, { method: 'PATCH' }).then(json)
 
+// --- Drawer do cliente: teste/lead, churn, serviços extras ---
+export const updateClientTestFlag = (id, isTest) =>
+  authFetch(`${BASE}/admin/clients/${id}/test-flag`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isTest }),
+  }).then(json)
+
+export const updateClientChurn = (id, churned, reason) =>
+  authFetch(`${BASE}/admin/clients/${id}/churn`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ churned, reason }),
+  }).then(json)
+
+export const getClientExtraCharges = (id) =>
+  authFetch(`${BASE}/admin/clients/${id}/extra-charges`).then(json)
+
+export const addClientExtraCharge = (id, description, amount) =>
+  authFetch(`${BASE}/admin/clients/${id}/extra-charges`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description, amount }),
+  }).then(json)
+
+export const deleteClientExtraCharge = (id, chargeId) =>
+  authFetch(`${BASE}/admin/clients/${id}/extra-charges/${chargeId}`, { method: 'DELETE' }).then(json)
+
 export const resendMonthlyPix = (id) =>
   authFetch(`${BASE}/admin/clients/${id}/resend-monthly-pix`, { method: 'POST' }).then(json)
 

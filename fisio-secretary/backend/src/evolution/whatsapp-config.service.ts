@@ -75,6 +75,24 @@ export class WhatsappConfigService {
     return this.repo.save(record);
   }
 
+  // Conta de teste do time / lead que nunca pagou — some da tela Financeiro.
+  async setTestFlag(tenantId: string, isTest: boolean): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.isTest = isTest;
+    return this.repo.save(record);
+  }
+
+  // Churn manual — pagou ao menos 1 vez, mas saiu. Prioridade sobre plan_status/is_active
+  // na hora de classificar o cliente na tela Financeiro (ver admin.controller.ts).
+  async setChurn(tenantId: string, churned: boolean, reason?: string | null): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.churnedAt = churned ? new Date() : null;
+    record.churnReason = churned ? (reason?.trim() || null) : null;
+    return this.repo.save(record);
+  }
+
   async getActiveToken(): Promise<string> {
     const record = await this.get();
     return record?.instanceToken || this.config.get('UAZAPI_TOKEN') || '';

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import ClientDrawer from '../components/ClientDrawer'
 
 // Link público do checkout — mesmo formulário pra qualquer cliente, sem dado pré-preenchido.
 // Usado pra gerar o QR Code exibido/baixado na aba Checkout (ex: pra mostrar numa live).
@@ -22,9 +23,10 @@ const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_
 
 const fmtBRL = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-// "Perdido" = assinatura cancelada OU conta suspensa; "em atraso" cobre os estados de
-// cobrança pendente (o PIX expirado também cai aqui).
+// Churn manual tem prioridade sobre o status derivado — "perdido" = assinatura cancelada
+// OU conta suspensa; "em atraso" cobre os estados de cobrança pendente (PIX expirado também).
 function statusLabel(c) {
+  if (c.churned_at) return 'churn'
   if (c.plan_status === 'canceled' || !c.is_active) return 'perdido'
   if (['past_due', 'expired', 'pending'].includes(c.plan_status)) return 'em atraso'
   return 'ativo'
@@ -34,7 +36,14 @@ function filterFinanceClients(clients, filter) {
   if (filter === 'all') return clients
   if (filter === 'active') return clients.filter(c => statusLabel(c) === 'ativo')
   if (filter === 'past_due') return clients.filter(c => statusLabel(c) === 'em atraso')
+  if (filter === 'churn') return clients.filter(c => statusLabel(c) === 'churn')
   return clients.filter(c => statusLabel(c) === 'perdido')
+}
+
+// Normaliza a linha (do /admin/finance/overview, snake_case) pro formato que o ClientDrawer
+// espera (camelCase) — os dois endpoints não compartilham a mesma convenção de nomes.
+function financeRowToDrawerClient(c) {
+  return { ...c, isTest: false, churnedAt: c.churned_at, churnReason: c.churn_reason }
 }
 
 // Cor por origem: pago (facebook/ctwa) x base (whatsapp/sdr) x resto.
@@ -93,6 +102,7 @@ export default function AdminPage() {
   const [financeStatusFilter, setFinanceStatusFilter] = useState('all')
   const [syncingOrigins, setSyncingOrigins] = useState(false)
   const [syncResult, setSyncResult] = useState('')
+  const [drawerClient, setDrawerClient] = useState(null)
 
   const load = async () => {
     try {
@@ -608,6 +618,13 @@ export default function AdminPage() {
                     {finance.kpis.pastDueCount} em atraso · {finance.kpis.lostCount} perdido(s)
                   </p>
                 </div>
+                {finance.kpis.churnCount > 0 && (
+                  <div className="bg-white rounded-xl border border-purple-200 p-4">
+                    <p className="text-xs text-gray-400 mb-1">Churn</p>
+                    <p className="text-2xl font-bold text-purple-700 tabular-nums">{finance.kpis.churnCount}</p>
+                    <p className="text-xs text-gray-400 mt-1">{fmtBRL(finance.kpis.churnRevenueTotal)} gerados antes de sair</p>
+                  </div>
+                )}
               </div>
 
               {/* Receita por mês */}
@@ -635,6 +652,7 @@ export default function AdminPage() {
                   <option value="all">Todos os clientes</option>
                   <option value="active">Ativos</option>
                   <option value="past_due">Em atraso</option>
+                  <option value="churn">Churn</option>
                   <option value="lost">Perdidos</option>
                 </select>
                 <button onClick={loadFinance} className="text-xs text-teal-600 hover:underline">Atualizar</button>
@@ -666,8 +684,9 @@ export default function AdminPage() {
                       <tr><td colSpan={7} className="text-center text-gray-400 py-8">Nenhum cliente neste filtro.</td></tr>
                     ) : filterFinanceClients(finance.clients, financeStatusFilter).map(c => {
                       const dleft = daysUntil(c.next_payment_date)
+                      const label = statusLabel(c)
                       return (
-                        <tr key={c.id} className="hover:bg-gray-50">
+                        <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerClient(financeRowToDrawerClient(c))}>
                           <td className="px-4 py-2.5">
                             <div className="font-medium text-gray-800">{c.name}</div>
                             <div className="text-xs text-gray-400">
@@ -691,7 +710,7 @@ export default function AdminPage() {
                                 {dleft !== null && (dleft < 0 ? ` (${Math.abs(dleft)}d atrasado)` : dleft === 0 ? ' (hoje)' : dleft <= 3 ? ` (${dleft}d)` : '')}
                               </span>
                             ) : <span className="text-xs text-gray-300">—</span>}
-                            <div className="text-xs text-gray-400 mt-0.5">{statusLabel(c)}</div>
+                            <div className={`text-xs mt-0.5 ${label === 'churn' ? 'text-purple-600 font-medium' : 'text-gray-400'}`}>{label}</div>
                           </td>
                           <td className="px-4 py-2.5 text-right tabular-nums font-medium text-gray-800">{fmtBRL(c.revenue_total)}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{fmtBRL(c.token_cost_brl)}</td>
@@ -1075,6 +1094,13 @@ export default function AdminPage() {
                   </button>
                 )}
                 <button
+                  onClick={() => setDrawerClient(c)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                  title="Ver detalhes"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+                <button
                   onClick={() => { setResetModal({ id: c.id, name: c.displayName }); setNewPassword('') }}
                   className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
                   title="Resetar senha"
@@ -1101,6 +1127,15 @@ export default function AdminPage() {
           )
         })}
       </div>
+
+      {/* Drawer de detalhes do cliente (teste/lead, churn, serviços extras) */}
+      {drawerClient && (
+        <ClientDrawer
+          client={drawerClient}
+          onClose={() => setDrawerClient(null)}
+          onChanged={() => { load(); if (activeTab === 'finance') loadFinance() }}
+        />
+      )}
 
       {/* Modal resetar senha */}
       {resetModal && (

@@ -183,6 +183,20 @@ export class WhatsappConfig {
   @Column({ name: 'origin_synced_at', type: 'timestamp', nullable: true })
   originSyncedAt: Date | null;
 
+  // Conta de teste do time ou lead que nunca chegou a pagar — some por completo da tela
+  // Financeiro (MRR, receita, listas), diferente de churn (que fica visível como categoria).
+  @Column({ name: 'is_test', type: 'boolean', default: false })
+  isTest: boolean;
+
+  // Churn manual (toggle no drawer do cliente) — tem prioridade sobre o status derivado de
+  // plan_status/is_active na tela Financeiro. A receita histórica desse cliente continua
+  // contando no acumulado; só sai do MRR/ativos.
+  @Column({ name: 'churned_at', type: 'timestamp', nullable: true })
+  churnedAt: Date | null;
+
+  @Column({ name: 'churn_reason', type: 'varchar', nullable: true })
+  churnReason: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

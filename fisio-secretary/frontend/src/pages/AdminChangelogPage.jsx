@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Financeiro: excluir teste/lead, marcar churn e lançar serviços extras',
+    date: '05/09/2026',
+    detail: 'A tela Financeiro contava contas de teste do time e leads que nunca pagaram como se fossem clientes reais, inflando o MRR. Agora dá pra marcar uma conta como "teste/lead" e ela some por completo do financeiro (Wesley, claudia_teste_multiagente, Claudia Studio Hair, alex_teste, Is_cabelosnaturais e a conta do Tiago já saíram). Também criada a categoria "Churn": cliente que pagou pelo menos uma vez e saiu — sai do MRR/ativos, mas a receita que já gerou continua contando no histórico, servindo pra medir a saúde da empresa e lembrar de tentar recuperar (Scarlett, Bel e Mayara/Oriah já marcadas). E um jeito de lançar serviço extra além da assinatura (ex.: upgrade pra tráfego pago) — entra na receita do cliente na hora. Tudo isso fica num painel lateral novo ("Ver detalhes" na lista de Clientes, ou clicando numa linha do Financeiro) — primeiro do tipo no admin.',
+  },
+  {
     title: 'Tela Financeiro: mapeamento de clientes, receita, custo e margem',
     date: '05/09/2026',
     detail: 'Nova aba "Financeiro" no Admin: MRR, receita acumulada, margem do mês, ativos vs perdidos, gráfico de receita por mês, tabela de clientes com origem/campanha, plano, vencimento, receita gerada, custo de IA e margem (filtro Ativos/Em atraso/Perdidos), e ranking de quem mais custa em token. Origem do cliente agora é capturada no checkout (link com ?utm_source=...) e dá pra completar retroativamente com o botão "Atualizar origens" (cruza por telefone com o convertHairCRM). No caminho, corrigidos 3 furos que faziam a receita registrada ficar menor que a real: renovação mensal de cartão nunca era registrada (só a 1ª cobrança — corrigido escutando invoice.payment_succeeded, que também corrige o vencimento exibido pra clientes de cartão), taxa de implantação paga não virava receita confirmada, e implantação não tinha valor nem vínculo com o cliente salvos. Refeito o histórico: achado e registrado R$ 1.410 em pagamentos de cartão reais (Soraia, Claudia, Ricardo) que nunca tinham entrado no banco — conferido fatura por fatura contra o Stripe antes de gravar.',

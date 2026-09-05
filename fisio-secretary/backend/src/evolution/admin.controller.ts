@@ -17,6 +17,7 @@ import { NotFoundException } from '@nestjs/common';
 import { BillingEvent } from '../common/entities/billing-event.entity';
 import { PromptModule } from '../common/entities/prompt-module.entity';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
+import { ClientExtraCharge } from '../common/entities/client-extra-charge.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -36,6 +37,7 @@ export class AdminController {
     @InjectRepository(BillingEvent) private readonly billingEventRepo: Repository<BillingEvent>,
     @InjectRepository(PromptModule) private readonly promptModuleRepo: Repository<PromptModule>,
     @InjectRepository(MediaSendError) private readonly mediaSendErrorRepo: Repository<MediaSendError>,
+    @InjectRepository(ClientExtraCharge) private readonly extraChargeRepo: Repository<ClientExtraCharge>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -95,6 +97,9 @@ export class AdminController {
         planStatus: t.planStatus,
         planValue: t.planValue,
         createdAt: t.createdAt, // "cliente desde" — usado na aba Financeiro
+        isTest: t.isTest,
+        churnedAt: t.churnedAt,
+        churnReason: t.churnReason,
         leadsCount,
         usersCount: users.length,
       });
@@ -162,6 +167,48 @@ export class AdminController {
     return { ok: true };
   }
 
+  // Marca/desmarca uma conta como teste do time / lead que nunca pagou — some por completo
+  // da tela Financeiro (MRR, receita, listas). Diferente de churn (que fica visível lá).
+  @Patch('clients/:id/test-flag')
+  async setTestFlag(@Param('id') id: string, @Body() body: { isTest: boolean }) {
+    const updated = await this.whatsappConfigService.setTestFlag(id, body.isTest);
+    if (!updated) throw new BadRequestException('Cliente não encontrado');
+    return { ok: true, isTest: updated.isTest };
+  }
+
+  // Marca/desmarca churn manual — cliente que pagou ao menos 1 vez e saiu. Sai do MRR/ativos
+  // na tela Financeiro, mas a receita histórica dele continua contando no acumulado.
+  @Patch('clients/:id/churn')
+  async setChurn(@Param('id') id: string, @Body() body: { churned: boolean; reason?: string }) {
+    const updated = await this.whatsappConfigService.setChurn(id, body.churned, body.reason);
+    if (!updated) throw new BadRequestException('Cliente não encontrado');
+    return { ok: true, churnedAt: updated.churnedAt, churnReason: updated.churnReason };
+  }
+
+  // Cobranças avulsas do cliente (upgrades/upsells além da assinatura) — somam na receita
+  // dele na tela Financeiro.
+  @Get('clients/:id/extra-charges')
+  async listExtraCharges(@Param('id') id: string) {
+    return this.extraChargeRepo.find({ where: { tenantId: id }, order: { createdAt: 'DESC' } });
+  }
+
+  @Post('clients/:id/extra-charges')
+  async addExtraCharge(@Param('id') id: string, @Body() body: { description: string; amount: number }) {
+    if (!body?.description?.trim()) throw new BadRequestException('Descrição é obrigatória');
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Valor deve ser maior que zero');
+    return this.extraChargeRepo.save(
+      this.extraChargeRepo.create({ tenantId: id, description: body.description.trim(), amount: amount.toFixed(2) }),
+    );
+  }
+
+  @Delete('clients/:id/extra-charges/:chargeId')
+  async deleteExtraCharge(@Param('id') id: string, @Param('chargeId') chargeId: string) {
+    const result = await this.extraChargeRepo.delete({ id: chargeId, tenantId: id });
+    if (!result.affected) throw new BadRequestException('Lançamento não encontrado');
+    return { ok: true };
+  }
+
   // Retorna uso de tokens por tenant por dia dentro de um range (from..to).
   // Sem params: usa o dia de hoje (fuso de Brasília). Ordenado por data desc.
   @Get('usage')
@@ -207,6 +254,12 @@ export class AdminController {
         WHERE channel = 'pagamento' AND status = 'confirmado' AND tenant_id IS NOT NULL
         GROUP BY tenant_id
       ),
+      extra AS (
+        -- Cobranças avulsas (upgrades/upsells além da assinatura) lançadas no drawer do cliente.
+        SELECT tenant_id, SUM(amount) AS total, MAX(created_at) AS last_charge_at
+        FROM client_extra_charges
+        GROUP BY tenant_id
+      ),
       tokens AS (
         SELECT tenant_id, SUM(cost_usd) AS cost_usd
         FROM token_usage
@@ -218,17 +271,20 @@ export class AdminController {
         COALESCE(wc.display_name, wc.profile_name, '(sem nome)') AS name,
         wc.origin_source, wc.origin_medium, wc.origin_campaign,
         wc.payment_method, wc.plan_status, wc.is_active,
+        wc.churned_at, wc.churn_reason,
         COALESCE(wc.plan_value, 390)::float AS plan_value,
         TO_CHAR(wc.next_payment_date, 'YYYY-MM-DD') AS next_payment_date,
         wc.billing_day,
         TO_CHAR(wc.created_at, 'YYYY-MM-DD') AS client_since,
-        COALESCE(r.total, 0)::float AS revenue_total,
-        TO_CHAR(r.last_payment_at, 'YYYY-MM-DD') AS last_payment_at,
+        (COALESCE(r.total, 0) + COALESCE(e.total, 0))::float AS revenue_total,
+        TO_CHAR(GREATEST(r.last_payment_at, e.last_charge_at), 'YYYY-MM-DD') AS last_payment_at,
         COALESCE(t.cost_usd, 0)::float AS token_cost_usd
       FROM whatsapp_config wc
       LEFT JOIN revenue r ON r.tenant_id = wc.id
+      LEFT JOIN extra e ON e.tenant_id = wc.id
       LEFT JOIN tokens t ON t.tenant_id = wc.id
-      ORDER BY COALESCE(r.total, 0) DESC, wc.created_at DESC
+      WHERE wc.is_test = false
+      ORDER BY (COALESCE(r.total, 0) + COALESCE(e.total, 0)) DESC, wc.created_at DESC
     `, [dateFrom, dateTo]);
 
     // Receita da empresa inclui os pagamentos sem tenant vinculado (implantação paga antes
@@ -260,9 +316,14 @@ export class AdminController {
       };
     });
 
-    const activeRows = rows.filter((c: any) => c.plan_status === 'active' && c.is_active);
+    // Churn manual tem prioridade sobre o status derivado — um cliente marcado como churn
+    // não conta como ativo/em atraso/perdido, mesmo que plan_status ainda diga outra coisa.
+    const churnedRows = rows.filter((c: any) => c.churned_at);
+    const nonChurned = rows.filter((c: any) => !c.churned_at);
+    const activeRows = nonChurned.filter((c: any) => c.plan_status === 'active' && c.is_active);
     const mrr = activeRows.reduce((sum: number, c: any) => sum + Number(c.plan_value), 0);
     const tokenCostPeriodBrl = rows.reduce((sum: number, c: any) => sum + c.token_cost_brl, 0);
+    const churnRevenueTotal = churnedRows.reduce((sum: number, c: any) => sum + Number(c.revenue_total), 0);
 
     return {
       period: { from: dateFrom, to: dateTo, usdBrl },
@@ -273,8 +334,10 @@ export class AdminController {
         tokenCostPeriodBrl,
         marginThisMonth: Number(totals?.revenue_this_month ?? 0) - tokenCostPeriodBrl,
         activeCount: activeRows.length,
-        pastDueCount: rows.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
-        lostCount: rows.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
+        pastDueCount: nonChurned.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
+        lostCount: nonChurned.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
+        churnCount: churnedRows.length,
+        churnRevenueTotal,
         totalCount: rows.length,
       },
       monthly,
