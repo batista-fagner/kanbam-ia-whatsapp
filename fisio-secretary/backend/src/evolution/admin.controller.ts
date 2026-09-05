@@ -18,6 +18,7 @@ import { BillingEvent } from '../common/entities/billing-event.entity';
 import { PromptModule } from '../common/entities/prompt-module.entity';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { ClientExtraCharge } from '../common/entities/client-extra-charge.entity';
+import { ToolExpense } from '../common/entities/tool-expense.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -38,6 +39,7 @@ export class AdminController {
     @InjectRepository(PromptModule) private readonly promptModuleRepo: Repository<PromptModule>,
     @InjectRepository(MediaSendError) private readonly mediaSendErrorRepo: Repository<MediaSendError>,
     @InjectRepository(ClientExtraCharge) private readonly extraChargeRepo: Repository<ClientExtraCharge>,
+    @InjectRepository(ToolExpense) private readonly toolExpenseRepo: Repository<ToolExpense>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -209,6 +211,60 @@ export class AdminController {
     return { ok: true };
   }
 
+  // Ferramentas/serviços que a empresa paga pra operar (Supabase, uazapi, etc.) — custo fixo
+  // mensal, descontado na margem da aba Financeiro (não é por cliente).
+  @Get('tool-expenses')
+  async listToolExpenses() {
+    return this.toolExpenseRepo.find({ order: { createdAt: 'ASC' } });
+  }
+
+  @Post('tool-expenses')
+  async createToolExpense(@Body() body: { name: string; monthlyCost: number; billingDay?: number | null }) {
+    if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
+    const monthlyCost = Number(body.monthlyCost);
+    if (!Number.isFinite(monthlyCost) || monthlyCost < 0) throw new BadRequestException('Valor mensal inválido');
+    const billingDay = body.billingDay != null ? Number(body.billingDay) : null;
+    if (billingDay != null && (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 31)) {
+      throw new BadRequestException('Dia de vencimento deve ser entre 1 e 31');
+    }
+    return this.toolExpenseRepo.save(
+      this.toolExpenseRepo.create({ name: body.name.trim(), monthlyCost: monthlyCost.toFixed(2), billingDay }),
+    );
+  }
+
+  @Patch('tool-expenses/:id')
+  async updateToolExpense(
+    @Param('id') id: string,
+    @Body() body: { name?: string; monthlyCost?: number; billingDay?: number | null },
+  ) {
+    const tool = await this.toolExpenseRepo.findOne({ where: { id } });
+    if (!tool) throw new BadRequestException('Ferramenta não encontrada');
+    if (body.name !== undefined) {
+      if (!body.name.trim()) throw new BadRequestException('Nome é obrigatório');
+      tool.name = body.name.trim();
+    }
+    if (body.monthlyCost !== undefined) {
+      const monthlyCost = Number(body.monthlyCost);
+      if (!Number.isFinite(monthlyCost) || monthlyCost < 0) throw new BadRequestException('Valor mensal inválido');
+      tool.monthlyCost = monthlyCost.toFixed(2);
+    }
+    if (body.billingDay !== undefined) {
+      const billingDay = body.billingDay != null ? Number(body.billingDay) : null;
+      if (billingDay != null && (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 31)) {
+        throw new BadRequestException('Dia de vencimento deve ser entre 1 e 31');
+      }
+      tool.billingDay = billingDay;
+    }
+    return this.toolExpenseRepo.save(tool);
+  }
+
+  @Delete('tool-expenses/:id')
+  async deleteToolExpense(@Param('id') id: string) {
+    const result = await this.toolExpenseRepo.delete({ id });
+    if (!result.affected) throw new BadRequestException('Ferramenta não encontrada');
+    return { ok: true };
+  }
+
   // Retorna uso de tokens por tenant por dia dentro de um range (from..to).
   // Sem params: usa o dia de hoje (fuso de Brasília). Ordenado por data desc.
   @Get('usage')
@@ -325,6 +381,9 @@ export class AdminController {
     const tokenCostPeriodBrl = rows.reduce((sum: number, c: any) => sum + c.token_cost_brl, 0);
     const churnRevenueTotal = churnedRows.reduce((sum: number, c: any) => sum + Number(c.revenue_total), 0);
 
+    const toolExpenses = await this.toolExpenseRepo.find({ order: { name: 'ASC' } });
+    const toolsCostMonthly = toolExpenses.reduce((sum, t) => sum + Number(t.monthlyCost), 0);
+
     return {
       period: { from: dateFrom, to: dateTo, usdBrl },
       kpis: {
@@ -332,7 +391,8 @@ export class AdminController {
         revenueAllTime: Number(totals?.revenue_all_time ?? 0),
         revenueThisMonth: Number(totals?.revenue_this_month ?? 0),
         tokenCostPeriodBrl,
-        marginThisMonth: Number(totals?.revenue_this_month ?? 0) - tokenCostPeriodBrl,
+        toolsCostMonthly,
+        marginThisMonth: Number(totals?.revenue_this_month ?? 0) - tokenCostPeriodBrl - toolsCostMonthly,
         activeCount: activeRows.length,
         pastDueCount: nonChurned.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
         lostCount: nonChurned.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
@@ -342,6 +402,7 @@ export class AdminController {
       },
       monthly,
       clients: rows,
+      toolExpenses,
     };
   }
 

@@ -255,6 +255,26 @@ export const addClientExtraCharge = (id, description, amount) =>
 export const deleteClientExtraCharge = (id, chargeId) =>
   authFetch(`${BASE}/admin/clients/${id}/extra-charges/${chargeId}`, { method: 'DELETE' }).then(json)
 
+export const getToolExpenses = () =>
+  authFetch(`${BASE}/admin/tool-expenses`).then(json)
+
+export const createToolExpense = (name, monthlyCost, billingDay) =>
+  authFetch(`${BASE}/admin/tool-expenses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, monthlyCost, billingDay }),
+  }).then(json)
+
+export const updateToolExpense = (id, data) =>
+  authFetch(`${BASE}/admin/tool-expenses/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
+export const deleteToolExpense = (id) =>
+  authFetch(`${BASE}/admin/tool-expenses/${id}`, { method: 'DELETE' }).then(json)
+
 export const resendMonthlyPix = (id) =>
   authFetch(`${BASE}/admin/clients/${id}/resend-monthly-pix`, { method: 'POST' }).then(json)
 

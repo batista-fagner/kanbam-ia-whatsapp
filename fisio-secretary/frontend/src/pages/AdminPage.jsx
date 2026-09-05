@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye, Wrench } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins } from '../services/api'
+import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins, createToolExpense, updateToolExpense, deleteToolExpense } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import ClientDrawer from '../components/ClientDrawer'
 
@@ -102,6 +102,8 @@ export default function AdminPage() {
   const [financeStatusFilter, setFinanceStatusFilter] = useState('all')
   const [syncingOrigins, setSyncingOrigins] = useState(false)
   const [syncResult, setSyncResult] = useState('')
+  const [newTool, setNewTool] = useState({ name: '', monthlyCost: '', billingDay: '' })
+  const [savingTool, setSavingTool] = useState(false)
   const [drawerClient, setDrawerClient] = useState(null)
 
   const load = async () => {
@@ -189,6 +191,31 @@ export default function AdminPage() {
   }
 
   useEffect(() => { if (activeTab === 'finance' && !finance) loadFinance() }, [activeTab])
+
+  async function handleAddTool(e) {
+    e.preventDefault()
+    if (!newTool.name.trim() || !newTool.monthlyCost) return
+    setSavingTool(true)
+    try {
+      await createToolExpense(newTool.name.trim(), Number(newTool.monthlyCost), newTool.billingDay ? Number(newTool.billingDay) : null)
+      setNewTool({ name: '', monthlyCost: '', billingDay: '' })
+      await loadFinance()
+    } catch (e) { setError(e.message) } finally { setSavingTool(false) }
+  }
+
+  async function handleUpdateTool(id, field, value) {
+    try {
+      await updateToolExpense(id, { [field]: value })
+      await loadFinance()
+    } catch (e) { setError(e.message) }
+  }
+
+  async function handleDeleteTool(id) {
+    try {
+      await deleteToolExpense(id)
+      await loadFinance()
+    } catch (e) { setError(e.message) }
+  }
 
   async function handleSyncOrigins() {
     setSyncingOrigins(true); setSyncResult(''); setError('')
@@ -607,7 +634,7 @@ export default function AdminPage() {
                   <p className={`text-2xl font-bold tabular-nums ${finance.kpis.marginThisMonth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {fmtBRL(finance.kpis.marginThisMonth)}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">custo de IA: {fmtBRL(finance.kpis.tokenCostPeriodBrl)}</p>
+                  <p className="text-xs text-gray-400 mt-1">IA: {fmtBRL(finance.kpis.tokenCostPeriodBrl)} · ferramentas: {fmtBRL(finance.kpis.toolsCostMonthly)}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-400 mb-1">Clientes</p>
@@ -740,6 +767,80 @@ export default function AdminPage() {
                     <p className="text-sm text-gray-400 py-3">Nenhum consumo registrado no período.</p>
                   )}
                 </div>
+              </div>
+
+              {/* Ferramentas & Custos (Supabase, uazapi, etc.) */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-teal-600" /> Ferramentas &amp; custos
+                </h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  Custo fixo mensal da operação (Supabase, uazapi, etc.) — total de {fmtBRL(finance.kpis.toolsCostMonthly)}/mês, já descontado na margem acima.
+                </p>
+
+                <div className="divide-y divide-gray-100 mb-3">
+                  {(finance.toolExpenses ?? []).map(t => (
+                    <div key={t.id} className="flex items-center gap-2 py-2">
+                      <input
+                        defaultValue={t.name}
+                        onBlur={e => e.target.value.trim() && e.target.value !== t.name && handleUpdateTool(t.id, 'name', e.target.value.trim())}
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-transparent hover:border-gray-200 focus:border-teal-500 rounded-lg text-sm focus:outline-none"
+                      />
+                      <input
+                        type="number" min="0" step="0.01"
+                        defaultValue={t.monthlyCost}
+                        onBlur={e => e.target.value && Number(e.target.value) !== Number(t.monthlyCost) && handleUpdateTool(t.id, 'monthlyCost', Number(e.target.value))}
+                        className="w-28 px-2 py-1.5 border border-transparent hover:border-gray-200 focus:border-teal-500 rounded-lg text-sm text-right tabular-nums focus:outline-none"
+                        title="Valor mensal (R$)"
+                      />
+                      <input
+                        type="number" min="1" max="31"
+                        defaultValue={t.billingDay ?? ''}
+                        placeholder="dia"
+                        onBlur={e => {
+                          const v = e.target.value ? Number(e.target.value) : null
+                          if (v !== (t.billingDay ?? null)) handleUpdateTool(t.id, 'billingDay', v)
+                        }}
+                        className="w-16 px-2 py-1.5 border border-transparent hover:border-gray-200 focus:border-teal-500 rounded-lg text-sm text-center tabular-nums focus:outline-none"
+                        title="Dia do vencimento (opcional)"
+                      />
+                      <button onClick={() => handleDeleteTool(t.id)} className="text-gray-300 hover:text-red-500 shrink-0" title="Remover">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {(finance.toolExpenses ?? []).length === 0 && (
+                    <p className="text-sm text-gray-400 py-3">Nenhuma ferramenta cadastrada ainda.</p>
+                  )}
+                </div>
+
+                <form onSubmit={handleAddTool} className="flex items-center gap-2">
+                  <input
+                    value={newTool.name}
+                    onChange={e => setNewTool({ ...newTool, name: e.target.value })}
+                    placeholder="Ferramenta (ex: Supabase)"
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={newTool.monthlyCost}
+                    onChange={e => setNewTool({ ...newTool, monthlyCost: e.target.value })}
+                    placeholder="Valor/mês"
+                    className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <input
+                    type="number" min="1" max="31"
+                    value={newTool.billingDay}
+                    onChange={e => setNewTool({ ...newTool, billingDay: e.target.value })}
+                    placeholder="Dia"
+                    className="w-16 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    title="Dia do vencimento (opcional)"
+                  />
+                  <button type="submit" disabled={savingTool || !newTool.name.trim() || !newTool.monthlyCost}
+                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-teal-700 hover:bg-teal-800 disabled:opacity-40 text-white transition shrink-0">
+                    {savingTool ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  </button>
+                </form>
               </div>
             </div>
           )}
