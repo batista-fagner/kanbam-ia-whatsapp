@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Fix: vídeo "não encontrado" pra Telma (Marcele Blz Hair) — raiz do bug achada',
+    date: '07/09/2026',
+    detail: 'Depois do painel de erros de mídia mostrar vários "vídeo não encontrado" na conta da Telma, achada a causa real: os EXEMPLOS dentro do prompt da IA usavam nomes fictícios com hífen ("video-liso-60cm"), e a IA copiava esse formato em vez do nome de verdade do catálogo ("VIDEO CACHEADO 60CM"), então a busca não achava nada mesmo o vídeo existindo. Reescritos os exemplos do prompt pra não sugerir mais nenhum formato inventado, e a busca de mídia agora também ignora hífen/underscore na comparação (rede de segurança, além do fix do prompt). Sem mudança de comportamento pra quem já funcionava.',
+  },
+  {
     title: 'Atribuição automática de venda pro Facebook (convertHairCRM)',
     date: '05/09/2026',
     detail: 'Quando um cliente novo paga (PIX ou cartão), o sistema agora avisa automaticamente o convertHairCRM pra ele marcar o lead de origem como convertido e mandar o evento de venda pro Facebook — antes isso exigia entrar lá e clicar em "Converter Lead" na mão, venda por venda. Só dispara na 1ª ativação (renovação mensal não conta). Se o telefone não bater com nenhum lead de lá, chega um aviso por e-mail em vez de passar batido em silêncio.',
@@ -131,6 +136,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Telma (Marcele Blz Hair): IA dizia "vídeo não encontrado" mesmo o vídeo existindo',
+    date: '07/09/2026',
+    detail: 'Vários leads no mesmo dia (07/09) receberam "ainda não encontrei esse modelo no catálogo" — a IA estava gerando o nome do vídeo no formato "video-cacheado-60cm" (com hífen, copiando um exemplo do prompt) em vez do nome real "VIDEO CACHEADO 60CM". Corrigido o prompt e adicionada uma segunda camada de proteção na busca (ignora hífen/espaço na comparação).',
+    status: 'corrigido',
+  },
   {
     title: 'Vídeos da Telma (Marcele Blz Hair) não abriam no WhatsApp do cliente',
     date: '04/09/2026',

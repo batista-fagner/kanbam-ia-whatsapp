@@ -56,10 +56,11 @@ export class MediaService {
     const byCase = all.find(m => m.name.toLowerCase() === lower);
     if (byCase) return byCase;
 
-    // 3. Fallback ignorando espaços (o Gemini "normaliza" nomes sozinho, ex:
-    // "58 cm" → "58cm", mesmo vendo o nome exato no catálogo). Só dispara
-    // quando 1 e 2 já falharam, então nunca quebra um match que hoje funciona.
-    const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+    // 3. Fallback ignorando espaços/hífens/underscores (o Gemini "normaliza" nomes
+    // sozinho, ex: "58 cm" → "58cm" ou "VIDEO CACHEADO 60CM" → "video-cacheado-60cm",
+    // mesmo vendo o nome exato no catálogo). Só dispara quando 1 e 2 já falharam,
+    // então nunca quebra um match que hoje funciona.
+    const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const target = squash(name);
     return all.find(m => squash(m.name) === target) ?? null;
   }
