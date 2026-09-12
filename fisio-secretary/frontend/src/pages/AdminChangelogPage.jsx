@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Fix: foto e preço trocados no Niltoncabelos (Vietnamita Moreno Iluminado)',
+    date: '12/09/2026',
+    detail: 'Cliente relatou duas confusões da IA: mandava foto do "Super Draw escuro" quando pediam "Moreno Iluminado", e cotava o preço do Select quando pediam "Moreno Iluminado liso". Achadas as duas causas: (1) o nome da mídia cadastrada misturava "Moreno Iluminado" com "Super Draw" no mesmo nome — o Nilton corrigiu o cadastro depois que apontei o problema; (2) o "Moreno Iluminado" só existe na textura ondulado (confirmado com a loja), mas a IA não tinha instrução pra esse caso e inventava um valor de outro produto. Adicionada regra explícita: se pedirem esse item em liso, a IA agora avisa que só tem ondulado em vez de chutar preço.',
+  },
+  {
     title: 'Fix: vídeo "não encontrado" pra Telma (Marcele Blz Hair) — raiz do bug achada',
     date: '07/09/2026',
     detail: 'Depois do painel de erros de mídia mostrar vários "vídeo não encontrado" na conta da Telma, achada a causa real: os EXEMPLOS dentro do prompt da IA usavam nomes fictícios com hífen ("video-liso-60cm"), e a IA copiava esse formato em vez do nome de verdade do catálogo ("VIDEO CACHEADO 60CM"), então a busca não achava nada mesmo o vídeo existindo. Reescritos os exemplos do prompt pra não sugerir mais nenhum formato inventado, e a busca de mídia agora também ignora hífen/underscore na comparação (rede de segurança, além do fix do prompt). Sem mudança de comportamento pra quem já funcionava.',
@@ -136,6 +141,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Niltoncabelos: IA mandava foto errada e inventava preço no Vietnamita Moreno Iluminado',
+    date: '12/09/2026',
+    detail: 'Cliente pedia "Moreno Iluminado" e recebia a foto do "Super Draw escuro" (nome da mídia misturava os dois produtos no cadastro — Nilton corrigiu). Cliente pedia "Moreno Iluminado liso" e a IA cotava o preço do Select por engano, porque esse item só existe em ondulado e a IA não sabia dizer isso. Corrigido: mídia renomeada e prompt com regra explícita pra avisar quando o pedido não existe, em vez de chutar valor de outro produto.',
+    status: 'corrigido',
+  },
   {
     title: 'Telma (Marcele Blz Hair): IA dizia "vídeo não encontrado" mesmo o vídeo existindo',
     date: '07/09/2026',
