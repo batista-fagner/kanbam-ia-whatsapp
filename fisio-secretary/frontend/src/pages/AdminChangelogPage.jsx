@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Calendário: botão pra ocultar o número do lead na tela',
+    date: '13/09/2026',
+    detail: 'Adicionado um botão de olho no topo do Calendário que oculta o telefone do lead nos cards do mês (mostra "••• •••• ••••" no lugar) — pensado pra gravar vídeo/demo da tela sem expor número de cliente real. É só visual, não mexe no dado nem no modal de edição do agendamento; fica lembrado no navegador entre acessos.',
+  },
+  {
     title: 'Fix: foto e preço trocados no Niltoncabelos (Vietnamita Moreno Iluminado)',
     date: '12/09/2026',
     detail: 'Cliente relatou duas confusões da IA: mandava foto do "Super Draw escuro" quando pediam "Moreno Iluminado", e cotava o preço do Select quando pediam "Moreno Iluminado liso". Achadas as duas causas: (1) o nome da mídia cadastrada misturava "Moreno Iluminado" com "Super Draw" no mesmo nome — o Nilton corrigiu o cadastro depois que apontei o problema; (2) o "Moreno Iluminado" só existe na textura ondulado (confirmado com a loja), mas a IA não tinha instrução pra esse caso e inventava um valor de outro produto. Adicionada regra explícita: se pedirem esse item em liso, a IA agora avisa que só tem ondulado em vez de chutar preço.',

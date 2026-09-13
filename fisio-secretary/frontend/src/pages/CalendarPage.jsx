@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, RefreshCw, Eye, EyeOff } from 'lucide-react'
 import { getAppointmentsByMonth } from '../services/api'
 import AppointmentModal from '../components/AppointmentModal'
 
@@ -30,6 +30,16 @@ export default function CalendarPage() {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(false)
   const [modalState, setModalState] = useState({ open: false, appointment: null, defaultDate: null })
+  // Só oculta o número na tela (ex: pra gravar vídeo) — não mexe no dado nem no modal de edição.
+  const [hidePhones, setHidePhones] = useState(() => localStorage.getItem('calendar_hide_phones') === 'true')
+
+  function toggleHidePhones() {
+    setHidePhones(v => {
+      const next = !v
+      localStorage.setItem('calendar_hide_phones', String(next))
+      return next
+    })
+  }
 
   async function refresh() {
     setLoading(true)
@@ -85,6 +95,13 @@ export default function CalendarPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleHidePhones}
+            className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500"
+            title={hidePhones ? 'Mostrar número do lead' : 'Ocultar número do lead (ex: pra gravar vídeo)'}
+          >
+            {hidePhones ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
           <button
             onClick={refresh}
             disabled={loading}
@@ -169,7 +186,7 @@ export default function CalendarPage() {
                           <div className="truncate font-medium">{a.clientName}</div>
                           <div className="truncate text-[9px] opacity-75">
                             {serviceLabel[a.service] ?? a.service}
-                            {a.clientPhone && <> · {a.clientPhone}</>}
+                            {a.clientPhone && <> · {hidePhones ? '••• •••• ••••' : a.clientPhone}</>}
                           </div>
                         </button>
                       )
