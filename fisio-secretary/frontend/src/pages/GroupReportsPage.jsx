@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { MessageSquare, RefreshCw, AlertTriangle, TrendingUp, Save, Loader2 } from 'lucide-react'
-import { getGroupReportsOverview, getGroupReports, getGroupMonitorSettings, updateGroupMonitorSettings } from '../services/api'
+import { MessageSquare, RefreshCw, AlertTriangle, TrendingUp, Save, Loader2, Sparkles } from 'lucide-react'
+import { getGroupReportsOverview, getGroupReports, getGroupMonitorSettings, updateGroupMonitorSettings, runGroupReportsNow } from '../services/api'
 import GroupReportDrawer from '../components/GroupReportDrawer'
 
 const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
@@ -82,6 +82,8 @@ export default function GroupReportsPage() {
   const [loading, setLoading] = useState(true)
   const [date, setDate] = useState(brToday())
   const [openReportId, setOpenReportId] = useState(null)
+  const [generating, setGenerating] = useState(false)
+  const [generateMsg, setGenerateMsg] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -100,6 +102,20 @@ export default function GroupReportsPage() {
   }, [date])
 
   useEffect(() => { load() }, [load])
+
+  async function handleGenerateNow() {
+    setGenerating(true); setGenerateMsg('')
+    try {
+      const res = await runGroupReportsNow(date)
+      setGenerateMsg(`${res.generated} gerado(s), ${res.skipped} sem conversa`)
+      await load()
+    } catch (e) {
+      setGenerateMsg('Erro ao gerar: ' + e.message)
+    } finally {
+      setGenerating(false)
+      setTimeout(() => setGenerateMsg(''), 5000)
+    }
+  }
 
   const isToday = date === brToday()
   const periodLabel = isToday ? 'hoje' : new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -141,8 +157,21 @@ export default function GroupReportsPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
+          <button
+            onClick={handleGenerateNow}
+            disabled={generating}
+            title="Gera o relatório do dia agora, sem esperar as 18h"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition disabled:opacity-50"
+          >
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Gerar agora
+          </button>
         </div>
       </div>
+
+      {generateMsg && (
+        <p className="text-xs text-gray-500 -mt-3">{generateMsg}</p>
+      )}
 
       <AlertPhoneConfig />
 

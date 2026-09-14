@@ -436,6 +436,15 @@ export const updateGroupMonitorSettings = (payload) => // { riskAlertPhone? }
     body: JSON.stringify(payload),
   }).then(json)
 
+// Gera o relatório do dia na hora, sem esperar o cron das 18h — útil pra ver o resultado
+// de uma conversa recente sem precisar esperar.
+export const runGroupReportsNow = (date) =>
+  authFetch(`${BASE}/admin/group-monitor/reports/run-now`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date }),
+  }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)
