@@ -125,7 +125,7 @@ export class OnboardingService {
 
     // A cliente pode ter privacidade que bloqueia ser adicionada em grupo — nesse caso a
     // uazapi cria o grupo sem ela e devolve um link de convite. Manda o link no privado dela.
-    await this._handleClientNotAdded(created, phone, name, groupName);
+    await this._handleClientNotAdded(jid, phone, name, groupName);
 
     if (settings.welcomeMessage?.trim()) {
       const sent = await this._sendText(jid, this._applyVars(settings.welcomeMessage, { nome: name }));
@@ -254,35 +254,65 @@ export class OnboardingService {
       .replace(/\{link\}/gi, vars.link ?? '');
   }
 
-  // A uazapi devolve os números que falharam em "failed" e a lista completa em "Participants"
-  // (cada um com Error=0 se deu certo). Se a cliente não entrou (privacidade de grupo), manda
-  // o link de convite no privado dela.
+  // BUG REAL encontrado em produção (2026-09-14, Kelly Hair): a resposta de /group/create
+  // às vezes não traz o participante nem em "Participants" nem em "failed" mesmo quando ele
+  // NÃO entrou de verdade (privacidade dela bloqueou, a uazapi criou um "AddRequest" pendente
+  // em vez de adicionar) — o código antigo tratava esse silêncio como sucesso por padrão e o
+  // grupo ficava sem a cliente, sem ninguém perceber. Agora confirma a verdade consultando
+  // /group/info (lista real e atual de participantes, com telefone) alguns segundos depois de
+  // criar, em vez de confiar na resposta otimista da criação.
   private async _handleClientNotAdded(
-    created: { Participants: any[]; invite_link: string | null; failed: string[] },
+    groupJid: string,
     clientPhone: string | null,
     name: string,
     groupName: string,
   ): Promise<void> {
     if (!clientPhone) return;
     const clientDigits = this._normalizePhone(clientPhone);
-    const failedDigits = created.failed.map((p) => String(p).replace(/\D/g, ''));
-    const inFailedList = failedDigits.some((d) => d.includes(clientDigits) || clientDigits.includes(d));
 
-    const entry = created.Participants.find((p) => String(p?.JID ?? p?.PhoneNumber ?? '').replace(/\D/g, '').includes(clientDigits));
-    // Entrada com Error=0 → confirmado que entrou. Sem entrada nenhuma e sem constar em
-    // "failed" também é tratado como sucesso (algumas respostas da uazapi vêm sem a lista
-    // completa de participantes). Só trata como falha quando há sinal explícito de erro.
-    const added = !inFailedList && (!entry || Number(entry.Error) === 0);
+    // Pequeno delay — a uazapi pode levar um instante pra refletir os participantes recém-adicionados.
+    await new Promise((r) => setTimeout(r, 3000));
+
+    let added: boolean;
+    try {
+      added = await this._isClientInGroup(groupJid, clientDigits);
+    } catch (err: any) {
+      // Falha na verificação (rede, etc.) não deve gerar alarme falso nem silêncio — avisa o
+      // admin pra conferir manualmente, já que não temos certeza nenhuma.
+      this.logger.warn(`[ONBOARDING] Falha ao verificar se ${clientDigits} entrou no grupo "${groupName}": ${err.message}`);
+      await this._alertAdmin(`⚠️ Grupo *${groupName}* criado, mas não consegui confirmar se *${name}* entrou de fato — confere no WhatsApp.`);
+      return;
+    }
     if (added) return;
 
-    const inviteLink = created.invite_link;
     this.logger.warn(`[ONBOARDING] Cliente ${clientDigits} não entrou automaticamente no grupo "${groupName}"`);
-    if (inviteLink) {
-      await this._sendText(clientDigits, `Oi ${name}! Esse é o grupo do seu projeto com a nossa equipe — entra por aqui: ${inviteLink}`);
-      await this._alertAdmin(`⚠️ *${name}* não pôde ser adicionada direto no grupo *${groupName}* (privacidade). Mandei o link de convite no privado dela.`);
-    } else {
-      await this._alertAdmin(`⚠️ *${name}* não entrou no grupo *${groupName}* e a API não devolveu link de convite. Adiciona na mão.`);
-    }
+    await this._alertAdmin(`⚠️ *${name}* não entrou no grupo *${groupName}* automaticamente (provável privacidade dela bloqueando adição direta). Adiciona na mão ou manda o convite pelo WhatsApp.`);
+  }
+
+  // Confere a lista REAL de participantes do grupo (não a resposta otimista da criação).
+  // Participantes vêm como LID em grupos AddressingMode=lid — o telefone de verdade fica em
+  // "PhoneNumber" (mesmo achado do GroupMonitorService, ver group-monitor.service.ts).
+  private async _isClientInGroup(groupJid: string, clientDigits: string): Promise<boolean> {
+    const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+    const token = await this._resolveSenderToken();
+    const res = await firstValueFrom(
+      this.http.post(`${baseUrl}/group/info`, { groupjid: groupJid }, { headers: { token } }),
+    );
+    const participants: any[] = res.data?.Participants ?? [];
+    return participants.some((p) => {
+      const phoneDigits = String(p.PhoneNumber ?? '').replace(/\D/g, '');
+      return phoneDigits && this._phonesMatch(phoneDigits, clientDigits);
+    });
+  }
+
+  // Compara dois números BR tolerando o "9º dígito" (mesmo achado do GroupMonitorService —
+  // o WhatsApp às vezes manda o JID sem o 9, ex: 557192867765 vs 5571992867765 cadastrado).
+  private _phonesMatch(a: string, b: string): boolean {
+    const na = this._normalizePhone(a);
+    const nb = this._normalizePhone(b);
+    if (na === nb) return true;
+    const strip9 = (n: string) => (n.length === 13 && n.startsWith('55') && n[4] === '9' ? n.slice(0, 4) + n.slice(5) : n);
+    return strip9(na) === strip9(nb);
   }
 
   // Mesmo padrão do alerta de pagamento falho (payments.service.ts _onPaymentIntentFailed):
