@@ -24,6 +24,12 @@ export class GroupMonitorService {
   // EvolutionController, escopado só a este fluxo.
   private readonly processedIds = new Set<string>();
 
+  // Cache de LID→telefone por grupo (confirmado em produção 2026-09-14: em grupos com
+  // AddressingMode=lid a uazapi manda "sender" como "<lid>@lid", não o telefone real —
+  // precisa resolver via POST /group/info. TTL 10min por groupJid pra não bater na API a
+  // cada mensagem, mas ainda pegar gente nova entrando no grupo.
+  private readonly lidMapCache = new Map<string, { map: Map<string, string>; expiresAt: number }>();
+
   constructor(
     @InjectRepository(WhatsappConfig) private readonly configRepo: Repository<WhatsappConfig>,
     @InjectRepository(OnboardingSettings) private readonly onboardingSettingsRepo: Repository<OnboardingSettings>,
@@ -83,7 +89,8 @@ export class GroupMonitorService {
     if (!tenant) return; // grupo que a instância porventura esteja, mas não é um "Projeto X" nosso
 
     const rawSender: string = message.sender ?? message.participant ?? message.key?.participant ?? '';
-    const senderPhone = this._normalizePhone(rawSender);
+    const resolvedSender = await this._resolveSenderPhone(rawSender, groupJid);
+    const senderPhone = this._normalizePhone(resolvedSender);
     const senderName: string | null = message.senderName ?? message.pushName ?? null;
 
     const { messageType, content } = await this._extractContent(message);
@@ -131,6 +138,42 @@ export class GroupMonitorService {
       return { messageType: 'text', content: message.text.trim() };
     }
     return { messageType: 'other', content: null };
+  }
+
+  // Resolve "<lid>@lid" pro telefone real via POST /group/info (grupos com
+  // AddressingMode=lid não trazem o telefone direto na mensagem — confirmado em
+  // produção). Se o sender já vier como telefone normal (@s.whatsapp.net), retorna como
+  // está, sem chamada extra. Falha na resolução não quebra a ingestão — cai em 'unknown'.
+  private async _resolveSenderPhone(rawSender: string, groupJid: string): Promise<string> {
+    if (!rawSender.includes('@lid')) return rawSender;
+
+    const cached = this.lidMapCache.get(groupJid);
+    let map = cached && cached.expiresAt > Date.now() ? cached.map : null;
+
+    if (!map) {
+      map = await this._fetchLidMap(groupJid);
+      this.lidMapCache.set(groupJid, { map, expiresAt: Date.now() + 10 * 60 * 1000 });
+    }
+
+    return map.get(rawSender) ?? '';
+  }
+
+  private async _fetchLidMap(groupJid: string): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    try {
+      const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+      const token = await this._resolveSenderToken();
+      const res = await firstValueFrom(
+        this.http.post(`${baseUrl}/group/info`, { groupjid: groupJid }, { headers: { token } }),
+      );
+      const participants: any[] = res.data?.Participants ?? [];
+      for (const p of participants) {
+        if (p.JID?.includes('@lid') && p.PhoneNumber) map.set(p.JID, p.PhoneNumber);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[GROUP-MONITOR] Falha ao resolver LID do grupo ${groupJid}: ${err.message}`);
+    }
+    return map;
   }
 
   // 'unknown' quando não bate com o telefone de cobrança do cliente nem com a equipe —
