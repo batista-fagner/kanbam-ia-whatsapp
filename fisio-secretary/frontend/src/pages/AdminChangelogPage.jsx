@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Mensagens da IA quebradas em bolhas + mais curtas (Claudia Ribeiro)',
+    date: '14/09/2026',
+    detail: 'Cliente relatou que as respostas da IA estavam muito longas. Reescrito o prompt pra, quando a resposta tiver várias informações (preço + itens inclusos, 2 opções de manutenção, legenda obrigatória de mídia), quebrar em 2-3 mensagens curtas em vez de um parágrafo grande — usando o recurso de "bolhas" que o sistema já suportava, mas o prompt dela não usava. Testado com trechos reais de conversas (respostas que chegavam a 488 caracteres num bloco só agora saem em bolhas de 100-200 caracteres). No caminho, achado e corrigido um bug raro (~1 em 8 respostas) onde a IA vazava o nome de um campo interno ("action=send_media") como se fosse texto pra cliente ler — corrigido tanto no texto do prompt quanto com um filtro de segurança no código que descarta esse tipo de mensagem antes de enviar, protegendo todos os clientes que usarem esse recurso de bolhas, não só a Claudia.',
+  },
+  {
     title: 'Calendário: botão pra ocultar o número do lead na tela',
     date: '13/09/2026',
     detail: 'Adicionado um botão de olho no topo do Calendário que oculta o telefone do lead nos cards do mês (mostra "••• •••• ••••" no lugar) — pensado pra gravar vídeo/demo da tela sem expor número de cliente real. É só visual, não mexe no dado nem no modal de edição do agendamento; fica lembrado no navegador entre acessos.',
@@ -146,6 +151,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'IA podia vazar "action=send_media" como texto visível pra cliente',
+    date: '14/09/2026',
+    detail: 'Descoberto ao testar o recurso de bolhas (quebrar resposta longa em várias mensagens) na Claudia Ribeiro: em ~1 de cada 8 respostas, a IA escrevia o nome de um campo interno do sistema dentro do texto que a cliente leria no WhatsApp. Corrigido em duas camadas: o prompt agora deixa explícito que esses campos nunca vão no texto, e o código passou a filtrar e descartar automaticamente qualquer bolha que vaze isso antes de enviar — vale pra qualquer cliente que use o recurso de bolhas, não só a Claudia.',
+    status: 'corrigido',
+  },
   {
     title: 'Niltoncabelos: IA mandava foto errada e inventava preço no Vietnamita Moreno Iluminado',
     date: '12/09/2026',

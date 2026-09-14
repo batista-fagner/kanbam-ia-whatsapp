@@ -1,5 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { IWhatsAppProvider } from './providers/whatsapp-provider.interface';
+
+// Alguns prompts instruem a IA a citar "action=send_media com mediaName=X" em
+// prosa (pra explicar quando enviar mídia) — o modelo às vezes generaliza esse
+// padrão e vaza o nome do campo JSON dentro do próprio texto da bolha (ex:
+// "action=send_media" aparecendo como mensagem pra cliente ler). Filtra essas
+// bolhas antes de enviar — nunca deveria acontecer, mas ninguém no WhatsApp
+// deve ver esse texto de debug.
+const LEAKED_FIELD_RE = /^(action|mediaName)\s*=/i;
 
 // Typing indicator com duração dinâmica (proporcional ao tamanho do texto, como
 // um humano digitando) — pedido pontual da demo de prospecção ativa
@@ -18,6 +26,8 @@ function computeTypingDurationMs(text: string): number {
 
 @Injectable()
 export class EvolutionService {
+  private readonly logger = new Logger(EvolutionService.name);
+
   constructor(
     @Inject('WHATSAPP_PROVIDER') private readonly provider: IWhatsAppProvider,
   ) {}
@@ -38,7 +48,11 @@ export class EvolutionService {
       }
       return this.provider.sendTextMessage(phone, text, token);
     }
-    const bubbles = text.split('|||').map(b => b.trim()).filter(Boolean).slice(0, 3);
+    const allBubbles = text.split('|||').map(b => b.trim()).filter(Boolean);
+    const bubbles = allBubbles.filter(b => !LEAKED_FIELD_RE.test(b)).slice(0, 3);
+    if (bubbles.length < allBubbles.length) {
+      this.logger.warn(`[BOLHAS] Bolha com campo JSON vazado descartada antes do envio (tenant ${tenantId ?? 'N/A'}): "${allBubbles.find(b => LEAKED_FIELD_RE.test(b))}"`);
+    }
     for (let i = 0; i < bubbles.length; i++) {
       if (dynamicTyping) {
         const duration = computeTypingDurationMs(bubbles[i]);
