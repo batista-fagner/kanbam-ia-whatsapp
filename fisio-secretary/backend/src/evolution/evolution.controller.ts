@@ -7,6 +7,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
+import { GroupMonitorService } from '../group-monitor/group-monitor.service';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -115,6 +116,7 @@ export class EvolutionController {
     private readonly financeiroWhatsappService: FinanceiroWhatsappService,
     @InjectRepository(MediaSendError)
     private readonly mediaSendErrorRepo: Repository<MediaSendError>,
+    private readonly groupMonitorService: GroupMonitorService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -1245,5 +1247,23 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
   private parseBrazilianDateTime(isoStr: string): Date {
     const cleaned = isoStr.replace(/(\.\d+)?([Z]|[+-]\d{2}:?\d{2})?$/, '');
     return new Date(`${cleaned}-03:00`);
+  }
+
+  // Webhook dedicado da instância sender (BILLING_SENDER_TOKEN) — só recebe mensagens de
+  // GRUPO ("Projeto <cliente>"), pra monitoramento/IA (ver GroupMonitorModule). Configurado
+  // manualmente na uazapi (curl documentado em group-monitor.module.ts), SEM
+  // excludeMessages=isGroupYes — diferente do webhook por-tenant acima (/uazapi/:tenantId),
+  // que continua descartando grupo normalmente (linha ~133) e não é afetado por esta rota.
+  // Nunca cruza com leadsService/IA de lead — mesmo precedente de handleMetaWebhook acima.
+  @Post('uazapi-group')
+  async handleUazapiGroupWebhook(@Body() body: any) {
+    if (body?.EventType !== 'messages') return { ok: true };
+    const message = body?.message;
+    if (!message?.isGroup) return { ok: true };
+    if (message.wasSentByApi) return { ok: true }; // defesa extra além do excludeMessages na uazapi
+
+    this.groupMonitorService.ingestMessage(body).catch((err) =>
+      this.logger.error(`[GROUP-MONITOR] Erro ao processar mensagem de grupo: ${err.message}`));
+    return { ok: true };
   }
 }

@@ -19,7 +19,7 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
     controller = new EvolutionController(
       {} as any, {} as any, {} as any, uazapiProvider, leadsService, {} as any, {} as any,
       {} as any, {} as any, mediaService, configService as any, {} as any, {} as any, {} as any, {} as any, {} as any,
-      mediaSendErrorRepo as any,
+      mediaSendErrorRepo as any, {} as any,
     );
   });
 

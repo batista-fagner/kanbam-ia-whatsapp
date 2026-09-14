@@ -494,6 +494,107 @@ Escreva a mensagem de follow-up:`;
     return text;
   }
 
+  // Classifica se a ÚLTIMA mensagem de um grupo "Projeto <cliente>" (suporte pós-venda)
+  // sinaliza risco real de cancelamento/insatisfação grave — pega paráfrase, não só
+  // palavra óbvia tipo "cancelar" (ver group-monitor.service.ts, alerta em tempo real).
+  async classifyGroupMessageRisk(latestMessage: string, recentContext: string[]): Promise<{ risk: boolean; reason: string }> {
+    const client = this.liteClient ?? this.providers[0]?.client;
+    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
+    if (!client) return { risk: false, reason: '' };
+
+    const systemPrompt = `Você analisa mensagens de um grupo de suporte no WhatsApp entre uma equipe de atendimento e um cliente pagante de um SaaS.
+Sua única tarefa: decidir se a ÚLTIMA mensagem sinaliza risco REAL de cancelamento ou insatisfação grave — inclusive paráfrases e indiretas, não só palavras óbvias como "cancelar".
+NÃO marque como risco: dúvida técnica comum, reclamação leve, desabafo sem intenção de sair, ou mensagem da própria equipe de suporte respondendo normalmente.
+Responda APENAS em JSON: {"risk": boolean, "reason": "string curta em português explicando o motivo"}`;
+
+    const userPrompt = `Contexto recente da conversa:
+${recentContext.length ? recentContext.join('\n') : '(sem contexto anterior)'}
+
+Última mensagem a avaliar:
+${latestMessage}`;
+
+    const resp = await callWithRetry(
+      () => client.chat.completions.create({
+        model,
+        max_tokens: 200,
+        response_format: { type: 'json_object' },
+        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any),
+      this.logger,
+    );
+
+    try {
+      const parsed = JSON.parse(resp.choices[0].message.content ?? '{}');
+      return { risk: !!parsed.risk, reason: String(parsed.reason ?? '') };
+    } catch {
+      return { risk: false, reason: '' };
+    }
+  }
+
+  // Gera o relatório diário de um grupo "Projeto <cliente>" — resumo, sentimento,
+  // categorias de dúvida (pra identificar padrão entre clientes) e sinal de oportunidade
+  // (bom momento pra pedir indicação/depoimento). Ver group-monitor-report.service.ts (cron 18h).
+  async generateGroupDailyReport(clientName: string, transcriptLines: string[]): Promise<{
+    summary: string;
+    sentiment: 'positivo' | 'neutro' | 'risco';
+    doubtCategories: string[];
+    opportunitySignal: boolean;
+    opportunityNote: string;
+  }> {
+    const client = this.liteClient ?? this.providers[0]?.client;
+    const model = this.liteClient ? this.liteModel : this.providers[0]?.model;
+    if (!client) {
+      return { summary: '', sentiment: 'neutro', doubtCategories: [], opportunitySignal: false, opportunityNote: '' };
+    }
+
+    const systemPrompt = `Você resume, pro dono do negócio, o que aconteceu HOJE no grupo de suporte pós-venda de um cliente (SaaS de secretária virtual com IA).
+O grupo tem a equipe de suporte tirando dúvidas do cliente "${clientName}" (por texto e áudio transcrito).
+
+Gere um relatório em JSON com:
+- "summary": resumo objetivo do que rolou no dia (2-5 frases), em português.
+- "sentiment": "positivo" (cliente satisfeita/animada), "neutro" (conversa operacional, sem sinal forte) ou "risco" (insatisfação/risco de cancelamento).
+- "doubtCategories": array de categorias curtas das dúvidas levantadas (ex: ["configuração", "cobrança", "como funciona a IA"]). Array vazio se não houve dúvida real.
+- "opportunitySignal": true se o cliente demonstrou satisfação clara (bom momento pra pedir indicação/depoimento), senão false.
+- "opportunityNote": se opportunitySignal=true, uma frase curta explicando por quê; senão string vazia.
+
+Responda APENAS o JSON, sem texto fora dele.`;
+
+    const userPrompt = `Transcript do dia (equipe e cliente):\n${transcriptLines.join('\n')}`;
+
+    const resp = await callWithRetry(
+      () => client.chat.completions.create({
+        model,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+        ...(this.liteClient ? { reasoning_effort: 'none' } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      } as any),
+      this.logger,
+    );
+
+    try {
+      const parsed = JSON.parse(resp.choices[0].message.content ?? '{}');
+      const sentiment: 'positivo' | 'neutro' | 'risco' =
+        ['positivo', 'neutro', 'risco'].includes(parsed.sentiment) ? parsed.sentiment : 'neutro';
+      return {
+        summary: String(parsed.summary ?? ''),
+        sentiment,
+        doubtCategories: Array.isArray(parsed.doubtCategories) ? parsed.doubtCategories.map(String) : [],
+        opportunitySignal: !!parsed.opportunitySignal,
+        opportunityNote: String(parsed.opportunityNote ?? ''),
+      };
+    } catch {
+      return { summary: '', sentiment: 'neutro', doubtCategories: [], opportunitySignal: false, opportunityNote: '' };
+    }
+  }
+
   // Follow-up "com conhecimento": usa o system_prompt REAL do agente que estava
   // atendendo (voz + regras + base de conhecimento), em vez da persona genérica de
   // generateFollowupSuggestion. Só usado em tenants habilitados (ver followup.service.ts).

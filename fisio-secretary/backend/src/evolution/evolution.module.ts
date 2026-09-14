@@ -33,6 +33,7 @@ import { AgentsModule } from '../agents/agents.module';
 import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
 import { FollowupModule } from '../followup/followup.module';
 import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-whatsapp.module';
+import { GroupMonitorModule } from '../group-monitor/group-monitor.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-what
     PromptModulesModule,
     FollowupModule,
     FinanceiroWhatsappModule,
+    GroupMonitorModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [

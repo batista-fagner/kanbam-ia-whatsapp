@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatórios de Grupos: monitoramento dos grupos "Projeto <cliente>" no WhatsApp',
+    date: '14/09/2026',
+    detail: 'Quando um cliente paga, o sistema já criava automaticamente um grupo "Projeto <cliente>" com ele e a equipe de suporte — mas ninguém acompanhava o que rolava lá depois disso. Agora toda mensagem desses grupos (texto e áudio, com transcrição automática) é capturada, e às 18h um relatório diário por cliente é gerado por IA: resumo do dia, sentimento (positivo/neutro/risco), categorias de dúvida levantadas (pra identificar padrões e melhorar onboarding/prompt) e sinal de bom momento pra pedir indicação. Se a IA detectar risco real de cancelamento (mesmo em paráfrase, não só a palavra "cancelar"), um alerta chega na hora, sem esperar o relatório, pro número que você configurar na nova aba "Relatórios de Grupos" do Admin. Conversas de antes da mudança de número do WhatsApp não puderam ser recuperadas — só a partir de agora.',
+  },
+  {
     title: 'Mensagens da IA quebradas em bolhas + mais curtas (Claudia Ribeiro)',
     date: '14/09/2026',
     detail: 'Cliente relatou que as respostas da IA estavam muito longas. Reescrito o prompt pra, quando a resposta tiver várias informações (preço + itens inclusos, 2 opções de manutenção, legenda obrigatória de mídia), quebrar em 2-3 mensagens curtas em vez de um parágrafo grande — usando o recurso de "bolhas" que o sistema já suportava, mas o prompt dela não usava. Testado com trechos reais de conversas (respostas que chegavam a 488 caracteres num bloco só agora saem em bolhas de 100-200 caracteres). No caminho, achado e corrigido um bug raro (~1 em 8 respostas) onde a IA vazava o nome de um campo interno ("action=send_media") como se fosse texto pra cliente ler — corrigido tanto no texto do prompt quanto com um filtro de segurança no código que descarta esse tipo de mensagem antes de enviar, protegendo todos os clientes que usarem esse recurso de bolhas, não só a Claudia.',
@@ -139,6 +144,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Ativar o recebimento de mensagem de grupo na instância de onboarding', detail: 'O código do "Relatórios de Grupos" está pronto e testado, mas a instância uazapi que cria os grupos ainda precisa ser reconfigurada manualmente (1x) pra mandar mensagem de grupo pro webhook novo — sem isso, nada é capturado ainda em produção.' },
   { title: 'Provisionar Redis em produção + ligar as filas (BullMQ)', detail: 'Código já deployado, mas QUEUE_ENGINE=legacy-cron em prod por falta de Redis no Railway.' },
   { title: 'Webhook Efí Bank com mTLS', detail: 'Substituiria o polling de PIX por confirmação instantânea — precisa de proxy mTLS de entrada (Nginx/Caddy ou Cloudflare) na frente do Railway.' },
   { title: 'Notificações WhatsApp ao vendedor', detail: 'Campo notificationPhone já existe; falta disparar quando stage muda pra lead_quente/agendado/shouldIgnore=true.' },

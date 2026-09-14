@@ -14,6 +14,7 @@ import AdminPromptsPage from './pages/AdminPromptsPage'
 import AdminChangelogPage from './pages/AdminChangelogPage'
 import OnboardingPage from './pages/OnboardingPage'
 import MonitoringPage from './pages/MonitoringPage'
+import GroupReportsPage from './pages/GroupReportsPage'
 import TemplatesPage from './pages/TemplatesPage'
 import AgentBuilderPage from './pages/AgentBuilderPage'
 import ModulesTestPage from './pages/ModulesTestPage'
@@ -61,6 +62,7 @@ function Routing() {
         <Route path="/admin/changelog" element={<AdminChangelogPage />} />
         <Route path="/admin/onboarding" element={<OnboardingPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
+        <Route path="/admin/group-reports" element={<GroupReportsPage />} />
         <Route path="/financeiro-whatsapp" element={<FinanceiroWhatsappPage />} />
         <Route path="/alert-rules" element={<AlertRulesPage />} />
         <Route path="/templates" element={<TemplatesPage />} />

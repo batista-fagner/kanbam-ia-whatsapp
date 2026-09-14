@@ -415,6 +415,27 @@ export const updateAdminOnboardingSettings = (payload) => // { groupEnabled?, te
 export const createOnboardingTestGroup = () =>
   authFetch(`${BASE}/admin/onboarding/test-group`, { method: 'POST' }).then(json)
 
+// --- Admin: relatórios de grupos (monitoramento de "Projeto <cliente>" pós-onboarding —
+// diferente de /admin/onboarding acima, que configura a CRIAÇÃO do grupo) ---
+export const getGroupReportsOverview = (date) =>
+  authFetch(`${BASE}/admin/group-monitor/overview?date=${date}`).then(json)
+
+export const getGroupReports = (date) =>
+  authFetch(`${BASE}/admin/group-monitor/reports?date=${date}`).then(json)
+
+export const getGroupReport = (id) =>
+  authFetch(`${BASE}/admin/group-monitor/reports/${id}`).then(json)
+
+export const getGroupMonitorSettings = () =>
+  authFetch(`${BASE}/admin/group-monitor/settings`).then(json)
+
+export const updateGroupMonitorSettings = (payload) => // { riskAlertPhone? }
+  authFetch(`${BASE}/admin/group-monitor/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)
