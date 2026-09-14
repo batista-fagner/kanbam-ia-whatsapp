@@ -181,9 +181,21 @@ export class GroupMonitorService {
   // de fato no grupo (não trava nada, só fica sem role definido no transcript).
   private _resolveSenderRole(senderPhone: string, billingPhone: string | null, teamPhones: string[]): GroupMessage['senderRole'] {
     if (!senderPhone) return 'unknown';
-    if (billingPhone && this._normalizePhone(billingPhone) === senderPhone) return 'client';
-    if (teamPhones.some((p) => this._normalizePhone(p) === senderPhone)) return 'team';
+    if (billingPhone && this._phonesMatch(billingPhone, senderPhone)) return 'client';
+    if (teamPhones.some((p) => this._phonesMatch(p, senderPhone))) return 'team';
     return 'unknown';
+  }
+
+  // Compara dois números BR tolerando o "9º dígito" — confirmado em produção (grupo Kelly
+  // Hair): o WhatsApp manda o JID do número antigo do Fagner SEM o 9 (557192867765),
+  // enquanto o mesmo número está cadastrado em team_phones COM o 9 (71992867765). Sem essa
+  // tolerância, todo número BR de 8 dígitos vs 9 dígitos nunca bateria.
+  private _phonesMatch(a: string, b: string): boolean {
+    const na = this._normalizePhone(a);
+    const nb = this._normalizePhone(b);
+    if (na === nb) return true;
+    const strip9 = (n: string) => (n.length === 13 && n.startsWith('55') && n[4] === '9' ? n.slice(0, 4) + n.slice(5) : n);
+    return strip9(na) === strip9(nb);
   }
 
   // ───────────────────────── Classificação de risco ─────────────────────────
