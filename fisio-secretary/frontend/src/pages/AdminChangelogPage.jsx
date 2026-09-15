@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Fix: pagamento confirmado registrava R$390 fixo em vez do valor real pago',
+    date: '15/09/2026',
+    detail: 'Achado com a Paraíso Dos Fios: ela pagou R$1.500 via PIX, mas a aba Cobranças e a notificação de venda pro convertHairCRM registraram R$390 — o código usava um valor padrão fixo em vez do valor real do PIX (que já existia salvo no sistema). Corrigido pra sempre usar o valor de verdade do PIX pago; o valor fixo só entra como último recurso, se por algum motivo faltar o registro do PIX. Corrigido também o registro histórico da Paraíso Dos Fios (R$1.500) e cadastrado o plano mensal dela.',
+  },
+  {
     title: 'Fix: IA respondia "não encontrei esse modelo" em vez do valor da manutenção (Claudia Ribeiro)',
     date: '15/09/2026',
     detail: 'Descoberto pelo Relatórios de Grupos: cliente perguntou sobre manutenção de ponto americano (3 telas) e recebeu a mensagem genérica "ainda não encontrei esse modelo aqui no meu catálogo", em vez do valor (R$ 250). Causa: o prompt mandava enviar uma mídia chamada "manutenção" que nunca existiu no catálogo dela — a IA respondia certo (com o preço), mas o sistema descartava a resposta inteira porque a mídia pedida não foi encontrada. Aconteceu com pelo menos 9 leads diferentes desde 10/09. Removida a instrução de enviar mídia de manutenção do prompt — decisão de usar só texto pra esse fluxo, sem depender de mídia cadastrada.',
@@ -162,6 +167,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Paraíso Dos Fios: pagamento de R$1.500 aparecia como R$390 no financeiro',
+    date: '15/09/2026',
+    detail: 'A confirmação de pagamento usava um valor padrão fixo (R$390) em vez do valor real do PIX que a cliente pagou. Corrigido no código pra sempre usar o valor real pago, e ajustado o registro histórico dela.',
+    status: 'corrigido',
+  },
   {
     title: 'Claudia Ribeiro: manutenção respondia "modelo não encontrado" em vez do preço',
     date: '15/09/2026',

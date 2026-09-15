@@ -922,12 +922,15 @@ export class PaymentsService implements OnModuleInit {
 
     // Registra a confirmação no histórico de cobrança (aba "Cobranças" no Admin) —
     // é o que dá ao painel um indicador visível de que o PIX foi efetivamente pago,
-    // não só "enviado".
+    // não só "enviado". Bug real (Paraíso Dos Fios, 15/09): usava só planValue (geralmente
+    // nulo em cliente novo) e caía no fallback fixo de R$390, mesmo quando o PIX de verdade
+    // foi de R$1.500 — mesmo padrão já corrigido em getPixPageData (linha ~1633), replicado
+    // aqui: o valor real cobrado é sempre lastPixValue (preenchido na geração do PIX).
     await this._logBillingEvent(
       tenant.id,
       'pagamento',
       'confirmado',
-      Number(tenant.planValue ?? '390.00'),
+      tenant.lastPixValue != null ? Number(tenant.lastPixValue) : Number(tenant.planValue ?? '390.00'),
       tenant.lastPixTxid ?? tenant.id.replace(/-/g, ''),
     );
 
@@ -948,7 +951,14 @@ export class PaymentsService implements OnModuleInit {
       } catch (err) {
         this.logger.error(`[EFI] Falha no onboarding automático do tenant ${tenant.id}: ${err.message}`);
       }
-      void this._notifyConvertHairCrmPurchase(tenant.billingPhone, Number(tenant.planValue ?? '390.00'), tenant.displayName ?? 'Cliente');
+      // Mesma correção do valor confirmado acima — o valor real cobrado é lastPixValue,
+      // não o fallback fixo de planValue (senão o convertHairCRM recebe o valor errado
+      // pra atribuição da venda).
+      void this._notifyConvertHairCrmPurchase(
+        tenant.billingPhone,
+        tenant.lastPixValue != null ? Number(tenant.lastPixValue) : Number(tenant.planValue ?? '390.00'),
+        tenant.displayName ?? 'Cliente',
+      );
     } else {
       // Renovação: só confirma o pagamento, não mexe em senha/credenciais
       if (tenant.billingPhone) {
