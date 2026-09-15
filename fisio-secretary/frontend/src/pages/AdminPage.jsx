@@ -1196,10 +1196,17 @@ export default function AdminPage() {
                 )}
                 <button
                   onClick={() => setDrawerClient(c)}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
-                  title="Ver detalhes"
+                  className="relative flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                  title={c.extraChargesCount > 0
+                    ? `Ver detalhes — ${c.extraChargesCount} serviço(s) extra lançado(s), total ${fmtBRL(c.extraChargesTotal)}`
+                    : 'Ver detalhes'}
                 >
                   <Eye className="w-3.5 h-3.5" />
+                  {c.extraChargesCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">
+                      {c.extraChargesCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => { setResetModal({ id: c.id, name: c.displayName }); setNewPassword('') }}

@@ -80,10 +80,22 @@ export class AdminController {
   @Get('clients')
   async listClients() {
     const tenants = await this.whatsappConfigService.listAll();
+    // Total de cobranças avulsas por cliente — pra mostrar um indicador na lista sem
+    // precisar abrir o drawer de cada um pra descobrir se tem algo lançado.
+    const extraTotals = await this.extraChargeRepo
+      .createQueryBuilder('c')
+      .select('c.tenant_id', 'tenantId')
+      .addSelect('SUM(c.amount)', 'total')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('c.tenant_id')
+      .getRawMany();
+    const extraByTenant = new Map(extraTotals.map((e: any) => [e.tenantId, { total: Number(e.total), count: Number(e.count) }]));
+
     const result: any[] = [];
     for (const t of tenants) {
       const leadsCount = await this.leadsService.countByTenant(t.id);
       const users = await this.usersService.findByTenant(t.id);
+      const extra = extraByTenant.get(t.id);
       result.push({
         id: t.id,
         displayName: t.displayName ?? t.profileName,
@@ -104,6 +116,8 @@ export class AdminController {
         churnReason: t.churnReason,
         leadsCount,
         usersCount: users.length,
+        extraChargesTotal: extra?.total ?? 0,
+        extraChargesCount: extra?.count ?? 0,
       });
     }
     return result;
@@ -344,22 +358,34 @@ export class AdminController {
     `, [dateFrom, dateTo]);
 
     // Receita da empresa inclui os pagamentos sem tenant vinculado (implantação paga antes
-    // da conta existir), por isso não é só a soma da coluna por cliente.
+    // da conta existir) MAIS as cobranças avulsas (client_extra_charges) — por isso não é só
+    // a soma da coluna por cliente. Bug real (15/09): esse total ignorava client_extra_charges
+    // por completo, então R$3.397 em cobranças avulsas lançadas no drawer nunca apareciam nos
+    // KPIs do topo, só na coluna de receita de cada cliente individualmente.
     const [totals] = await this.billingEventRepo.query(`
       SELECT
-        COALESCE(SUM(amount), 0)::float AS revenue_all_time,
-        COALESCE(SUM(amount) FILTER (WHERE created_at >= DATE_TRUNC('month', NOW())), 0)::float AS revenue_this_month
-      FROM billing_events
-      WHERE channel = 'pagamento' AND status = 'confirmado'
+        (
+          COALESCE((SELECT SUM(amount) FROM billing_events WHERE channel = 'pagamento' AND status = 'confirmado'), 0) +
+          COALESCE((SELECT SUM(amount) FROM client_extra_charges), 0)
+        )::float AS revenue_all_time,
+        (
+          COALESCE((SELECT SUM(amount) FROM billing_events WHERE channel = 'pagamento' AND status = 'confirmado' AND created_at >= DATE_TRUNC('month', NOW())), 0) +
+          COALESCE((SELECT SUM(amount) FROM client_extra_charges WHERE created_at >= DATE_TRUNC('month', NOW())), 0)
+        )::float AS revenue_this_month
     `);
 
+    // Mesma correção do total geral acima — inclui client_extra_charges no gráfico mensal.
     const monthly = await this.billingEventRepo.query(`
-      SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
-             SUM(amount)::float AS total
-      FROM billing_events
-      WHERE channel = 'pagamento' AND status = 'confirmado'
-      GROUP BY 1
-      ORDER BY 1
+      SELECT TO_CHAR(month, 'YYYY-MM') AS month, SUM(total)::float AS total FROM (
+        SELECT DATE_TRUNC('month', created_at) AS month, amount AS total
+        FROM billing_events
+        WHERE channel = 'pagamento' AND status = 'confirmado'
+        UNION ALL
+        SELECT DATE_TRUNC('month', created_at) AS month, amount AS total
+        FROM client_extra_charges
+      ) combined
+      GROUP BY month
+      ORDER BY month
     `);
 
     const rows = clients.map((c: any) => {

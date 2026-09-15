@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Serviços extras: indicador na lista de Clientes + valor refletido no Financeiro',
+    date: '15/09/2026',
+    detail: 'O botão de olho na aba Clientes agora mostra um selo com a quantidade quando o cliente tem serviço extra lançado (upgrade/upsell), sem precisar abrir o detalhe pra descobrir. Também corrigido: esses valores extras (R$3.397 lançados até agora) apareciam só na receita individual de cada cliente, mas não entravam na Receita Total, Receita do Mês nem no gráfico mensal da tela Financeiro — agora entram nos três.',
+  },
+  {
     title: 'Fix: pagamento confirmado registrava R$390 fixo em vez do valor real pago',
     date: '15/09/2026',
     detail: 'Achado com a Paraíso Dos Fios: ela pagou R$1.500 via PIX, mas a aba Cobranças e a notificação de venda pro convertHairCRM registraram R$390 — o código usava um valor padrão fixo em vez do valor real do PIX (que já existia salvo no sistema). Corrigido pra sempre usar o valor de verdade do PIX pago; o valor fixo só entra como último recurso, se por algum motivo faltar o registro do PIX. Corrigido também o registro histórico da Paraíso Dos Fios (R$1.500) e cadastrado o plano mensal dela.',
