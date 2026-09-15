@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Fix: IA respondia "não encontrei esse modelo" em vez do valor da manutenção (Claudia Ribeiro)',
+    date: '15/09/2026',
+    detail: 'Descoberto pelo Relatórios de Grupos: cliente perguntou sobre manutenção de ponto americano (3 telas) e recebeu a mensagem genérica "ainda não encontrei esse modelo aqui no meu catálogo", em vez do valor (R$ 250). Causa: o prompt mandava enviar uma mídia chamada "manutenção" que nunca existiu no catálogo dela — a IA respondia certo (com o preço), mas o sistema descartava a resposta inteira porque a mídia pedida não foi encontrada. Aconteceu com pelo menos 9 leads diferentes desde 10/09. Removida a instrução de enviar mídia de manutenção do prompt — decisão de usar só texto pra esse fluxo, sem depender de mídia cadastrada.',
+  },
+  {
     title: 'Relatórios de Grupos: monitoramento dos grupos "Projeto <cliente>" no WhatsApp',
     date: '14/09/2026',
     detail: 'Quando um cliente paga, o sistema já criava automaticamente um grupo "Projeto <cliente>" com ele e a equipe de suporte — mas ninguém acompanhava o que rolava lá depois disso. Agora toda mensagem desses grupos (texto e áudio, com transcrição automática) é capturada, e às 18h um relatório diário por cliente é gerado por IA: resumo do dia, sentimento (positivo/neutro/risco), categorias de dúvida levantadas (pra identificar padrões e melhorar onboarding/prompt) e sinal de bom momento pra pedir indicação. Se a IA detectar risco real de cancelamento (mesmo em paráfrase, não só a palavra "cancelar"), um alerta chega na hora, sem esperar o relatório, pro número que você configurar na nova aba "Relatórios de Grupos" do Admin. Conversas de antes da mudança de número do WhatsApp não puderam ser recuperadas — só a partir de agora.',
@@ -157,6 +162,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Claudia Ribeiro: manutenção respondia "modelo não encontrado" em vez do preço',
+    date: '15/09/2026',
+    detail: 'Achado através do Relatórios de Grupos (a cliente reclamou no grupo de suporte). O prompt mandava enviar uma mídia "manutenção" que não existe no catálogo — a IA calculava o preço certo mas a resposta era descartada e trocada pela mensagem genérica de mídia não encontrada. Pelo menos 9 leads diferentes afetados desde 10/09. Corrigido removendo o pedido de mídia do prompt de manutenção — fluxo passa a ser só texto.',
+    status: 'corrigido',
+  },
   {
     title: 'IA podia vazar "action=send_media" como texto visível pra cliente',
     date: '14/09/2026',
