@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatórios de Grupos: sinal de "cliente não respondeu" quando a equipe fala e fica sem retorno',
+    date: '15/09/2026',
+    detail: 'Novo alerta no relatório diário: quando a equipe de suporte fala algo no grupo "Projeto <cliente>" e o cliente não responde ao longo do dia (até o fechamento das 18h), aparece um aviso vermelho discreto na lista e no detalhe do relatório — sinal de possível risco de cancelamento silencioso pra ligar pro cliente e entender o que houve.',
+  },
+  {
     title: 'Serviços extras: indicador na lista de Clientes + valor refletido no Financeiro',
     date: '15/09/2026',
     detail: 'O botão de olho na aba Clientes agora mostra um selo com a quantidade quando o cliente tem serviço extra lançado (upgrade/upsell), sem precisar abrir o detalhe pra descobrir. Também corrigido: esses valores extras (R$3.397 lançados até agora) apareciam só na receita individual de cada cliente, mas não entravam na Receita Total, Receita do Mês nem no gráfico mensal da tela Financeiro — agora entram nos três.',

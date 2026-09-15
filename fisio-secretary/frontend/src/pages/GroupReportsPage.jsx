@@ -198,6 +198,13 @@ export default function GroupReportsPage() {
           sub="bom momento p/ pedir indicação"
           color={overview?.opportunityCount > 0 ? 'bg-amber-500' : 'bg-gray-400'}
         />
+        <OverviewCard
+          icon={AlertTriangle}
+          label="Sem resposta do cliente"
+          value={overview?.awaitingResponseCount ?? 0}
+          sub="equipe falou e cliente não respondeu no dia"
+          color={overview?.awaitingResponseCount > 0 ? 'bg-red-500' : 'bg-gray-400'}
+        />
       </div>
 
       {/* Tabela de relatórios */}
@@ -228,6 +235,14 @@ export default function GroupReportsPage() {
                     <td className="px-5 py-3 font-medium text-gray-800">
                       {r.clientName}
                       {r.opportunitySignal && <TrendingUp className="w-3.5 h-3.5 text-amber-500 inline ml-1.5" />}
+                      {r.awaitingClientResponse && (
+                        <span
+                          title="Equipe falou e cliente não respondeu no dia"
+                          className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 align-middle"
+                        >
+                          sem resposta
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sentiment.className}`}>{sentiment.text}</span>

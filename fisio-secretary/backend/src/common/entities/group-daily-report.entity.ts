@@ -39,6 +39,12 @@ export class GroupDailyReport {
   @Column({ name: 'opportunity_note', type: 'text', nullable: true })
   opportunityNote: string | null;
 
+  // true quando a equipe falou algo no grupo no dia e o cliente não respondeu depois
+  // disso até o fechamento do relatório (18h) — sinal de possível churn silencioso,
+  // calculado por horário (não pela IA) em group-monitor-report.service.ts.
+  @Column({ name: 'awaiting_client_response', type: 'boolean', default: false })
+  awaitingClientResponse: boolean;
+
   // Resposta bruta da IA (JSON completo) — preparo pra PDF futuro sem reprocessar.
   @Column({ name: 'raw_json', type: 'jsonb', nullable: true })
   rawJson: Record<string, any> | null;

@@ -31,6 +31,7 @@ export class GroupMonitorController {
       totalReports: reports.length,
       riskCount: reports.filter((r) => r.sentiment === 'risco').length,
       opportunityCount: reports.filter((r) => r.opportunitySignal).length,
+      awaitingResponseCount: reports.filter((r) => r.awaitingClientResponse).length,
       sentimentBreakdown: {
         positivo: reports.filter((r) => r.sentiment === 'positivo').length,
         neutro: reports.filter((r) => r.sentiment === 'neutro').length,
@@ -60,6 +61,7 @@ export class GroupMonitorController {
       doubtCategories: r.doubtCategories,
       opportunitySignal: r.opportunitySignal,
       opportunityNote: r.opportunityNote,
+      awaitingClientResponse: r.awaitingClientResponse,
     }));
   }
 

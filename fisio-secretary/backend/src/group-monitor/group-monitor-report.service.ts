@@ -64,12 +64,27 @@ export class GroupMonitorReportService {
       row.opportunitySignal = ai.opportunitySignal;
       row.opportunityNote = ai.opportunityNote || null;
       row.rawJson = ai;
+      row.awaitingClientResponse = this._isAwaitingClientResponse(messages);
       await this.reportRepo.save(row);
       generated++;
     }
 
     this.logger.log(`[GROUP-MONITOR][report] ${reportDate}: ${generated} relatório(s) gerado(s), ${skipped} grupo(s) sem atividade`);
     return { generated, skipped };
+  }
+
+  // Sinal de churn silencioso: a equipe falou algo no grupo no dia e o cliente não
+  // respondeu depois disso até o fechamento do relatório (18h). Calculado por horário
+  // (não pela IA) — pega a última mensagem da equipe e verifica se existe alguma
+  // mensagem do cliente depois dela no mesmo dia.
+  private _isAwaitingClientResponse(messages: GroupMessage[]): boolean {
+    let lastTeamAt: Date | null = null;
+    for (const m of messages) {
+      if (m.senderRole === 'team') lastTeamAt = m.createdAt;
+    }
+    if (!lastTeamAt) return false;
+
+    return !messages.some((m) => m.senderRole === 'client' && m.createdAt > lastTeamAt!);
   }
 
   private _todayBrt(): string {

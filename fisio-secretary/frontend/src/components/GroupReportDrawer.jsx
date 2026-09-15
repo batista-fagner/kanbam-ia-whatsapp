@@ -77,6 +77,11 @@ export default function GroupReportDrawer({ reportId, onClose }) {
                     <TrendingUp className="w-3 h-3" /> Oportunidade
                   </span>
                 )}
+                {report.awaitingClientResponse && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">
+                    Sem resposta do cliente
+                  </span>
+                )}
               </div>
 
               <div className="border border-gray-100 rounded-xl p-4 mb-4">
