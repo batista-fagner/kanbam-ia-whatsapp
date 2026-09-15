@@ -93,9 +93,26 @@ export class EvolutionController {
   // paralelo à transcrição, pra tocar no Kanban. Ver transcribeAndEnqueue().
   private readonly pendingAudioUrl = new Map<string, string>();
   // Usado quando a IA manda action=send_media mas o item não existe no catálogo (nome
-  // inventado ou ainda não cadastrado) — a reply da IA nesse caso assume que a mídia foi
-  // enviada ("olha só esse aqui"), então não pode ser usada como está.
+  // inventado ou ainda não cadastrado) E a reply é curta/depende da mídia ("olha só esse
+  // aqui 😍") — nesse caso a reply não pode ser usada como está. Ver resolveMediaFallback().
   private readonly MEDIA_NOT_FOUND_FALLBACK = 'Ops, ainda não encontrei esse modelo aqui no meu catálogo 😕 Pode me confirmar o nome de novo? Assim já busco certinho pra você!';
+
+  // Bug real (Claudia Ribeiro, 14/09): cliente perguntou sobre manutenção, a IA calculou o
+  // preço certinho MAS também pediu pra mandar uma mídia "manutenção" que não existe — o
+  // fallback genérico acima jogava fora a resposta inteira (com o preço) por causa só do
+  // pedido de mídia mal-sucedido. Agora só usa o fallback genérico quando a reply for curta
+  // o bastante pra parecer que depende mesmo da mídia pra fazer sentido (ex: "repara nesse
+  // brilho!"); se tiver conteúdo substancial (preço, explicação), manda a reply mesmo sem
+  // mídia — perder informação real é pior do que mandar o texto sem o vídeo.
+  private resolveMediaFallback(reply: string, notFoundNames: string[]): string {
+    const text = (reply ?? '').replace(/\|\|\|/g, ' ').trim();
+    if (text.length >= 80) {
+      this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s): ${notFoundNames.join(', ')} — reply mantido (tem conteúdo próprio, ${text.length} chars)`);
+      return reply;
+    }
+    this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s): ${notFoundNames.join(', ')} — usando fallback honesto (reply curta demais pra fazer sentido sem a mídia)`);
+    return this.MEDIA_NOT_FOUND_FALLBACK;
+  }
 
   constructor(
     private readonly evolutionService: EvolutionService,
@@ -750,8 +767,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         const mediaResult = await this.sendMediaMessages(tenantId, phone, conversation.id, tenantToken, instanceConfig, aiResponse.mediaName);
         mediaSentCount = mediaResult.sentCount;
         if (mediaResult.sentCount === 0 && mediaResult.notFound.length > 0) {
-          shouldIgnoreFallback = this.MEDIA_NOT_FOUND_FALLBACK;
-          this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
+          shouldIgnoreFallback = this.resolveMediaFallback(aiResponse.reply, mediaResult.notFound);
         }
       }
 
@@ -882,12 +898,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      // Mídia pedida mas não encontrada no catálogo → o reply da IA assume que foi
-      // enviada ("olha só esse aqui"), então não pode ser usado como está — troca por
-      // uma resposta honesta em vez de deixar o cliente esperando um vídeo que não veio.
+      // Mídia pedida mas não encontrada no catálogo — ver resolveMediaFallback() pra
+      // regra de quando manter a reply (tem conteúdo próprio) vs. trocar pelo fallback
+      // genérico (reply curta demais, depende da mídia pra fazer sentido).
       if (mediaResult.notFound.length > 0) {
-        mediaNotFoundFallback = this.MEDIA_NOT_FOUND_FALLBACK;
-        this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s) para ${phone}: ${mediaResult.notFound.join(', ')} — usando fallback honesto`);
+        mediaNotFoundFallback = this.resolveMediaFallback(aiResponse.reply, mediaResult.notFound);
       }
       // Nenhuma mídia encontrada → cai pro envio de texto normal (reply da IA, ou fallback).
     }
