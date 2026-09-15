@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { MessageSquare, RefreshCw, AlertTriangle, TrendingUp, Save, Loader2, Sparkles } from 'lucide-react'
+import { MessageSquare, RefreshCw, AlertTriangle, TrendingUp, Save, Loader2, Sparkles, FileText } from 'lucide-react'
 import { getGroupReportsOverview, getGroupReports, getGroupMonitorSettings, updateGroupMonitorSettings, runGroupReportsNow } from '../services/api'
 import GroupReportDrawer from '../components/GroupReportDrawer'
 
@@ -26,23 +26,28 @@ function OverviewCard({ icon: Icon, label, value, sub, color }) {
   )
 }
 
-// Config do número de alerta de risco — inline no topo da página, não precisa de tela própria.
-function AlertPhoneConfig() {
+// Config do número de alerta de risco + grupo que recebe o PDF diário — inline no topo
+// da página, não precisa de tela própria.
+function MonitorSettingsConfig() {
   const [phone, setPhone] = useState('')
+  const [pdfGroupJid, setPdfGroupJid] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     getGroupMonitorSettings()
-      .then(s => setPhone(s.riskAlertPhone ?? ''))
+      .then(s => {
+        setPhone(s.riskAlertPhone ?? '')
+        setPdfGroupJid(s.pdfReportGroupJid ?? '')
+      })
       .finally(() => setLoading(false))
   }, [])
 
   async function handleSave() {
     setSaving(true); setSaved(false)
     try {
-      await updateGroupMonitorSettings({ riskAlertPhone: phone })
+      await updateGroupMonitorSettings({ riskAlertPhone: phone, pdfReportGroupJid: pdfGroupJid })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } finally {
@@ -51,27 +56,45 @@ function AlertPhoneConfig() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-gray-500">Número que recebe alerta imediato de risco</p>
-        <input
-          type="text"
-          value={loading ? '' : phone}
-          onChange={e => setPhone(e.target.value)}
-          placeholder={loading ? 'Carregando...' : 'Ex: 5511999999999'}
-          disabled={loading}
-          className="mt-1 w-full max-w-xs px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
-        />
+    <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-500">Número que recebe alerta imediato de risco</p>
+          <input
+            type="text"
+            value={loading ? '' : phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder={loading ? 'Carregando...' : 'Ex: 5511999999999'}
+            disabled={loading}
+            className="mt-1 w-full max-w-xs px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+        </div>
       </div>
-      <button
-        onClick={handleSave}
-        disabled={loading || saving}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition disabled:opacity-50"
-      >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        {saved ? 'Salvo!' : 'Salvar'}
-      </button>
+      <div className="flex items-center gap-3">
+        <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-500">Grupo que recebe o PDF consolidado do dia (mesmo horário do relatório, 18h)</p>
+          <input
+            type="text"
+            value={loading ? '' : pdfGroupJid}
+            onChange={e => setPdfGroupJid(e.target.value)}
+            placeholder={loading ? 'Carregando...' : 'JID do grupo (ex: 120363xxxx@g.us)'}
+            disabled={loading}
+            className="mt-1 w-full max-w-xs px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={loading || saving}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saved ? 'Salvo!' : 'Salvar'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -173,7 +196,7 @@ export default function GroupReportsPage() {
         <p className="text-xs text-gray-500 -mt-3">{generateMsg}</p>
       )}
 
-      <AlertPhoneConfig />
+      <MonitorSettingsConfig />
 
       {/* Overview cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">

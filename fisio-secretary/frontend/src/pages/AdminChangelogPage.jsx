@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatórios de Grupos: PDF consolidado do dia enviado pra um grupo do WhatsApp',
+    date: '15/09/2026',
+    detail: 'Junto com o relatório das 18h, agora é gerado um PDF único com todos os clientes que tiveram conversa no dia (resumo, sentimento, dúvidas, sinais de risco/oportunidade/sem-resposta), ordenado com os casos de risco e "sem resposta" no topo pra leitura rápida. O PDF é enviado automaticamente pro grupo configurado na tela "Relatórios de Grupos" (mesmo campo de configuração do número de alerta de risco). Funciona também no botão "Gerar agora".',
+  },
+  {
     title: 'Relatórios de Grupos: sinal de "cliente não respondeu" quando a equipe fala e fica sem retorno',
     date: '15/09/2026',
     detail: 'Novo alerta no relatório diário: quando a equipe de suporte fala algo no grupo "Projeto <cliente>" e o cliente não responde ao longo do dia (até o fechamento das 18h), aparece um aviso vermelho discreto na lista e no detalhe do relatório — sinal de possível risco de cancelamento silencioso pra ligar pro cliente e entender o que houve.',

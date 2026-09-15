@@ -6,6 +6,8 @@ import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { GroupMessage } from '../common/entities/group-message.entity';
 import { GroupDailyReport } from '../common/entities/group-daily-report.entity';
 import { AiService } from '../ai/ai.service';
+import { GroupMonitorService } from './group-monitor.service';
+import { GroupMonitorPdfService } from './group-monitor-pdf.service';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -21,6 +23,8 @@ export class GroupMonitorReportService {
     @InjectRepository(GroupMessage) private readonly messageRepo: Repository<GroupMessage>,
     @InjectRepository(GroupDailyReport) private readonly reportRepo: Repository<GroupDailyReport>,
     private readonly aiService: AiService,
+    private readonly monitorService: GroupMonitorService,
+    private readonly pdfService: GroupMonitorPdfService,
   ) {}
 
   @Cron('0 18 * * *', { timeZone: TZ })
@@ -70,7 +74,49 @@ export class GroupMonitorReportService {
     }
 
     this.logger.log(`[GROUP-MONITOR][report] ${reportDate}: ${generated} relatório(s) gerado(s), ${skipped} grupo(s) sem atividade`);
+
+    if (generated > 0) {
+      await this._sendConsolidatedPdf(reportDate);
+    }
+
     return { generated, skipped };
+  }
+
+  // PDF único com todos os relatórios do dia, enviado pro grupo configurado em
+  // group_monitor_settings.pdfReportGroupJid (mesmo horário do relatório, sem fila —
+  // ver runFor). Nunca lança: falha de PDF/envio só loga, não derruba o cron/endpoint.
+  private async _sendConsolidatedPdf(reportDate: string): Promise<void> {
+    try {
+      const settings = await this.monitorService.getSettings();
+      if (!settings.pdfReportGroupJid) return;
+
+      const reports = await this.reportRepo.find({ where: { reportDate } });
+      if (reports.length === 0) return;
+
+      const tenantIds = [...new Set(reports.map((r) => r.tenantId))];
+      const tenants = await this.configRepo.findByIds(tenantIds);
+      const tenantById = new Map(tenants.map((t) => [t.id, t]));
+
+      const rows = reports.map((r) => ({
+        clientName: tenantById.get(r.tenantId)?.displayName ?? r.tenantId,
+        sentiment: r.sentiment,
+        messageCount: r.messageCount,
+        summary: r.summary,
+        doubtCategories: r.doubtCategories ?? [],
+        opportunitySignal: r.opportunitySignal,
+        opportunityNote: r.opportunityNote,
+        awaitingClientResponse: r.awaitingClientResponse,
+      }));
+
+      const pdfBuffer = await this.pdfService.buildDailyReportPdf(reportDate, rows);
+      const fileName = `relatorio-grupos-${reportDate}.pdf`;
+      const sent = await this.monitorService.sendDocument(settings.pdfReportGroupJid, pdfBuffer, fileName);
+      if (sent) {
+        this.logger.log(`[GROUP-MONITOR][report] PDF de ${reportDate} enviado pro grupo configurado (${rows.length} cliente(s))`);
+      }
+    } catch (err: any) {
+      this.logger.error(`[GROUP-MONITOR][report] Falha ao gerar/enviar PDF consolidado de ${reportDate}: ${err.message}`);
+    }
   }
 
   // Sinal de churn silencioso: a equipe falou algo no grupo no dia e o cliente não

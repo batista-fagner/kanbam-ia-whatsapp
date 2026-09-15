@@ -12,6 +12,7 @@ import { AiModule } from '../ai/ai.module';
 import { UazapiProvider } from '../evolution/providers/uazapi.provider';
 import { GroupMonitorService } from './group-monitor.service';
 import { GroupMonitorReportService } from './group-monitor-report.service';
+import { GroupMonitorPdfService } from './group-monitor-pdf.service';
 import { GroupMonitorController } from './group-monitor.controller';
 
 // UazapiProvider é declarado aqui como provider local (em vez de importar EvolutionModule)
@@ -26,7 +27,7 @@ import { GroupMonitorController } from './group-monitor.controller';
     AuthModule, // guards (JwtAuthGuard + AdminGuard)
     AiModule,
   ],
-  providers: [GroupMonitorService, GroupMonitorReportService, UazapiProvider],
+  providers: [GroupMonitorService, GroupMonitorReportService, GroupMonitorPdfService, UazapiProvider],
   controllers: [GroupMonitorController],
   exports: [GroupMonitorService],
 })

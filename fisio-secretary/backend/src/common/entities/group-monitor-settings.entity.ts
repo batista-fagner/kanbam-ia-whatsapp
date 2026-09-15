@@ -14,6 +14,12 @@ export class GroupMonitorSettings {
   @Column({ name: 'risk_alert_phone', type: 'varchar', nullable: true })
   riskAlertPhone: string | null;
 
+  // JID do grupo que recebe o PDF consolidado do dia (todos os clientes num arquivo só),
+  // gerado junto com o relatório diário (mesmo horário, 18h) — editável pelo admin na
+  // tela "Relatórios de Grupos". null = envio desligado (não gera nem tenta enviar PDF).
+  @Column({ name: 'pdf_report_group_jid', type: 'varchar', nullable: true })
+  pdfReportGroupJid: string | null;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

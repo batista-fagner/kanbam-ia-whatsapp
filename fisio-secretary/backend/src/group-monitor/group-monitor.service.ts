@@ -51,11 +51,15 @@ export class GroupMonitorService {
     return settings;
   }
 
-  async updateSettings(body: { riskAlertPhone?: string | null }): Promise<GroupMonitorSettings> {
+  async updateSettings(body: { riskAlertPhone?: string | null; pdfReportGroupJid?: string | null }): Promise<GroupMonitorSettings> {
     const settings = await this.getSettings();
     if (body.riskAlertPhone !== undefined) {
       const digits = (body.riskAlertPhone ?? '').replace(/\D/g, '');
       settings.riskAlertPhone = digits || null;
+    }
+    if (body.pdfReportGroupJid !== undefined) {
+      const jid = (body.pdfReportGroupJid ?? '').trim();
+      settings.pdfReportGroupJid = jid || null;
     }
     return this.settingsRepo.save(settings);
   }
@@ -256,6 +260,32 @@ export class GroupMonitorService {
       return true;
     } catch (err: any) {
       this.logger.error(`[GROUP-MONITOR] Falha ao enviar alerta para ${numberOrJid} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
+      return false;
+    }
+  }
+
+  // Envia documento (PDF) em base64 pra um número ou grupo — mesmo endpoint /send/media
+  // usado pelo resto do sistema pra mídia, só que com type=document + docName (ver media.txt).
+  async sendDocument(numberOrJid: string, pdfBuffer: Buffer, fileName: string, caption?: string): Promise<boolean> {
+    const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+    const token = await this._resolveSenderToken();
+    try {
+      await firstValueFrom(
+        this.http.post(
+          `${baseUrl}/send/media`,
+          {
+            number: numberOrJid,
+            type: 'document',
+            file: `data:application/pdf;base64,${pdfBuffer.toString('base64')}`,
+            docName: fileName,
+            text: caption ?? '',
+          },
+          { headers: { token } },
+        ),
+      );
+      return true;
+    } catch (err: any) {
+      this.logger.error(`[GROUP-MONITOR] Falha ao enviar PDF para ${numberOrJid} [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
       return false;
     }
   }

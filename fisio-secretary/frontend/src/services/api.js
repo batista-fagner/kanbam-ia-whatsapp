@@ -429,7 +429,7 @@ export const getGroupReport = (id) =>
 export const getGroupMonitorSettings = () =>
   authFetch(`${BASE}/admin/group-monitor/settings`).then(json)
 
-export const updateGroupMonitorSettings = (payload) => // { riskAlertPhone? }
+export const updateGroupMonitorSettings = (payload) => // { riskAlertPhone?, pdfReportGroupJid? }
   authFetch(`${BASE}/admin/group-monitor/settings`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

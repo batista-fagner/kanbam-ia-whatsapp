@@ -97,7 +97,7 @@ export class GroupMonitorController {
   }
 
   @Put('settings')
-  async updateSettings(@Body() body: { riskAlertPhone?: string | null }) {
+  async updateSettings(@Body() body: { riskAlertPhone?: string | null; pdfReportGroupJid?: string | null }) {
     return this.monitor.updateSettings(body);
   }
 
