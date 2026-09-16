@@ -101,11 +101,20 @@ export class GroupMonitorController {
     return this.monitor.updateSettings(body);
   }
 
-  // Dev-only: roda o relatório diário sob demanda, sem esperar o cron das 18h.
+  // Roda o relatório diário sob demanda, sem esperar o cron das 18h — NÃO envia o PDF
+  // pro grupo (ver reports/send-pdf), só gera/atualiza as linhas em group_daily_reports.
   @Post('reports/run-now')
   async runNow(@Body() body: { date?: string }) {
     const reportDate = body.date ?? this._todayBrt();
     return this.reportService.runFor(reportDate);
+  }
+
+  // Botão dedicado "Enviar PDF pro grupo" — separado do run-now de propósito, pra não
+  // mandar mensagem no grupo real só porque alguém clicou em "Gerar agora" pra conferir.
+  @Post('reports/send-pdf')
+  async sendPdf(@Body() body: { date?: string }) {
+    const reportDate = body.date ?? this._todayBrt();
+    return this.reportService.sendPdfFor(reportDate);
   }
 
   private _todayBrt(): string {

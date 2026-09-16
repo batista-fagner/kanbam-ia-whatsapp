@@ -445,6 +445,15 @@ export const runGroupReportsNow = (date) =>
     body: JSON.stringify({ date }),
   }).then(json)
 
+// Envia o PDF consolidado do dia pro grupo configurado — separado do "Gerar agora" de
+// propósito, pra não mandar mensagem no grupo real só de conferir o relatório.
+export const sendGroupReportsPdf = (date) =>
+  authFetch(`${BASE}/admin/group-monitor/reports/send-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date }),
+  }).then(json)
+
 // --- Admin: clientes com PIX em atraso ---
 export const getOverdueClients = () =>
   authFetch(`${BASE}/payments/overdue`).then(json)

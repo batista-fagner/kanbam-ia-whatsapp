@@ -29,7 +29,11 @@ export class GroupMonitorReportService {
 
   @Cron('0 18 * * *', { timeZone: TZ })
   async generateDailyReports(): Promise<void> {
-    await this.runFor(this._todayBrt());
+    const reportDate = this._todayBrt();
+    const { generated } = await this.runFor(reportDate);
+    if (generated > 0) {
+      await this.sendPdfFor(reportDate);
+    }
   }
 
   // Separado do cron pra poder rodar manualmente em teste (script standalone) passando
@@ -75,23 +79,21 @@ export class GroupMonitorReportService {
 
     this.logger.log(`[GROUP-MONITOR][report] ${reportDate}: ${generated} relatório(s) gerado(s), ${skipped} grupo(s) sem atividade`);
 
-    if (generated > 0) {
-      await this._sendConsolidatedPdf(reportDate);
-    }
-
     return { generated, skipped };
   }
 
   // PDF único com todos os relatórios do dia, enviado pro grupo configurado em
-  // group_monitor_settings.pdfReportGroupJid (mesmo horário do relatório, sem fila —
-  // ver runFor). Nunca lança: falha de PDF/envio só loga, não derruba o cron/endpoint.
-  private async _sendConsolidatedPdf(reportDate: string): Promise<void> {
+  // group_monitor_settings.pdfReportGroupJid. Ação separada do "Gerar agora" (botão
+  // próprio na tela) pra não mandar o PDF de teste pro grupo toda vez que alguém só
+  // quer conferir o relatório sem esperar as 18h — o cron chama os dois em sequência.
+  // Nunca lança: falha de PDF/envio só loga, não derruba o cron/endpoint.
+  async sendPdfFor(reportDate: string): Promise<{ sent: boolean; reason?: string }> {
     try {
       const settings = await this.monitorService.getSettings();
-      if (!settings.pdfReportGroupJid) return;
+      if (!settings.pdfReportGroupJid) return { sent: false, reason: 'Nenhum grupo configurado pra receber o PDF' };
 
       const reports = await this.reportRepo.find({ where: { reportDate } });
-      if (reports.length === 0) return;
+      if (reports.length === 0) return { sent: false, reason: 'Nenhum relatório gerado nessa data' };
 
       const tenantIds = [...new Set(reports.map((r) => r.tenantId))];
       const tenants = await this.configRepo.findByIds(tenantIds);
@@ -113,9 +115,12 @@ export class GroupMonitorReportService {
       const sent = await this.monitorService.sendDocument(settings.pdfReportGroupJid, pdfBuffer, fileName);
       if (sent) {
         this.logger.log(`[GROUP-MONITOR][report] PDF de ${reportDate} enviado pro grupo configurado (${rows.length} cliente(s))`);
+        return { sent: true };
       }
+      return { sent: false, reason: 'Falha ao enviar (ver logs)' };
     } catch (err: any) {
       this.logger.error(`[GROUP-MONITOR][report] Falha ao gerar/enviar PDF consolidado de ${reportDate}: ${err.message}`);
+      return { sent: false, reason: err.message };
     }
   }
 

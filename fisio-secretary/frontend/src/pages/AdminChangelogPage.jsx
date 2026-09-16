@@ -7,9 +7,14 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatórios de Grupos: botão separado pra enviar o PDF pro grupo',
+    date: '16/09/2026',
+    detail: '"Gerar agora" estava enviando o PDF pro grupo real toda vez que alguém só queria conferir o relatório sem esperar as 18h. Agora "Gerar agora" só gera/atualiza os relatórios (não manda nada no grupo), e tem um botão novo "Enviar PDF pro grupo" (com confirmação antes de enviar) pra quando realmente quiser mandar. O cron das 18h continua funcionando igual: gera e envia automaticamente todo dia.',
+  },
+  {
     title: 'Relatórios de Grupos: PDF consolidado do dia enviado pra um grupo do WhatsApp',
     date: '15/09/2026',
-    detail: 'Junto com o relatório das 18h, agora é gerado um PDF único com todos os clientes que tiveram conversa no dia (resumo, sentimento, dúvidas, sinais de risco/oportunidade/sem-resposta), ordenado com os casos de risco e "sem resposta" no topo pra leitura rápida. O PDF é enviado automaticamente pro grupo configurado na tela "Relatórios de Grupos" (mesmo campo de configuração do número de alerta de risco). Funciona também no botão "Gerar agora".',
+    detail: 'Junto com o relatório das 18h, é gerado um PDF único com todos os clientes que tiveram conversa no dia (resumo, sentimento, dúvidas, sinais de risco/oportunidade/sem-resposta), ordenado com os casos de risco e "sem resposta" no topo pra leitura rápida. O PDF é enviado automaticamente pro grupo configurado na tela "Relatórios de Grupos" (mesmo campo de configuração do número de alerta de risco).',
   },
   {
     title: 'Relatórios de Grupos: sinal de "cliente não respondeu" quando a equipe fala e fica sem retorno',

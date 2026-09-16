@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { MessageSquare, RefreshCw, AlertTriangle, TrendingUp, Save, Loader2, Sparkles, FileText } from 'lucide-react'
-import { getGroupReportsOverview, getGroupReports, getGroupMonitorSettings, updateGroupMonitorSettings, runGroupReportsNow } from '../services/api'
+import { getGroupReportsOverview, getGroupReports, getGroupMonitorSettings, updateGroupMonitorSettings, runGroupReportsNow, sendGroupReportsPdf } from '../services/api'
 import GroupReportDrawer from '../components/GroupReportDrawer'
 
 const brToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
@@ -107,6 +107,8 @@ export default function GroupReportsPage() {
   const [openReportId, setOpenReportId] = useState(null)
   const [generating, setGenerating] = useState(false)
   const [generateMsg, setGenerateMsg] = useState('')
+  const [sendingPdf, setSendingPdf] = useState(false)
+  const [sendPdfMsg, setSendPdfMsg] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,6 +139,20 @@ export default function GroupReportsPage() {
     } finally {
       setGenerating(false)
       setTimeout(() => setGenerateMsg(''), 5000)
+    }
+  }
+
+  async function handleSendPdf() {
+    if (!confirm(`Enviar o PDF do relatório de ${periodLabel} pro grupo do WhatsApp configurado?`)) return
+    setSendingPdf(true); setSendPdfMsg('')
+    try {
+      const res = await sendGroupReportsPdf(date)
+      setSendPdfMsg(res.sent ? 'PDF enviado pro grupo!' : `Não enviado: ${res.reason ?? 'erro desconhecido'}`)
+    } catch (e) {
+      setSendPdfMsg('Erro ao enviar: ' + e.message)
+    } finally {
+      setSendingPdf(false)
+      setTimeout(() => setSendPdfMsg(''), 5000)
     }
   }
 
@@ -189,11 +205,23 @@ export default function GroupReportsPage() {
             {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Gerar agora
           </button>
+          <button
+            onClick={handleSendPdf}
+            disabled={sendingPdf}
+            title="Envia o PDF consolidado do dia pro grupo configurado no WhatsApp"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition disabled:opacity-50"
+          >
+            {sendingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            Enviar PDF pro grupo
+          </button>
         </div>
       </div>
 
       {generateMsg && (
         <p className="text-xs text-gray-500 -mt-3">{generateMsg}</p>
+      )}
+      {sendPdfMsg && (
+        <p className="text-xs text-gray-500 -mt-3">{sendPdfMsg}</p>
       )}
 
       <MonitorSettingsConfig />
