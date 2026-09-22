@@ -5,6 +5,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AiService } from '../ai/ai.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { MediaService } from '../media/media.service';
+import { ScheduleService } from '../schedule/schedule.service';
 import { Lead } from '../common/entities/lead.entity';
 
 // Contas autorizadas a testar o monólito (contador de token, sem WhatsApp) — mesmo
@@ -21,6 +22,7 @@ export class MonolithTestController {
     private readonly whatsappConfigService: WhatsappConfigService,
     private readonly mediaService: MediaService,
     private readonly config: ConfigService,
+    private readonly scheduleService: ScheduleService,
   ) {}
 
   @Post('chat')
@@ -48,11 +50,18 @@ export class MonolithTestController {
       ...facts,
     } as Lead;
 
+    const schedulingHandoffEnabled = config?.schedulingHandoffEnabled ?? false;
+    const availabilityBlock = schedulingHandoffEnabled ? null : await this.scheduleService.buildAvailabilityBlock(user.tenantId);
+
     const result = await this.aiService.processMessageMegaHair(
       fakeLead,
       body.message,
       mediaFiles,
       config?.customPromptMegaHair ?? undefined,
+      undefined,
+      undefined,
+      schedulingHandoffEnabled,
+      availabilityBlock,
     );
 
     const updatedContext = this.aiService.buildUpdatedContext(fakeLead, body.message, result.rawJson!);

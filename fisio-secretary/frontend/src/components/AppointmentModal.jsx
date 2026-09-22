@@ -18,6 +18,13 @@ function toDateTimeLocal(date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function toTimeLocal(date) {
+  if (!date) return ''
+  const d = new Date(date)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function AppointmentModal({ appointment, defaultDate, onClose, onSaved }) {
   const isEdit = !!appointment
 
@@ -28,6 +35,7 @@ export default function AppointmentModal({ appointment, defaultDate, onClose, on
     value:         appointment?.value ?? '',
     status:        appointment?.status ?? 'agendado',
     startDateTime: toDateTimeLocal(appointment?.startDateTime ?? defaultDate ?? new Date()),
+    endTime:       toTimeLocal(appointment?.endDateTime ?? ''),
     notes:         appointment?.notes ?? '',
   })
   const [saving, setSaving] = useState(false)
@@ -48,6 +56,7 @@ export default function AppointmentModal({ appointment, defaultDate, onClose, on
         value: form.value === '' || form.value == null ? null : Number(form.value),
         status: form.status,
         startDateTime: new Date(form.startDateTime).toISOString(),
+        endDateTime: form.endTime ? new Date(`${form.startDateTime.slice(0, 10)}T${form.endTime}`).toISOString() : null,
         notes: form.notes.trim() || null,
       }
       if (isEdit) {
@@ -105,14 +114,25 @@ export default function AppointmentModal({ appointment, defaultDate, onClose, on
             />
           </Field>
 
-          <Field icon={<Calendar className="w-3.5 h-3.5" />} label="Data e hora">
-            <input
-              type="datetime-local"
-              value={form.startDateTime}
-              onChange={e => update('startDateTime', e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field icon={<Calendar className="w-3.5 h-3.5" />} label="Data e hora">
+              <input
+                type="datetime-local"
+                value={form.startDateTime}
+                onChange={e => update('startDateTime', e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+              />
+            </Field>
+
+            <Field icon={<Calendar className="w-3.5 h-3.5" />} label="Término (opcional)">
+              <input
+                type="time"
+                value={form.endTime}
+                onChange={e => update('endTime', e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+              />
+            </Field>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Field icon={<Tag className="w-3.5 h-3.5" />} label="Serviço">

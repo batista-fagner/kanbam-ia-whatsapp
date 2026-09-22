@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { GroupMonitorService } from '../group-monitor/group-monitor.service';
+import { ScheduleService } from '../schedule/schedule.service';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -134,6 +135,7 @@ export class EvolutionController {
     @InjectRepository(MediaSendError)
     private readonly mediaSendErrorRepo: Repository<MediaSendError>,
     private readonly groupMonitorService: GroupMonitorService,
+    private readonly scheduleService: ScheduleService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -675,7 +677,11 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
       }
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, imageDataUri, instanceConfig?.schedulingHandoffEnabled ?? false);
+      const schedulingHandoffEnabled = instanceConfig?.schedulingHandoffEnabled ?? false;
+      // Só carrega a agenda quando a IA pode agendar sozinha — tenant sem agenda
+      // configurada (ou desligada) recebe null e o comportamento antigo (09:00 fixo).
+      const availabilityBlock = schedulingHandoffEnabled ? null : await this.scheduleService.buildAvailabilityBlock(tenantId);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock);
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
@@ -696,23 +702,39 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     if (action === 'schedule' && aiResponse.appointmentDateTime) {
       try {
         const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
-        // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
-        const canceled = await this.appointmentsService.cancelActiveByLeadId(lead.id);
-        if (canceled > 0) {
-          this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
+        // Reconfirma o horário no momento da criação — protege contra corrida (2 clientes
+        // fechando o mesmo horário quase ao mesmo tempo) e contra a IA alucinar um horário
+        // fora da lista oferecida. Tenant sem agenda ativa: sempre true (comportamento antigo).
+        const slotOk = await this.scheduleService.isSlotAvailable(tenantId, startDateTime, lead.id);
+        if (!slotOk) {
+          const alternatives = await this.scheduleService.nextAvailableSlots(tenantId, 3);
+          aiResponse.reply = alternatives.length
+            ? `Esse horário acabou de ser preenchido 😕 Tenho livre: ${alternatives.join(', ')}. Qual fica melhor pra vc?`
+            : `Esse horário acabou de ser preenchido 😕 Deixa eu verificar outro horário certinho e já te aviso.`;
+          aiResponse.stage = 'lead_quente';
+          aiResponse.action = 'none';
+        } else {
+          // Cancela agendamento anterior do mesmo lead antes de criar o novo (reagendamento)
+          const canceled = await this.appointmentsService.cancelActiveByLeadId(lead.id);
+          if (canceled > 0) {
+            this.logger.log(`📅 [MEGAHAIR] ${canceled} agendamento(s) anterior(es) cancelado(s) para ${lead.phone}`);
+          }
+          const tenantSchedule = await this.scheduleService.getSchedule(tenantId);
+          const endDateTime = tenantSchedule.enabled ? new Date(startDateTime.getTime() + tenantSchedule.slotMinutes * 60000) : null;
+          await this.appointmentsService.create({
+            tenantId,
+            leadId: lead.id,
+            clientName: lead.name || lead.phone,
+            clientPhone: lead.phone,
+            service: aiResponse.appointmentService ?? 'mega_hair',
+            value: aiResponse.appointmentValue ?? null,
+            status: 'agendado',
+            startDateTime,
+            endDateTime,
+          });
+          await this.leadsService.update(lead.id, { appointmentAt: startDateTime });
+          this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
         }
-        await this.appointmentsService.create({
-          tenantId,
-          leadId: lead.id,
-          clientName: lead.name || lead.phone,
-          clientPhone: lead.phone,
-          service: aiResponse.appointmentService ?? 'mega_hair',
-          value: aiResponse.appointmentValue ?? null,
-          status: 'agendado',
-          startDateTime,
-        });
-        await this.leadsService.update(lead.id, { appointmentAt: startDateTime });
-        this.logger.log(`📅 [MEGAHAIR] Agendamento criado para ${lead.phone} em ${startDateTime.toISOString()}`);
       } catch (err: any) {
         this.logger.error(`Erro ao criar agendamento MegaHair: ${err.message}`);
       }

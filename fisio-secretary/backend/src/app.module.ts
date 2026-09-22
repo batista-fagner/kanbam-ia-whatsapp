@@ -31,6 +31,8 @@ import { FinanceiroWhatsappMessage } from './common/entities/financeiro-whatsapp
 import { GroupMessage } from './common/entities/group-message.entity';
 import { GroupDailyReport } from './common/entities/group-daily-report.entity';
 import { GroupMonitorSettings } from './common/entities/group-monitor-settings.entity';
+import { TenantSchedule } from './common/entities/tenant-schedule.entity';
+import { ScheduleBlock } from './common/entities/schedule-block.entity';
 import { InitialSchema1780170753448 } from './migrations/1780170753448-InitialSchema';
 import { CreateOnboardingForms1785800000000 } from './migrations/1785800000000-CreateOnboardingForms';
 import { CreateGeneratedPrompts1785900000000 } from './migrations/1785900000000-CreateGeneratedPrompts';
@@ -45,6 +47,7 @@ import { CreateGroupDailyReports1787300000000 } from './migrations/1787300000000
 import { CreateGroupMonitorSettings1787400000000 } from './migrations/1787400000000-CreateGroupMonitorSettings';
 import { AddAwaitingClientResponseToGroupDailyReports1787500000000 } from './migrations/1787500000000-AddAwaitingClientResponseToGroupDailyReports';
 import { AddPdfReportGroupJidToGroupMonitorSettings1787600000000 } from './migrations/1787600000000-AddPdfReportGroupJidToGroupMonitorSettings';
+import { CreateTenantSchedule1787700000000 } from './migrations/1787700000000-CreateTenantSchedule';
 import { TenantConstraints1780170997907 } from './migrations/1780170997907-TenantConstraints';
 import { ClientManagement1780184764189 } from './migrations/1780184764189-ClientManagement';
 import { AddBillingDay1780200000000 } from './migrations/1780200000000-AddBillingDay';
@@ -110,6 +113,7 @@ import { PromptDraftsModule } from './prompt-drafts/prompt-drafts.module';
 import { QueueModule } from './queue/queue.module';
 import { FinanceiroWhatsappModule } from './financeiro-whatsapp/financeiro-whatsapp.module';
 import { GroupMonitorModule } from './group-monitor/group-monitor.module';
+import { TenantScheduleModule } from './schedule/schedule.module';
 
 @Module({
   imports: [
@@ -130,12 +134,12 @@ import { GroupMonitorModule } from './group-monitor/group-monitor.module';
         url: config.get('SUPABASE_DATABASE_URL'),
         // Postgres local (dev) não usa SSL; Supabase (prod) exige. Controlado por DATABASE_SSL.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings, BillingEvent, OnboardingForm, GeneratedPrompt, PriceConfig, FinanceiroWhatsappMessage, MediaSendError, OnboardingSettings, ClientExtraCharge, ToolExpense, GroupMessage, GroupDailyReport, GroupMonitorSettings],
+        entities: [Lead, Conversation, Message, LeadStageHistory, Campaign, WhatsappConfig, MediaFile, Appointment, DeletedLead, User, Followup, TokenUsage, ImplantacaoPayment, PromptTemplate, Agent, PromptModuleEntity, CheckoutSettings, BillingEvent, OnboardingForm, GeneratedPrompt, PriceConfig, FinanceiroWhatsappMessage, MediaSendError, OnboardingSettings, ClientExtraCharge, ToolExpense, GroupMessage, GroupDailyReport, GroupMonitorSettings, TenantSchedule, ScheduleBlock],
         // Schema controlado por migrations (item C). NUNCA reativar em produção.
         synchronize: false,
         // Roda migrations pendentes no boot (antes de atender requisições).
         // Classes importadas (não glob) p/ funcionar tanto em ts-node quanto compilado.
-        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000, AddPromptModules1784200000000, AddPromptModuleMediaCatalog1784300000000, AddPromptModuleDateTable1784400000000, CreateCheckoutSettings1784700000000, AddPlanoEnabled1784800000000, CreateOnboardingForms1785800000000, CreateGeneratedPrompts1785900000000, CreateFinanceiroWhatsappMessages1786000000000, AddPlanValue1784557763106, AddLastPixTxid1784561485405, CreateBillingEvents1784567469499, BillingEventsNullableTenant1784573592794, AddFollowupCadence1784775618371, AddImplantacaoEmail1784900000000, IncreaseMediaLimitTo1001785000000, AddMessageMediaUrl1785100000000, AddNotificationPhone1785300000000, AddAutoFollowupEnabled1785788276436, AddLastPixQrCodeAndCode1786000000000, AddLastPixValue1786100000000, ChangeLastPixSentAtToTimestamp1786200000000, AddSchedulingHandoffEnabled1786300000000, CreatePriceConfigs1786400000000, AddLeadAvatarUrl1786500000000, AddAppointmentReminderHoursBefore1786600000000, CreateMediaSendErrors1786700000000, CreateOnboardingSettings1786800000000, AddClientOriginAndImplantacaoAmount1786900000000, AddClientTestChurnAndExtraCharges1787000000000, CreateToolExpenses1787100000000, CreateGroupMessages1787200000000, CreateGroupDailyReports1787300000000, CreateGroupMonitorSettings1787400000000, AddAwaitingClientResponseToGroupDailyReports1787500000000, AddPdfReportGroupJidToGroupMonitorSettings1787600000000],
+        migrations: [InitialSchema1780170753448, TenantConstraints1780170997907, ClientManagement1780184764189, AddBillingDay1780200000000, AddStripePaymentFields1780210000000, CreateFollowups1780300000000, CreateTokenUsage1780400000000, CreateImplantacaoPayments1780500000000, AddMediaCaption1780600000000, AddAutoFollowup1780700000000, AddAppointmentReminder1780800000000, AddMediaLimitPerDay1780900000000, CreatePromptTemplates1781000000000, CreateAgents1781100000000, AddMultiAgentEnabled1781200000000, AddLeadCurrentAgent1781300000000, AddDeactivationKeyword1782917553913, AddFollowupLimitPerDay1782932396574, AddAgentCapabilities1783000000000, AddAgentCanvasPosition1784000000000, AddActivationKeyword1783278000312, AddTokenUsageEngine1784100000000, AddPromptModules1784200000000, AddPromptModuleMediaCatalog1784300000000, AddPromptModuleDateTable1784400000000, CreateCheckoutSettings1784700000000, AddPlanoEnabled1784800000000, CreateOnboardingForms1785800000000, CreateGeneratedPrompts1785900000000, CreateFinanceiroWhatsappMessages1786000000000, AddPlanValue1784557763106, AddLastPixTxid1784561485405, CreateBillingEvents1784567469499, BillingEventsNullableTenant1784573592794, AddFollowupCadence1784775618371, AddImplantacaoEmail1784900000000, IncreaseMediaLimitTo1001785000000, AddMessageMediaUrl1785100000000, AddNotificationPhone1785300000000, AddAutoFollowupEnabled1785788276436, AddLastPixQrCodeAndCode1786000000000, AddLastPixValue1786100000000, ChangeLastPixSentAtToTimestamp1786200000000, AddSchedulingHandoffEnabled1786300000000, CreatePriceConfigs1786400000000, AddLeadAvatarUrl1786500000000, AddAppointmentReminderHoursBefore1786600000000, CreateMediaSendErrors1786700000000, CreateOnboardingSettings1786800000000, AddClientOriginAndImplantacaoAmount1786900000000, AddClientTestChurnAndExtraCharges1787000000000, CreateToolExpenses1787100000000, CreateGroupMessages1787200000000, CreateGroupDailyReports1787300000000, CreateGroupMonitorSettings1787400000000, AddAwaitingClientResponseToGroupDailyReports1787500000000, AddPdfReportGroupJidToGroupMonitorSettings1787600000000, CreateTenantSchedule1787700000000],
         migrationsRun: true,
         logging: false,
       }),
@@ -157,6 +161,7 @@ import { GroupMonitorModule } from './group-monitor/group-monitor.module';
     AgentsModule,
     PromptModulesModule,
     FinanceiroWhatsappModule,
+    TenantScheduleModule,
   ],
 })
 export class AppModule {}

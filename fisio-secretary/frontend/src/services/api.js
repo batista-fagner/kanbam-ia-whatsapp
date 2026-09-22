@@ -192,6 +192,33 @@ export const updateAppointment = (id, data) =>
 export const deleteAppointment = (id) =>
   authFetch(`${BASE}/appointments/${id}`, { method: 'DELETE' }).then(json)
 
+// --- Minha agenda (ScheduleBuilder) ---
+export const getSchedule = () =>
+  authFetch(`${BASE}/schedule`).then(json)
+
+export const saveSchedule = (data) =>
+  authFetch(`${BASE}/schedule`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
+export const getScheduleSlots = (days = 14) =>
+  authFetch(`${BASE}/schedule/slots?days=${days}`).then(json)
+
+export const getScheduleBlocks = () =>
+  authFetch(`${BASE}/schedule/blocks`).then(json)
+
+export const createScheduleBlock = (data) =>
+  authFetch(`${BASE}/schedule/blocks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
+export const deleteScheduleBlock = (id) =>
+  authFetch(`${BASE}/schedule/blocks/${id}`, { method: 'DELETE' }).then(json)
+
 // --- Admin: gestão de clientes ---
 export const getClients = () =>
   authFetch(`${BASE}/admin/clients`).then(json)

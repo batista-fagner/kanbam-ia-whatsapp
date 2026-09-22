@@ -12,6 +12,7 @@ export interface CreateAppointmentDto {
   value?: number | null;
   status?: AppointmentStatus;
   startDateTime: Date | string;
+  endDateTime?: Date | string | null;
   notes?: string | null;
 }
 
@@ -52,6 +53,7 @@ export class AppointmentsService {
       value: dto.value ?? null,
       status: dto.status ?? 'agendado',
       startDateTime: typeof dto.startDateTime === 'string' ? new Date(dto.startDateTime) : dto.startDateTime,
+      endDateTime: dto.endDateTime ? (typeof dto.endDateTime === 'string' ? new Date(dto.endDateTime) : dto.endDateTime) : null,
       notes: dto.notes ?? null,
     });
     return this.repo.save(appt);
@@ -66,6 +68,9 @@ export class AppointmentsService {
     if (dto.status !== undefined) appt.status = dto.status;
     if (dto.startDateTime !== undefined) {
       appt.startDateTime = typeof dto.startDateTime === 'string' ? new Date(dto.startDateTime) : dto.startDateTime;
+    }
+    if (dto.endDateTime !== undefined) {
+      appt.endDateTime = dto.endDateTime ? (typeof dto.endDateTime === 'string' ? new Date(dto.endDateTime) : dto.endDateTime) : null;
     }
     if (dto.notes !== undefined) appt.notes = dto.notes;
     if (dto.leadId !== undefined) appt.leadId = dto.leadId;

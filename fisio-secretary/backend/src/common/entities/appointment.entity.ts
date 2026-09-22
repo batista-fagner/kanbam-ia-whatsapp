@@ -41,6 +41,11 @@ export class Appointment {
   @Column({ name: 'start_date_time', type: 'timestamp' })
   startDateTime: Date;
 
+  // Null nos agendamentos antigos e em tenants sem agenda configurada — o término,
+  // nesse caso, é calculado como startDateTime + slotMinutes (ver ScheduleService).
+  @Column({ name: 'end_date_time', type: 'timestamp', nullable: true })
+  endDateTime: Date | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

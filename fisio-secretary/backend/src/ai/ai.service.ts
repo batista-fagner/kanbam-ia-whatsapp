@@ -189,6 +189,80 @@ RESPONDA SEMPRE em JSON com este formato exato:
   }
 }`;
 
+// Variante do bloco acima para tenants com agenda própria configurada (ver
+// TenantSchedule/ScheduleService) e schedulingHandoffEnabled=false: a IA agenda sozinha,
+// mas só em horário realmente livre — nunca 09:00 fixo. A lista de horários vem de
+// ScheduleService.buildAvailabilityBlock(), injetada no final do systemPrompt (bloco
+// variável, depois deste) junto com buildDateBlock().
+const JSON_FORMAT_MEGAHAIR_AGENDA = `
+
+════════════════════════════════════════════════════════════════
+REGRAS DE STAGE E AGENDAMENTO (CRÍTICO — OBEDEÇA SEMPRE)
+════════════════════════════════════════════════════════════════
+A cada mensagem, vc DEVE reavaliar o stage. Não deixe o lead parado em "novo_lead" se a conversa já evoluiu.
+
+TRANSIÇÕES OBRIGATÓRIAS:
+1. stage="lead_quente" — Use SEMPRE que a cliente disser que JÁ USA, JÁ USOU mega hair, ou demonstrar interesse claro no produto (perguntou preço, perguntou textura, quis ver vídeo). Esta é a transição mais comum — não esqueça.
+2. stage="lead_frio" — Use quando a cliente disser que NUNCA usou mega hair E não mostrou interesse imediato.
+3. stage="agendado" — Use SOMENTE depois que a cliente escolher um horário da lista de HORÁRIOS DISPONÍVEIS (ver tabela no final do prompt). SEMPRE acompanhado de action="schedule" + appointmentDateTime preenchido com esse horário exato. stage="agendado" + action="none" é INVÁLIDO.
+4. stage="perdido" — Use quando a cliente desistir, for rude, ou pedir produto fora do catálogo após tentativa de transferência.
+5. stage="novo_lead" — APENAS na primeira mensagem ou antes de qualquer qualificação real.
+
+REGRAS DE AGENDAMENTO (USE A TABELA DE HORÁRIOS DISPONÍVEIS — NUNCA 09:00 FIXO):
+A tabela HORÁRIOS DISPONÍVEIS, no final deste prompt, é a ÚNICA fonte de horários livres. Ela já
+descontou agendamentos existentes, bloqueios e antecedência mínima — confie nela cegamente.
+
+PASSO A — a cliente demonstrou intenção de agendar mas ainda não disse o dia:
+  → action="none", stage continua o mesmo de antes.
+  → reply: pergunte qual dia ela prefere.
+
+PASSO B — a cliente disse o dia (ex: "sexta", "amanhã", "dia 25"):
+  → Resolva a data pela TABELA DE DATAS.
+  → Procure essa data na tabela HORÁRIOS DISPONÍVEIS.
+  → Se o dia tiver horários livres: ofereça até 3 deles (os primeiros da lista), SEM agendar ainda.
+    action="none", stage continua o mesmo de antes.
+  → Se o dia estiver "(lotado)" ou não aparecer na tabela (fechado): avise que esse dia não tem vaga
+    e ofereça o dia mais próximo que TIVER horários na tabela. action="none".
+
+PASSO C — a cliente escolheu um dos horários oferecidos (ex: "pode ser 14h", "o primeiro", "sexta às 10"):
+  → Confirme que esse horário está EXATAMENTE na lista de HORÁRIOS DISPONÍVEIS daquele dia — nunca
+    arredonde nem aproxime pra outro horário.
+  → action="schedule"
+  → appointmentDateTime = "YYYY-MM-DDTHH:MM:SS" — o horário exato escolhido, no formato de 24h.
+  → appointmentService = "mega_hair" (primeira vez) ou "manutencao" (cliente já foi nossa antes)
+  → appointmentValue = valor combinado em reais, ou null se ainda não combinou
+  → stage = "agendado"
+  → reply: confirme citando data + horário, ex: "Show! Agendado pra sexta, dia 26/09, às 14h. Te espero! 😊"
+
+PROIBIDO:
+- Definir stage="vendas" ou stage="desliza_hair" — essas raias são da vendedora humana.
+- Manter stage="novo_lead" depois que a cliente já respondeu se usa mega hair.
+- Usar stage="agendado" sem action="schedule" — são INSEPARÁVEIS.
+- Usar action="schedule" com um horário que NÃO está na tabela HORÁRIOS DISPONÍVEIS daquele dia.
+- Inventar, calcular ou arredondar horário. Copie exatamente da tabela.
+- Agendar direto no PASSO B sem a cliente confirmar qual horário dos oferecidos ela quer.
+
+REGRA DE TAGS (OBRIGATÓRIA):
+- tags=["qualificado"] — quando a cliente confirmar que JÁ USA ou JÁ USOU mega hair.
+- tags=[] nos demais casos.
+
+RESPONDA SEMPRE em JSON com este formato exato:
+{
+  "reply": "texto da resposta para a cliente",
+  "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
+  "temperature": "quente|morno|frio",
+  "action": "schedule|send_media|none",
+  "mediaName": "id-exato-ou-null (ou um array de ids quando enviar vários vídeos)",
+  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS ou null",
+  "appointmentService": "mega_hair|manutencao|null",
+  "appointmentValue": null,
+  "tags": [],
+  "shouldIgnore": false,
+  "fields": {
+    "name": "nome se coletado ou null"
+  }
+}`;
+
 export function buildDateBlock(): string {
   // Usa timezone de São Paulo para evitar bug em servidor UTC (Railway).
   const TZ = 'America/Sao_Paulo';
@@ -1085,7 +1159,7 @@ OUTRAS REGRAS:
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMedia: CatalogEntry[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMedia: CatalogEntry[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean, availabilityBlock?: string | null): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
     const mediaInstructions = this.buildMediaInstructions(availableMedia);
 
@@ -1166,8 +1240,15 @@ REGRAS:
     // buildDateBlock no final: prefixo estático (basePrompt+media+JSON) fica idêntico
     // entre todas as conversas → habilita cache automático (OpenAI 50%, Gemini 75%).
     const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
-    const jsonFormatBlock = schedulingHandoffEnabled ? JSON_FORMAT_MEGAHAIR_HANDOFF : JSON_FORMAT_MEGAHAIR;
-    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${extraBlock}\n\n${buildDateBlock()}`;
+    const jsonFormatBlock = schedulingHandoffEnabled
+      ? JSON_FORMAT_MEGAHAIR_HANDOFF
+      : availabilityBlock
+        ? JSON_FORMAT_MEGAHAIR_AGENDA
+        : JSON_FORMAT_MEGAHAIR;
+    // availabilityBlock (variável, muda a cada mensagem) fica depois de buildDateBlock() —
+    // mesma regra do bloco de datas: variável sempre no final, pra não quebrar o cache.
+    const availabilitySuffix = availabilityBlock ? `\n\n${availabilityBlock}` : '';
+    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${extraBlock}\n\n${buildDateBlock()}${availabilitySuffix}`;
 
     // Imagem só entra no conteúdo multimodal desta chamada — o histórico
     // persistido (lead.aiContext) continua sempre com o texto puro, então a

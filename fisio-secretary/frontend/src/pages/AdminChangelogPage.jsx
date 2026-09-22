@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Minha agenda: IA passa a agendar só em horário realmente livre (beta Kelly)',
+    date: '21/09/2026',
+    detail: 'Nova aba "Minha agenda" dentro de Calendário (visível por enquanto só pra Kelly Hair e pro admin): o cliente monta os dias e horários de atendimento, quantas vagas por horário, duração padrão e antecedência mínima, além de poder bloquear dias/horários (folga, feriado). Quando ligada, a IA para de agendar sempre às 09:00 e passa a oferecer e marcar só horários que estão realmente livres, descontando agendamentos já existentes e bloqueios — e o sistema confere de novo no momento de salvar, pra evitar dois clientes fechando o mesmo horário. Tenants sem essa agenda configurada continuam exatamente como antes.',
+  },
+  {
+    title: 'Templates de Prompt: 2 modelos novos treinados com a base real de conversas',
+    date: '17/09/2026',
+    detail: 'Analisei as 236 mil mensagens trocadas com os 12 clientes ativos: os 854 momentos em que um humano precisou assumir da IA (pra achar os erros) e as 168 conversas que a IA fechou sozinha, sem ninguém entrar (pra achar o que funciona). Com isso, criei 2 templates novos em Templates de Prompt — um pra negócios de venda de cabelo e outro pra negócios de serviço/aplicação, os dois já com agendamento — cheios de regras concretas tiradas da própria base (ex: nunca mandar cliente pra outro número, nunca repetir pergunta já respondida, nunca inventar nome de vídeo fora do catálogo). Antes de cadastrar, testei os templates numa simulação lado a lado contra o prompt real de um cliente, nos mesmos cenários difíceis e com o mesmo modelo de IA usado em produção: a nota de qualidade subiu de 2,81 para 4,58 (+63%). Nenhum prompt de cliente existente foi alterado — os templates ficam disponíveis pra usar em clientes novos ou pra atualizar um existente, sempre com confirmação antes de aplicar. Os dados brutos dessa análise (as 857 conversas classificadas, as 168 vendas estudadas e os testes) ficaram salvos na pasta analise-treinamento-ia-2026-09/ na raiz do projeto fisio-secretary, fora do Git (não sobe pro GitHub, só fica local na sua máquina) — pra eu poder consultar de novo se você pedir.',
+  },
+  {
     title: 'Relatórios de Grupos: botão separado pra enviar o PDF pro grupo',
     date: '16/09/2026',
     detail: '"Gerar agora" estava enviando o PDF pro grupo real toda vez que alguém só queria conferir o relatório sem esperar as 18h. Agora "Gerar agora" só gera/atualiza os relatórios (não manda nada no grupo), e tem um botão novo "Enviar PDF pro grupo" (com confirmação antes de enviar) pra quando realmente quiser mandar. O cron das 18h continua funcionando igual: gera e envia automaticamente todo dia.',

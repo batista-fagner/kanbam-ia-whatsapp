@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, RefreshCw, Eye, EyeOff, Clock } from 'lucide-react'
 import { getAppointmentsByMonth } from '../services/api'
 import AppointmentModal from '../components/AppointmentModal'
+import ScheduleBuilder from '../components/ScheduleBuilder'
+import { useAuth } from '../context/AuthContext'
+
+// Beta: "Minha agenda" (IA agenda só em horário livre) — primeira usuária é a Kelly.
+// Mesmo padrão de listas beta por e-mail já usado em Layout.jsx/SettingsPage.jsx.
+const SCHEDULE_BETA_EMAILS = ['kellychubiker@gmail.com']
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTHS = [
@@ -23,6 +29,11 @@ const serviceLabel = {
 }
 
 export default function CalendarPage() {
+  const { user } = useAuth()
+  const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+  const canSeeSchedule = isLocalDev || user?.role === 'admin' || SCHEDULE_BETA_EMAILS.includes(user?.email)
+  const [tab, setTab] = useState('calendario') // 'calendario' | 'agenda'
+
   const [cursor, setCursor] = useState(() => {
     const d = new Date()
     return { year: d.getFullYear(), month: d.getMonth() + 1 }
@@ -94,31 +105,43 @@ export default function CalendarPage() {
             <p className="text-xs text-gray-500">Agendamentos de aplicação e manutenção</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleHidePhones}
-            className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500"
-            title={hidePhones ? 'Mostrar número do lead' : 'Ocultar número do lead (ex: pra gravar vídeo)'}
-          >
-            {hidePhones ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500 disabled:opacity-40"
-            title="Atualizar"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={() => setModalState({ open: true, appointment: null, defaultDate: new Date() })}
-            className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition shadow-sm"
-          >
-            <Plus className="w-4 h-4" /> Novo agendamento
-          </button>
-        </div>
+        {tab === 'calendario' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleHidePhones}
+              className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500"
+              title={hidePhones ? 'Mostrar número do lead' : 'Ocultar número do lead (ex: pra gravar vídeo)'}
+            >
+              {hidePhones ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={refresh}
+              disabled={loading}
+              className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-500 disabled:opacity-40"
+              title="Atualizar"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setModalState({ open: true, appointment: null, defaultDate: new Date() })}
+              className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Novo agendamento
+            </button>
+          </div>
+        )}
       </div>
 
+      {canSeeSchedule && (
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 w-fit mb-6">
+          <TabButton active={tab === 'calendario'} onClick={() => setTab('calendario')} icon={CalIcon} label="Calendário" />
+          <TabButton active={tab === 'agenda'} onClick={() => setTab('agenda')} icon={Clock} label="Minha agenda" />
+        </div>
+      )}
+
+      {tab === 'agenda' ? (
+        <ScheduleBuilder />
+      ) : (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {/* Navegação do mês */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -169,6 +192,9 @@ export default function CalendarPage() {
                       const hour = dt.getHours()
                       const period = hour < 12 ? 'manhã' : 'tarde'
                       const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                      const endTimeStr = a.endDateTime
+                        ? new Date(a.endDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                        : null
                       return (
                         <button
                           key={a.id}
@@ -180,8 +206,8 @@ export default function CalendarPage() {
                           title={`${a.clientName} — ${serviceLabel[a.service] ?? a.service}`}
                         >
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-mono font-semibold">{timeStr}</span>
-                            <span className="text-[8px] uppercase opacity-70">{period}</span>
+                            <span className="font-mono font-semibold">{timeStr}{endTimeStr && `–${endTimeStr}`}</span>
+                            {!endTimeStr && <span className="text-[8px] uppercase opacity-70">{period}</span>}
                           </div>
                           <div className="truncate font-medium">{a.clientName}</div>
                           <div className="truncate text-[9px] opacity-75">
@@ -201,8 +227,9 @@ export default function CalendarPage() {
           ))}
         </div>
       </div>
+      )}
 
-      {loading && (
+      {tab === 'calendario' && loading && (
         <p className="text-xs text-gray-400 mt-3 text-center">Carregando...</p>
       )}
 
@@ -218,5 +245,18 @@ export default function CalendarPage() {
         />
       )}
     </div>
+  )
+}
+
+function TabButton({ active, onClick, icon: Icon, label }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
+        active ? 'bg-pink-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+      }`}
+    >
+      <Icon className="w-4 h-4" /> {label}
+    </button>
   )
 }
