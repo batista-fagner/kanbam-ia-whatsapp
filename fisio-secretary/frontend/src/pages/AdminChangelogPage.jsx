@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Claudia Ribeiro: IA parou de pedir foto + aviso de intenção de compra',
+    date: '23/09/2026',
+    detail: 'A cliente reclamou que a IA pedia foto, a cliente mandava e a IA "não reconhecia". O motivo: o sistema ainda não lê imagens pra essa conta (só a S&A tem), então respondia um texto fixo "não consigo ver imagens" — enquanto o prompt dela continuava mandando pedir foto de novo. Aconteceu 79 vezes em 60 conversas, num caso 4 vezes seguidas (a própria Claudia entrou e escreveu "a IA tá te enlouquecendo"). Pior: quando a cliente só mencionava a foto, a IA chegava a responder "Recebi sua foto" sem ter visto nada. Agora o prompt proíbe pedir foto: informação do cabelo (cor, comprimento, textura) é perguntada por texto, e se a cliente falar de uma foto a IA diz com naturalidade que por aqui ainda não consegue ver e pergunta o que precisa. Também ligado o aviso de intenção de compra pra ela ("quero fechar", "manda o pix", "quero esse"...): só avisa o WhatsApp dela, a IA continua atendendo (diferente da S&A, onde a IA para). O aviso de agendamento também já está ligado. As duas notificações só chegam depois que ela preencher o número no card "Notificação de agendamento" em Configurações.',
+  },
+  {
     title: 'Minha agenda: IA passa a agendar só em horário realmente livre (beta Kelly)',
     date: '21/09/2026',
     detail: 'Nova aba "Minha agenda" dentro de Calendário (visível por enquanto só pra Kelly Hair e pro admin): o cliente monta os dias e horários de atendimento, quantas vagas por horário, duração padrão e antecedência mínima, além de poder bloquear dias/horários (folga, feriado). Quando ligada, a IA para de agendar sempre às 09:00 e passa a oferecer e marcar só horários que estão realmente livres, descontando agendamentos já existentes e bloqueios — e o sistema confere de novo no momento de salvar, pra evitar dois clientes fechando o mesmo horário. Tenants sem essa agenda configurada continuam exatamente como antes.',
@@ -184,6 +189,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Claudia Ribeiro: preencher o número de aviso em Configurações', detail: 'Sem o número no card "Notificação de agendamento", os avisos de agendamento e de intenção de compra ficam ligados mas não chegam em ninguém.' },
   { title: 'Ativar o recebimento de mensagem de grupo na instância de onboarding', detail: 'O código do "Relatórios de Grupos" está pronto e testado, mas a instância uazapi que cria os grupos ainda precisa ser reconfigurada manualmente (1x) pra mandar mensagem de grupo pro webhook novo — sem isso, nada é capturado ainda em produção.' },
   { title: 'Provisionar Redis em produção + ligar as filas (BullMQ)', detail: 'Código já deployado, mas QUEUE_ENGINE=legacy-cron em prod por falta de Redis no Railway.' },
   { title: 'Webhook Efí Bank com mTLS', detail: 'Substituiria o polling de PIX por confirmação instantânea — precisa de proxy mTLS de entrada (Nginx/Caddy ou Cloudflare) na frente do Railway.' },
@@ -197,6 +203,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Claudia Ribeiro: IA pedia foto que o sistema nunca lia (loop de "não consigo ver imagens")',
+    date: '23/09/2026',
+    detail: 'O prompt mandava pedir foto pra avaliação, mas o reconhecimento de imagem não está habilitado pra essa conta: o sistema respondia um texto fixo sem nem passar a mensagem pra IA, que então pedia a foto de novo. 79 respostas fixas em 60 conversas, 13 conversas com repetição. 6 conversas terminaram exatamente nessa mensagem.',
+    status: 'corrigido',
+  },
   {
     title: 'Paraíso Dos Fios: pagamento de R$1.500 aparecia como R$390 no financeiro',
     date: '15/09/2026',

@@ -43,6 +43,14 @@ const STOP_FOLLOWUP_REGEX = /\bstop\b|\bpare\b|\bparar\b|cancela|n[aã]o\s+tenho
 // feedback_keyword_regex_acento na memória sobre \b não casar direito com
 // caractere acentuado na borda, por isso aqui é .includes() puro, sem regex.
 const PURCHASE_HANDOFF_TENANT_IDS = ['badfc5d9-d522-4253-a788-28b3ebe41753'];
+
+// Só AVISA o número cadastrado em Configurações — a IA continua conversando normalmente.
+// Diferente de PURCHASE_HANDOFF_TENANT_IDS acima, que responde texto fixo (com o nome do
+// Alex) e desliga a IA do lead. Usa as mesmas palavras-chave. Claudia Ribeiro (2026-09-23).
+const PURCHASE_NOTIFY_ONLY_TENANT_IDS = ['ebb0a430-3c61-4957-8efb-e98239d1a562'];
+// Sem handoff a IA não silencia, então o lead pode repetir "quero esse" várias vezes —
+// 1 aviso por lead a cada 24h pra não encher o WhatsApp do cliente.
+const PURCHASE_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const PURCHASE_HANDOFF_KEYWORDS = [
   'quero comprar', 'vou comprar', 'posso comprar',
   'quero esse', 'quero essa', 'quero este', 'quero esta',
@@ -90,6 +98,8 @@ export class EvolutionController {
   // — consumida em processMessage() quando o debounce dispara. Só usado pelos
   // tenants em IMAGE_ANALYSIS_TENANT_IDS.
   private readonly pendingImageUrl = new Map<string, string>();
+  // Último aviso de intenção de compra por lead (chave: leadId) — ver maybeNotifyPurchaseIntent().
+  private readonly purchaseNotifiedAt = new Map<string, number>();
   // URL (R2) do ÁUDIO recebido do lead (mensagem de voz) — baixado uma vez em
   // paralelo à transcrição, pra tocar no Kanban. Ver transcribeAndEnqueue().
   private readonly pendingAudioUrl = new Map<string, string>();
@@ -576,6 +586,9 @@ export class EvolutionController {
       }
     }
 
+    // Só avisa (sem handoff) — a IA segue o fluxo normal abaixo.
+    this.maybeNotifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, combinedText);
+
     // Mostra "digitando..." enquanto a IA processa
     void this.evolutionService.sendTypingIndicator(phone, 5000, tenantToken);
 
@@ -955,6 +968,19 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     const text = `📅 Novo agendamento!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}`;
     this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
       .catch(err => this.logger.error(`[NOTIFY] Falha ao notificar agendamento pra ${notificationPhone}: ${err.message}`));
+  }
+
+  // Ver PURCHASE_NOTIFY_ONLY_TENANT_IDS. Sem número cadastrado não consome o cooldown:
+  // quando o cliente preencher o número, a próxima menção já avisa.
+  private maybeNotifyPurchaseIntent(lead: any, instanceConfig: any, tenantToken: string | undefined, tenantId: string, text: string): void {
+    if (!PURCHASE_NOTIFY_ONLY_TENANT_IDS.includes(tenantId)) return;
+    if (!instanceConfig?.notificationPhone) return;
+    const keyword = matchPurchaseHandoffKeyword(text);
+    if (!keyword) return;
+    const last = this.purchaseNotifiedAt.get(lead.id) ?? 0;
+    if (Date.now() - last < PURCHASE_NOTIFY_COOLDOWN_MS) return;
+    this.purchaseNotifiedAt.set(lead.id, Date.now());
+    this.notifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, keyword);
   }
 
   // Ver PURCHASE_HANDOFF_TENANT_IDS — avisa o número cadastrado em Configurações
