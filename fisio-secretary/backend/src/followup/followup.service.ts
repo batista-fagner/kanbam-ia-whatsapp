@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
+import { Repository, LessThanOrEqual, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -387,7 +387,8 @@ export class FollowupService {
     if (!this.isWithinBusinessHours()) return;
 
     const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'] as const;
-    const configs = await this.configRepo.find();
+    // Cliente arquivado não dispara nada (follow-up automático, cadência, lembrete de consulta).
+    const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
 
     for (const cfg of configs) {
       if (cfg.autoFollowupEnabled === false) continue;
@@ -472,7 +473,8 @@ export class FollowupService {
   // herdando automaticamente horário comercial / teto diário / espaçamento.
   @Cron(CronExpression.EVERY_MINUTE)
   async processCadenceFollowups(): Promise<void> {
-    const configs = await this.configRepo.find();
+    // Cliente arquivado não dispara nada (follow-up automático, cadência, lembrete de consulta).
+    const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
 
     for (const cfg of configs) {
       // Cada tenant pode ter uma janela diferente (ver TENANT_FOLLOWUP_WINDOW_OVERRIDES).
@@ -545,7 +547,8 @@ export class FollowupService {
   // explícito pedido pelo produto — o lead não recebe nada.
   @Cron('*/5 * * * *')
   async processAppointmentReminders(): Promise<void> {
-    const configs = await this.configRepo.find();
+    // Cliente arquivado não dispara nada (follow-up automático, cadência, lembrete de consulta).
+    const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
 
     for (const cfg of configs) {
       const gate = resolveReminderGate(cfg.appointmentReminder);

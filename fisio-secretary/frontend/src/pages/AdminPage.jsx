@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye, Wrench } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye, Wrench, Archive, ArchiveRestore } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { getClients, createClient, setClientActive, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins, createToolExpense, updateToolExpense, deleteToolExpense } from '../services/api'
+import { getClients, createClient, setClientActive, archiveClients, unarchiveClients, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins, createToolExpense, updateToolExpense, deleteToolExpense } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import ClientDrawer from '../components/ClientDrawer'
 
@@ -27,6 +27,7 @@ const fmtBRL = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFrac
 // OU conta suspensa; "em atraso" cobre os estados de cobrança pendente (PIX expirado também).
 function statusLabel(c) {
   if (c.churned_at) return 'churn'
+  if (c.archived_at) return 'arquivado'
   if (c.plan_status === 'canceled' || !c.is_active) return 'perdido'
   if (['past_due', 'expired', 'pending'].includes(c.plan_status)) return 'em atraso'
   return 'ativo'
@@ -105,6 +106,12 @@ export default function AdminPage() {
   const [newTool, setNewTool] = useState({ name: '', monthlyCost: '', billingDay: '' })
   const [savingTool, setSavingTool] = useState(false)
   const [drawerClient, setDrawerClient] = useState(null)
+  const [clientsView, setClientsView] = useState('active') // 'active' | 'archived'
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [archiveModal, setArchiveModal] = useState(null) // { ids: string[], names: string[] }
+  const [archiving, setArchiving] = useState(false)
+  const [notice, setNotice] = useState('')
 
   const load = async () => {
     try {
@@ -325,6 +332,48 @@ export default function AdminPage() {
     }
   }
 
+  const activeClients = clients.filter(c => !c.archivedAt)
+  const archivedClients = clients.filter(c => c.archivedAt)
+
+  function toggleSelected(id) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  async function handleArchive() {
+    setArchiving(true)
+    try {
+      const r = await archiveClients(archiveModal.ids)
+      setNotice(`${r.archived} cliente(s) arquivado(s).`)
+      setArchiveModal(null)
+      exitSelectMode()
+      await load()
+    } catch (e) {
+      setError(e.message)
+      setArchiveModal(null)
+    } finally {
+      setArchiving(false)
+    }
+  }
+
+  async function handleUnarchive(c) {
+    try {
+      await unarchiveClients([c.id])
+      setNotice(`${c.displayName || 'Cliente'} voltou para a lista, ainda suspenso. Reative quando quiser.`)
+      await load()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   async function toggleActive(c) {
     await setClientActive(c.id, !c.isActive)
     await load()
@@ -395,7 +444,7 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('clients')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'clients' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
             <Users className="w-4 h-4" /> Clientes
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'clients' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{clients.length}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'clients' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{activeClients.length}</span>
           </button>
           <button onClick={() => setActiveTab('usage')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === 'usage' ? 'bg-teal-700 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
@@ -1063,11 +1112,69 @@ export default function AdminPage() {
       {/* Aba: Clientes */}
       {activeTab === 'clients' && <>
 
+      {notice && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-xl mb-4 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2"><Check className="w-4 h-4" /> {notice}</span>
+          <button onClick={() => setNotice('')} className="hover:bg-green-100 rounded-full p-0.5"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {/* Barra: Ativos | Arquivados + seleção em lote */}
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-sm">
+          <button
+            onClick={() => { setClientsView('active'); exitSelectMode() }}
+            className={`px-3 py-1.5 rounded-md font-medium transition ${clientsView === 'active' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            Ativos <span className="opacity-70">({activeClients.length})</span>
+          </button>
+          <button
+            onClick={() => { setClientsView('archived'); exitSelectMode() }}
+            className={`px-3 py-1.5 rounded-md font-medium transition inline-flex items-center gap-1.5 ${clientsView === 'archived' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <Archive className="w-3.5 h-3.5" /> Arquivados <span className="opacity-70">({archivedClients.length})</span>
+          </button>
+        </div>
+
+        {clientsView === 'active' && (
+          selectMode ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-gray-500 tabular-nums">{selected.size} selecionado(s)</span>
+              <button
+                onClick={() => setSelected(selected.size === activeClients.length ? new Set() : new Set(activeClients.map(c => c.id)))}
+                className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition"
+              >
+                {selected.size === activeClients.length ? 'Limpar seleção' : 'Selecionar todos'}
+              </button>
+              <button
+                disabled={selected.size === 0}
+                onClick={() => {
+                  const chosen = activeClients.filter(c => selected.has(c.id))
+                  setArchiveModal({ ids: chosen.map(c => c.id), names: chosen.map(c => c.displayName || '(sem nome)') })
+                }}
+                className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed text-white transition"
+              >
+                <Archive className="w-4 h-4" /> Arquivar{selected.size > 0 ? ` (${selected.size})` : ''}
+              </button>
+              <button onClick={exitSelectMode} className="text-sm font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition">Cancelar</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSelectMode(true)}
+              disabled={activeClients.length === 0}
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition"
+            >
+              <Archive className="w-4 h-4" /> Selecionar para arquivar
+            </button>
+          )
+        )}
+      </div>
+
       {/* Alerta de PIX em atraso ou expirado sem pagar — admin decide bloquear manualmente */}
-      {clients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length > 0 && (
+      {activeClients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length > 0 && (
         <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-3 rounded-xl mb-4 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          {clients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length} cliente(s) com pagamento PIX em atraso/expirado — revise e suspenda manualmente se necessário.
+          {activeClients.filter(c => ['past_due', 'expired'].includes(c.planStatus)).length} cliente(s) com pagamento PIX em atraso/expirado — revise e suspenda manualmente se necessário.
         </div>
       )}
 
@@ -1083,15 +1190,62 @@ export default function AdminPage() {
 
       {/* Lista */}
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {clients.length === 0 && (
-          <div className="p-8 text-center text-gray-400 text-sm">Nenhum cliente ainda. Crie o primeiro.</div>
+        {clientsView === 'active' && activeClients.length === 0 && (
+          <div className="p-8 text-center text-gray-400 text-sm">{clients.length === 0 ? 'Nenhum cliente ainda. Crie o primeiro.' : 'Nenhum cliente ativo. Os outros estão em Arquivados.'}</div>
         )}
-        {clients.map(c => {
+        {clientsView === 'archived' && archivedClients.length === 0 && (
+          <div className="p-8 text-center text-gray-400 text-sm">Nenhum cliente arquivado.</div>
+        )}
+        {clientsView === 'archived' && archivedClients.map(c => (
+          <div key={c.id} className="p-4 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-600">{c.displayName || '(sem nome)'}</span>
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">arquivado em {new Date(c.archivedAt).toLocaleDateString('pt-BR')}</span>
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                {c.email && <span className="font-mono mr-2">{c.email}</span>}
+                {c.leadsCount} leads · {c.usersCount} usuário(s)
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleUnarchive(c)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-teal-700 hover:bg-teal-50 transition"
+                title="Volta para a lista de clientes, ainda suspenso"
+              >
+                <ArchiveRestore className="w-3.5 h-3.5" /> Desarquivar
+              </button>
+              <button
+                onClick={() => setDeleteModal({ id: c.id, name: c.displayName })}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                title="Remover cliente"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+        {clientsView === 'active' && activeClients.map(c => {
           const dleft = daysUntilDay(c)
           const dueSoon = dleft !== null && dleft <= 2
           const due = nextDueDate(c)
           return (
-            <div key={c.id} className="p-4 flex items-center justify-between gap-4">
+            <div
+              key={c.id}
+              onClick={selectMode ? () => toggleSelected(c.id) : undefined}
+              className={`p-4 flex items-center justify-between gap-4 ${selectMode ? 'cursor-pointer hover:bg-gray-50' : ''} ${selectMode && selected.has(c.id) ? 'bg-teal-50/60' : ''}`}
+            >
+              {selectMode && (
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  onChange={() => toggleSelected(c.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Selecionar ${c.displayName || 'cliente'}`}
+                  className="w-4 h-4 accent-teal-700 shrink-0"
+                />
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-800">{c.displayName || '(sem nome)'}</span>
@@ -1173,7 +1327,7 @@ export default function AdminPage() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className={`flex items-center gap-1 ${selectMode ? 'pointer-events-none opacity-40' : ''}`}>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(buildOnboardingLink(c.id))
@@ -1222,6 +1376,13 @@ export default function AdminPage() {
                   }`}
                 >
                   {c.isActive ? <><PowerOff className="w-3.5 h-3.5" /> Suspender</> : <><Power className="w-3.5 h-3.5" /> Reativar</>}
+                </button>
+                <button
+                  onClick={() => setArchiveModal({ ids: [c.id], names: [c.displayName || '(sem nome)'] })}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                  title="Arquivar cliente"
+                >
+                  <Archive className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setDeleteModal({ id: c.id, name: c.displayName })}
@@ -1276,6 +1437,39 @@ export default function AdminPage() {
       )}
 
       {/* Modal confirmar exclusão */}
+      {archiveModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Archive className="w-5 h-5 text-gray-700" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 text-center mb-2">
+              Arquivar {archiveModal.ids.length === 1 ? 'cliente' : `${archiveModal.ids.length} clientes`}?
+            </h2>
+            <p className="text-sm text-gray-500 text-center mb-3 break-words">
+              {archiveModal.names.slice(0, 6).join(', ')}{archiveModal.names.length > 6 ? ` e mais ${archiveModal.names.length - 6}` : ''}
+            </p>
+            <ul className="text-sm text-gray-600 bg-gray-50 rounded-xl p-3 mb-5 space-y-1.5 list-disc list-inside">
+              <li>A conta é suspensa: login e IA param na hora.</li>
+              <li>Nenhum lembrete de cobrança nem PIX é enviado.</li>
+              <li>PIX pendente deixa de ser consultado e a tarja some.</li>
+              <li>Follow-ups agendados são cancelados.</li>
+              <li>Leads e mensagens ficam guardados. Dá pra desarquivar, mas o cliente volta suspenso.</li>
+            </ul>
+            <div className="flex gap-2">
+              <button onClick={() => setArchiveModal(null)} disabled={archiving}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+                Cancelar
+              </button>
+              <button onClick={handleArchive} disabled={archiving}
+                className="flex-1 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-900 disabled:opacity-60 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
+                {archiving ? <><Loader2 className="w-4 h-4 animate-spin" /> Arquivando...</> : 'Sim, arquivar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm">

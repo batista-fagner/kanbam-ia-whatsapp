@@ -237,6 +237,21 @@ export const setClientActive = (id, isActive) =>
     body: JSON.stringify({ isActive }),
   }).then(json)
 
+// Arquivar/desarquivar em lote. Arquivar suspende a conta e silencia cobrança, PIX e follow-ups.
+export const archiveClients = (ids) =>
+  authFetch(`${BASE}/admin/clients/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  }).then(json)
+
+export const unarchiveClients = (ids) =>
+  authFetch(`${BASE}/admin/clients/unarchive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  }).then(json)
+
 export const resetClientPassword = (id, newPassword) =>
   authFetch(`${BASE}/admin/clients/${id}/reset-password`, {
     method: 'PATCH',

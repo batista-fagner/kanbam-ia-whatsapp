@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -127,7 +127,7 @@ export class PaymentsService implements OnModuleInit {
 
   private async _hasPendingCharges(): Promise<boolean> {
     const pendings = await this.configRepo.count({
-      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']), archivedAt: IsNull() },
     });
     if (pendings > 0) return true;
     return (await this.implantacaoRepo.count({ where: { status: 'pending' } })) > 0;
@@ -787,7 +787,7 @@ export class PaymentsService implements OnModuleInit {
 
     // Polling plano mensal (tenants pendentes)
     const pendings = await this.configRepo.find({
-      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']), archivedAt: IsNull() },
     });
     for (const tenant of pendings) {
       // lastPixTxid = txid do ciclo de renovação atual. Sem ele (cliente ainda na 1ª cobrança,
@@ -856,7 +856,8 @@ export class PaymentsService implements OnModuleInit {
   async checkAndReconcileTenantPix(tenantId: string, txid: string): Promise<'confirmed' | 'expired' | 'pending'> {
     const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
     // Sumiu ou já saiu de pendente (pago por outra cadeia/webhook) → nada a fazer, encerra.
-    if (!tenant || !['pending', 'past_due'].includes(tenant.planStatus)) return 'confirmed';
+    // Arquivado: encerra a cadeia sem consultar a Efí e sem mexer no planStatus.
+    if (!tenant || tenant.archivedAt || !['pending', 'past_due'].includes(tenant.planStatus)) return 'confirmed';
 
     const status = await this._efiGetCobStatus(txid); // erro sobe: quem chama decide reagendar
     if (status === 'CONCLUIDA') {
@@ -897,7 +898,7 @@ export class PaymentsService implements OnModuleInit {
     implantacoes: { id: string; txid: string }[];
   }> {
     const pendings = await this.configRepo.find({
-      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']) },
+      where: { paymentMethod: 'pix', planStatus: In(['pending', 'past_due']), archivedAt: IsNull() },
     });
     const implantacoes = await this.implantacaoRepo.find({ where: { status: 'pending' } });
     return {
@@ -1001,6 +1002,7 @@ export class PaymentsService implements OnModuleInit {
   async resendMonthlyPix(tenantId: string): Promise<void> {
     const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new BadRequestException('Cliente não encontrado');
+    if (tenant.archivedAt) throw new BadRequestException('Cliente arquivado — desarquive antes de enviar PIX.');
     if (tenant.paymentMethod !== 'pix') throw new BadRequestException('Cliente não usa PIX');
     if (!tenant.billingPhone) throw new BadRequestException('Cliente sem telefone de cobrança cadastrado');
     // O reset do planStatus pra 'pending' (e do contador de 6h) acontece dentro de
@@ -1608,7 +1610,7 @@ export class PaymentsService implements OnModuleInit {
   }
 
   async listOverdue(): Promise<WhatsappConfig[]> {
-    return this.configRepo.find({ where: { planStatus: 'past_due' } });
+    return this.configRepo.find({ where: { planStatus: 'past_due', archivedAt: IsNull() } });
   }
 
   // ───────────────────────── Página pública /pix/:txid ─────────────────────────

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Arquivar clientes (aba Clientes do Admin)',
+    date: '05/10/2026',
+    detail: 'Novo botão de arquivar em cada cliente e "Selecionar para arquivar" pra marcar vários de uma vez. Arquivar suspende a conta (login e IA param), corta lembrete de cobrança, PIX pendente, follow-ups e lembretes de consulta, e a tarja "PIX expirado" some. Os arquivados ficam na aba "Arquivados" com leads e mensagens guardados; desarquivar devolve o cliente suspenso, e você reativa quando quiser.',
+  },
+  {
     title: 'Claudia Ribeiro: IA parou de pedir foto + aviso de intenção de compra',
     date: '23/09/2026',
     detail: 'A cliente reclamou que a IA pedia foto, a cliente mandava e a IA "não reconhecia". O motivo: o sistema ainda não lê imagens pra essa conta (só a S&A tem), então respondia um texto fixo "não consigo ver imagens" — enquanto o prompt dela continuava mandando pedir foto de novo. Aconteceu 79 vezes em 60 conversas, num caso 4 vezes seguidas (a própria Claudia entrou e escreveu "a IA tá te enlouquecendo"). Pior: quando a cliente só mencionava a foto, a IA chegava a responder "Recebi sua foto" sem ter visto nada. Agora o prompt proíbe pedir foto: informação do cabelo (cor, comprimento, textura) é perguntada por texto, e se a cliente falar de uma foto a IA diz com naturalidade que por aqui ainda não consegue ver e pergunta o que precisa. Também ligado o aviso de intenção de compra pra ela ("quero fechar", "manda o pix", "quero esse"...): só avisa o WhatsApp dela, a IA continua atendendo (diferente da S&A, onde a IA para). O aviso de agendamento também já está ligado. As duas notificações só chegam depois que ela preencher o número no card "Notificação de agendamento" em Configurações.',
@@ -189,6 +194,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },
   { title: 'Claudia Ribeiro: preencher o número de aviso em Configurações', detail: 'Sem o número no card "Notificação de agendamento", os avisos de agendamento e de intenção de compra ficam ligados mas não chegam em ninguém.' },
   { title: 'Ativar o recebimento de mensagem de grupo na instância de onboarding', detail: 'O código do "Relatórios de Grupos" está pronto e testado, mas a instância uazapi que cria os grupos ainda precisa ser reconfigurada manualmente (1x) pra mandar mensagem de grupo pro webhook novo — sem isso, nada é capturado ainda em produção.' },
   { title: 'Provisionar Redis em produção + ligar as filas (BullMQ)', detail: 'Código já deployado, mas QUEUE_ENGINE=legacy-cron em prod por falta de Redis no Railway.' },

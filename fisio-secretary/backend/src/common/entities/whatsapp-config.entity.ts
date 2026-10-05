@@ -197,6 +197,14 @@ export class WhatsappConfig {
   @Column({ name: 'churn_reason', type: 'varchar', nullable: true })
   churnReason: string | null;
 
+  // Cliente arquivado pelo admin (some da lista principal). Arquivar também suspende a conta
+  // (isActive=false) e silencia tudo que sai por ela: lembretes/PIX de cobrança, polling de PIX
+  // pendente, follow-ups e lembretes de consulta, relatório do grupo. Desarquivar NÃO reativa:
+  // a conta volta suspensa e o admin reativa à mão. Não mexe em plan_status — a tarja de PIX
+  // some na UI porque ela só aparece pra cliente não arquivado.
+  @Column({ name: 'archived_at', type: 'timestamp', nullable: true })
+  archivedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

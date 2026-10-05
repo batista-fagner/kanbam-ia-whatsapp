@@ -36,7 +36,7 @@ export class BillingReminderService {
     }
 
     const tenants = await this.configRepo.find({
-      where: { billingPhone: Not(IsNull()), billingDay: Not(IsNull()), isActive: true },
+      where: { billingPhone: Not(IsNull()), billingDay: Not(IsNull()), isActive: true, archivedAt: IsNull() },
     });
 
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));

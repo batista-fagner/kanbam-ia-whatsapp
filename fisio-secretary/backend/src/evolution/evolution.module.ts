@@ -32,6 +32,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
 import { AgentsModule } from '../agents/agents.module';
 import { PromptModulesModule } from '../prompt-modules/prompt-modules.module';
 import { FollowupModule } from '../followup/followup.module';
+import { Followup } from '../common/entities/followup.entity';
 import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-whatsapp.module';
 import { GroupMonitorModule } from '../group-monitor/group-monitor.module';
 import { TenantScheduleModule } from '../schedule/schedule.module';
@@ -40,7 +41,7 @@ import { TenantScheduleModule } from '../schedule/schedule.module';
   imports: [
     HttpModule,
     ConfigModule,
-    TypeOrmModule.forFeature([WhatsappConfig, TokenUsage, Lead, Message, Conversation, BillingEvent, PromptModule, MediaSendError, ClientExtraCharge, ToolExpense]),
+    TypeOrmModule.forFeature([WhatsappConfig, TokenUsage, Lead, Message, Conversation, BillingEvent, PromptModule, MediaSendError, ClientExtraCharge, ToolExpense, Followup]),
     LeadsModule,
     AuthModule,
     AiModule,

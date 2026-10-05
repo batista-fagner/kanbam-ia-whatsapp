@@ -39,7 +39,7 @@ export class GroupMonitorReportService {
   // Separado do cron pra poder rodar manualmente em teste (script standalone) passando
   // uma data específica, sem esperar 18h.
   async runFor(reportDate: string): Promise<{ generated: number; skipped: number }> {
-    const tenants = await this.configRepo.find({ where: { onboardingGroupJid: Not(IsNull()) } });
+    const tenants = await this.configRepo.find({ where: { onboardingGroupJid: Not(IsNull()), archivedAt: IsNull() } });
     const { start, end } = this._dayRangeUtc(reportDate);
 
     let generated = 0;

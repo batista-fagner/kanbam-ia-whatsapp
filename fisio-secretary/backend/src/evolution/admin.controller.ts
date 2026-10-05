@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { WhatsappConfigService } from './whatsapp-config.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,6 +19,7 @@ import { PromptModule } from '../common/entities/prompt-module.entity';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { ClientExtraCharge } from '../common/entities/client-extra-charge.entity';
 import { ToolExpense } from '../common/entities/tool-expense.entity';
+import { Followup } from '../common/entities/followup.entity';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -40,6 +41,7 @@ export class AdminController {
     @InjectRepository(MediaSendError) private readonly mediaSendErrorRepo: Repository<MediaSendError>,
     @InjectRepository(ClientExtraCharge) private readonly extraChargeRepo: Repository<ClientExtraCharge>,
     @InjectRepository(ToolExpense) private readonly toolExpenseRepo: Repository<ToolExpense>,
+    @InjectRepository(Followup) private readonly followupRepo: Repository<Followup>,
   ) {}
 
   // Cria um cliente novo: tenant (whatsapp_config) + usuário operador ligado a ele.
@@ -114,6 +116,7 @@ export class AdminController {
         isTest: t.isTest,
         churnedAt: t.churnedAt,
         churnReason: t.churnReason,
+        archivedAt: t.archivedAt,
         leadsCount,
         usersCount: users.length,
         extraChargesTotal: extra?.total ?? 0,
@@ -139,9 +142,44 @@ export class AdminController {
   // Ativa/suspende um cliente (controle manual de inadimplência)
   @Patch('clients/:id/active')
   async setActive(@Param('id') id: string, @Body() body: { isActive: boolean }) {
+    if (body.isActive) {
+      const current = await this.whatsappConfigService.getByTenant(id);
+      if (current?.archivedAt) throw new BadRequestException('Cliente arquivado — desarquive antes de reativar.');
+    }
     const updated = await this.whatsappConfigService.setActive(id, body.isActive);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true, isActive: updated.isActive };
+  }
+
+  // Arquiva clientes (um ou vários). Suspende a conta e silencia cobrança/PIX/follow-ups —
+  // ver WhatsappConfigService.archive. Follow-ups manuais ainda pendentes são cancelados aqui
+  // porque o disparo deles não olha o tenant, só a linha do follow-up.
+  @Post('clients/archive')
+  async archiveClients(@Body() body: { ids: string[] }) {
+    const ids = this.cleanIds(body?.ids);
+    const archived = await this.whatsappConfigService.archive(ids);
+    if (archived.length) {
+      await this.followupRepo.update(
+        { tenantId: In(archived.map((t) => t.id)), status: 'pending' },
+        { status: 'canceled' },
+      );
+    }
+    return { ok: true, archived: archived.length };
+  }
+
+  @Post('clients/unarchive')
+  async unarchiveClients(@Body() body: { ids: string[] }) {
+    const ids = this.cleanIds(body?.ids);
+    const restored = await this.whatsappConfigService.unarchive(ids);
+    return { ok: true, unarchived: restored.length };
+  }
+
+  private cleanIds(ids: unknown): string[] {
+    if (!Array.isArray(ids)) throw new BadRequestException('Informe a lista de clientes (ids).');
+    const clean = [...new Set(ids.filter((i): i is string => typeof i === 'string' && i.length > 0))];
+    if (!clean.length) throw new BadRequestException('Nenhum cliente selecionado.');
+    if (clean.length > 200) throw new BadRequestException('Máximo de 200 clientes por vez.');
+    return clean;
   }
 
   // Admin reseta a senha de um cliente (sem exigir a senha atual).
@@ -341,7 +379,7 @@ export class AdminController {
         COALESCE(wc.display_name, wc.profile_name, '(sem nome)') AS name,
         wc.origin_source, wc.origin_medium, wc.origin_campaign,
         wc.payment_method, wc.plan_status, wc.is_active,
-        wc.churned_at, wc.churn_reason,
+        wc.churned_at, wc.churn_reason, wc.archived_at,
         COALESCE(wc.plan_value, 390)::float AS plan_value,
         TO_CHAR(wc.next_payment_date, 'YYYY-MM-DD') AS next_payment_date,
         wc.billing_day,
@@ -402,6 +440,8 @@ export class AdminController {
     // não conta como ativo/em atraso/perdido, mesmo que plan_status ainda diga outra coisa.
     const churnedRows = rows.filter((c: any) => c.churned_at);
     const nonChurned = rows.filter((c: any) => !c.churned_at);
+    // Arquivado não é atraso nem perda: foi tirado da operação de propósito.
+    const liveRows = nonChurned.filter((c: any) => !c.archived_at);
     const activeRows = nonChurned.filter((c: any) => c.plan_status === 'active' && c.is_active);
     const mrr = activeRows.reduce((sum: number, c: any) => sum + Number(c.plan_value), 0);
     const tokenCostPeriodBrl = rows.reduce((sum: number, c: any) => sum + c.token_cost_brl, 0);
@@ -420,8 +460,8 @@ export class AdminController {
         toolsCostMonthly,
         marginThisMonth: Number(totals?.revenue_this_month ?? 0) - tokenCostPeriodBrl - toolsCostMonthly,
         activeCount: activeRows.length,
-        pastDueCount: nonChurned.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
-        lostCount: nonChurned.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
+        pastDueCount: liveRows.filter((c: any) => ['past_due', 'expired', 'pending'].includes(c.plan_status)).length,
+        lostCount: liveRows.filter((c: any) => c.plan_status === 'canceled' || !c.is_active).length,
         churnCount: churnedRows.length,
         churnRevenueTotal,
         totalCount: rows.length,

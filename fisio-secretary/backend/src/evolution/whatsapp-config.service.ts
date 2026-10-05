@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { UazapiProvider } from './providers/uazapi.provider';
@@ -91,6 +91,27 @@ export class WhatsappConfigService {
     record.churnedAt = churned ? new Date() : null;
     record.churnReason = churned ? (reason?.trim() || null) : null;
     return this.repo.save(record);
+  }
+
+  // Arquiva clientes em lote: marca archivedAt E suspende a conta (isActive=false), o que já corta
+  // login, resposta da IA, lembrete de cobrança e monitor de conexão. O resto (polling de PIX,
+  // follow-ups, lembretes de consulta, relatório do grupo) filtra por archivedAt. Idempotente:
+  // cliente já arquivado mantém a data original. Devolve só os que mudaram de fato.
+  async archive(tenantIds: string[]): Promise<WhatsappConfig[]> {
+    const records = await this.repo.find({ where: { id: In(tenantIds), archivedAt: IsNull() } });
+    const now = new Date();
+    for (const r of records) {
+      r.archivedAt = now;
+      r.isActive = false;
+    }
+    return records.length ? this.repo.save(records) : [];
+  }
+
+  // Volta pra lista principal, mas continua suspenso: reativar é decisão do admin (botão normal).
+  async unarchive(tenantIds: string[]): Promise<WhatsappConfig[]> {
+    const records = await this.repo.find({ where: { id: In(tenantIds), archivedAt: Not(IsNull()) } });
+    for (const r of records) r.archivedAt = null;
+    return records.length ? this.repo.save(records) : [];
   }
 
   async getActiveToken(): Promise<string> {
