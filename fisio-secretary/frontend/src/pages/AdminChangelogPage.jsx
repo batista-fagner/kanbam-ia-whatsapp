@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tabela de preços: botão Salvar sumia em tabela grande + preço virou obrigatório (S&A)',
+    date: '07/10/2026',
+    detail: 'O botão "Salvar tabela" usava um posicionamento que só aparecia quando rolava até o fim da página — numa tabela com muitos produtos, o Alex ficava no meio da tela e nunca via o botão. Agora ele fica sempre visível, fixo na tela. Também passou a ser obrigatório preencher o preço de cada produto: o campo fica vermelho e o botão de salvar desliga até o preço ser preenchido.',
+  },
+  {
     title: 'Aviso cruzado entre Mídias e Tabela de Preços (S&A Cabelos Naturais)',
     date: '07/10/2026',
     detail: 'Cada mídia sem produto correspondente na Tabela de Preços ganha a tag "sem preço cadastrado", e cada produto sem mídia correspondente ganha "sem mídia cadastrada". Comparação é só por palavra-chave do nome, direto no navegador — sem custo de IA. Ajuda o cliente a lembrar de cadastrar os dois lados juntos quando chega um cabelo novo.',

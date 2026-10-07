@@ -46,6 +46,10 @@ export default function PricesPage() {
   const [savedAt, setSavedAt] = useState(null)
   const [updatedAt, setUpdatedAt] = useState(null)
   const [sim, setSim] = useState({ key: '', gramas: '100', tela: false, payment: 'vista' })
+  // Preço é obrigatório: marca em vermelho assim que o campo perde o foco vazio,
+  // ou em todos de uma vez se tentou salvar sem preencher.
+  const [touchedPrice, setTouchedPrice] = useState({})
+  const [attemptedSave, setAttemptedSave] = useState(false)
   // Nome+legenda de cada mídia — só pra marcar produto sem mídia correspondente
   // (ver utils/priceMediaMatch). [] enquanto carrega ou se não há mídia nenhuma.
   const [mediaLabels, setMediaLabels] = useState([])
@@ -115,10 +119,13 @@ export default function PricesPage() {
     if (form.isActive && form.products.length === 0) return 'Cadastre pelo menos um produto antes de ligar o cálculo automático.'
     return ''
   }
+  // Recalcula a cada mudança pra desabilitar "Salvar" e mostrar o motivo antes
+  // de clicar — não só depois de tentar salvar.
+  const liveError = useMemo(validate, [form])
 
   async function handleSave() {
     const msg = validate()
-    if (msg) { setError(msg); return }
+    if (msg) { setError(msg); setAttemptedSave(true); return }
     setError('')
     setSaving(true)
     try {
@@ -168,7 +175,7 @@ export default function PricesPage() {
   const input = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400'
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto pb-28">
       <h1 className="text-xl font-bold text-gray-800 mb-2">Tabela de preços</h1>
       <p className="text-sm text-gray-500 mb-6">
         Preço de cada cabelo por 100g. A IA entende o que a cliente quer (cabelo, gramatura, forma de pagamento) e o sistema faz a conta com estes valores — ela nunca calcula de cabeça. O que você salvar aqui já vale na próxima mensagem.
@@ -216,10 +223,12 @@ export default function PricesPage() {
           <div className="space-y-2">
             <div className="hidden sm:grid grid-cols-[1fr_160px_36px] gap-2 text-xs font-medium text-gray-500 px-1">
               <span>Nome do cabelo (como a cliente fala)</span>
-              <span>Preço por 100g (à vista)</span>
+              <span>Preço por 100g (à vista) <span className="text-red-500">*</span></span>
               <span />
             </div>
-            {form.products.map((p) => (
+            {form.products.map((p) => {
+              const priceMissing = (touchedPrice[p.uid] || attemptedSave) && !(parseMoney(p.price) > 0)
+              return (
               <div key={p.uid} data-product-uid={p.uid} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_160px_36px] gap-2 items-center transition-colors duration-700 has-[:focus]:bg-pink-50/60 rounded-lg -mx-1 px-1">
                 <input
                   value={p.label}
@@ -232,21 +241,28 @@ export default function PricesPage() {
                   <input
                     value={p.price}
                     onChange={(e) => setProduct(p.uid, { price: e.target.value.replace(/[^\d,.]/g, '') })}
+                    onBlur={() => setTouchedPrice((t) => ({ ...t, [p.uid]: true }))}
                     inputMode="decimal"
-                    placeholder="0,00"
-                    className={`${input} pl-9`}
+                    placeholder="0,00 (obrigatório)"
+                    aria-required="true"
+                    className={`${input} pl-9 ${priceMissing ? 'border-red-300 focus:ring-red-500/30 focus:border-red-400' : ''}`}
                   />
                 </div>
                 <button onClick={() => removeProduct(p.uid)} title="Remover produto" className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg justify-self-end">
                   <Trash2 className="w-4 h-4" />
                 </button>
+                {priceMissing && (
+                  <p className="flex items-center gap-1 text-xs text-red-600 col-span-2 sm:col-span-3 -mt-1">
+                    <AlertCircle className="w-3 h-3" /> preço por 100g é obrigatório
+                  </p>
+                )}
                 {mediaLabels.length > 0 && p.label.trim() && !hasKeywordMatch(p.label, mediaLabels) && (
                   <p className="flex items-center gap-1 text-xs text-amber-600 col-span-2 sm:col-span-3 -mt-1" title="O nome deste produto não bateu com nenhuma mídia cadastrada. Pode ser falso alarme — confira.">
                     <AlertCircle className="w-3 h-3" /> sem mídia cadastrada
                   </p>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
@@ -324,13 +340,16 @@ export default function PricesPage() {
         <span>Se o preço também aparece escrito na legenda de algum vídeo ou foto em <b>Mídias</b>, atualize a legenda também — senão a cliente vê um valor no vídeo e recebe outro na conversa.</span>
       </div>
 
-      {/* Barra de salvar */}
-      <div className="sticky bottom-4 z-20 mt-6">
-        <div>
-          <div className="bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      {/* Barra de salvar — fixa na tela (não "sticky": numa tabela grande o
+          usuário fica rolando no meio da página e nunca chega onde ela ficaria) */}
+      <div className="fixed bottom-0 left-16 right-0 z-20 pointer-events-none">
+        <div className="max-w-4xl mx-auto px-4 sm:px-8 pb-4">
+          <div className="pointer-events-auto bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs min-w-0">
               {error ? (
                 <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{error}</span>
+              ) : liveError && dirty ? (
+                <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{liveError}</span>
               ) : dirty ? (
                 <span className="text-amber-700">Alterações não salvas</span>
               ) : savedAt ? (
@@ -341,7 +360,7 @@ export default function PricesPage() {
             </div>
             <button
               onClick={handleSave}
-              disabled={saving || !dirty}
+              disabled={saving || !dirty || !!liveError}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-medium hover:bg-pink-700 disabled:opacity-50"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
