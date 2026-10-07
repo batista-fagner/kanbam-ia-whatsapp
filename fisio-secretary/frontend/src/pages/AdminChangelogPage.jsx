@@ -9,7 +9,7 @@ const DONE = [
   {
     title: 'Respostas da IA em bolhas, ligadas por cliente (teste: Tiago Adan)',
     date: '07/10/2026',
-    detail: 'Nova opção "Respostas em bolhas" no painel do cliente (Admin → Clientes → detalhes). Ligada, a IA quebra respostas longas em até 3 mensagens curtas (~150 caracteres cada) e o WhatsApp mostra "digitando…" antes de cada uma, no tempo de uma pessoa digitando — mesmo modelo do CRM do Marcel. Vale pros dois tipos de prompt (único e por módulos), sem precisar reescrever o prompt do cliente. De quebra, corrigido um bug: quando a IA mandava 4 bolhas ou mais, o texto a partir da 4ª se perdia; agora é juntado na última. Listas com "•" também não viram mais uma mensagem por item.',
+    detail: 'Nova opção "Respostas em bolhas" no painel do cliente (Admin → Clientes → detalhes). Ligada, a IA quebra respostas com mais de uma frase em até 3 mensagens curtas (~150 caracteres cada) e simula uma pessoa digitando: o "digitando…" aparece antes de cada bolha, para um instante e volta (como quem apaga e reescreve), a ~110 ms por caractere — uma frase de 150 caracteres leva uns 15-20s; uma resposta de 3 bolhas pode levar 30-50s. Mesmo modelo do CRM do Marcel, testado e aprovado com o Tiago Adan. Vale pros dois tipos de prompt (único e por módulos), sem precisar reescrever o prompt do cliente. De quebra, corrigido um bug: quando a IA mandava 4 bolhas ou mais, o texto a partir da 4ª se perdia; agora é juntado na última. Listas com "•" também não viram mais uma mensagem por item.',
   },
   {
     title: 'Tabela de preços: confirmação antes de excluir produto (S&A)',
