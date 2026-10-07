@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { IWhatsAppProvider } from './providers/whatsapp-provider.interface';
 import { splitBubbles } from '../ai/bubble-rule';
+import { buildTypingPlan, pauseBetweenBubbles } from './typing-plan';
 
 // Alguns prompts instruem a IA a citar "action=send_media com mediaName=X" em
 // prosa (pra explicar quando enviar mídia) — o modelo às vezes generaliza esse
@@ -18,18 +19,14 @@ const LEAKED_FIELD_RE = /^(action|mediaName)\s*=/i;
 // 1ª bolha/mensagem única).
 const DYNAMIC_TYPING_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 
-// ~55ms/caractere (digitação de celular), piso de 2s — com o piso antigo de 1,2s
-// uma bolha curta ("Quantas gramas você costuma usar?") aparecia quase colada na
-// anterior e parecia robô. A pausa antes de começar a digitar simula o tempo de
-// "reler" a bolha anterior.
-const TYPING_MS_PER_CHAR = 55;
-const TYPING_MIN_MS = 2000;
-const TYPING_MAX_MS = 7000;
-const PAUSE_BETWEEN_BUBBLES_MS = 800;
-
-function computeTypingDurationMs(text: string): number {
-  const raw = (text?.length ?? 0) * TYPING_MS_PER_CHAR;
-  return Math.min(TYPING_MAX_MS, Math.max(TYPING_MIN_MS, raw));
+// Tempo de digitação humanizado (digita, hesita, volta a digitar) — ver typing-plan.ts.
+// Antes era 1 composing só, proporcional ao tamanho: uma frase de 146 caracteres
+// aparecia depois de poucos segundos de "digitando" contínuo e parecia robô.
+async function simulateTyping(provider: IWhatsAppProvider, phone: string, text: string, token?: string): Promise<void> {
+  for (const step of buildTypingPlan(text)) {
+    if (step.type === 'type') await provider.sendTypingIndicator(phone, step.ms, token);
+    await new Promise(r => setTimeout(r, step.ms));
+  }
 }
 
 @Injectable()
@@ -49,11 +46,7 @@ export class EvolutionService {
     const dynamicTyping = !!opts?.dynamicTyping || (!!tenantId && DYNAMIC_TYPING_TENANT_IDS.includes(tenantId));
 
     if (!text?.includes('|||')) {
-      if (dynamicTyping) {
-        const duration = computeTypingDurationMs(text);
-        await this.provider.sendTypingIndicator(phone, duration, token);
-        await new Promise(r => setTimeout(r, duration));
-      }
+      if (dynamicTyping) await simulateTyping(this.provider, phone, text, token);
       return this.provider.sendTextMessage(phone, text, token);
     }
     const allBubbles = text.split('|||').map(b => b.trim()).filter(Boolean);
@@ -65,11 +58,9 @@ export class EvolutionService {
     }
     for (let i = 0; i < bubbles.length; i++) {
       if (dynamicTyping) {
-        if (i > 0) await new Promise(r => setTimeout(r, PAUSE_BETWEEN_BUBBLES_MS));
-        const duration = computeTypingDurationMs(bubbles[i]);
-        this.logger.log(`[BOLHAS] ${i + 1}/${bubbles.length} (${bubbles[i].length} chars) digitando ${duration}ms para ${phone}`);
-        await this.provider.sendTypingIndicator(phone, duration, token);
-        await new Promise(r => setTimeout(r, duration));
+        if (i > 0) await new Promise(r => setTimeout(r, pauseBetweenBubbles()));
+        this.logger.log(`[BOLHAS] ${i + 1}/${bubbles.length} (${bubbles[i].length} chars) para ${phone}`);
+        await simulateTyping(this.provider, phone, bubbles[i], token);
       } else if (i > 0) {
         await this.provider.sendTypingIndicator(phone, 2500, token);
         await new Promise(r => setTimeout(r, 2500));
