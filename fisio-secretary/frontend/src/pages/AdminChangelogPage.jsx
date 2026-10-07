@@ -9,7 +9,7 @@ const DONE = [
   {
     title: 'Tabela de preços: botão Salvar sumia em tabela grande + preço virou obrigatório (S&A)',
     date: '07/10/2026',
-    detail: 'O botão "Salvar tabela" usava um posicionamento que só aparecia quando rolava até o fim da página — numa tabela com muitos produtos, o Alex ficava no meio da tela e nunca via o botão. Agora ele fica sempre visível, fixo na tela. Também passou a ser obrigatório preencher o preço de cada produto: o campo fica vermelho e o botão de salvar desliga até o preço ser preenchido.',
+    detail: 'O botão "Salvar tabela" usava um posicionamento que só aparecia quando rolava até o fim da página — numa tabela com muitos produtos, o Alex ficava no meio da tela e nunca via o botão. Agora o botão fica logo abaixo da lista de produtos (junto com um segundo "Adicionar produto") e no fim do card de acréscimos. Também passou a ser obrigatório preencher o preço de cada produto: o campo fica vermelho e o botão de salvar desliga até o preço ser preenchido.',
   },
   {
     title: 'Aviso cruzado entre Mídias e Tabela de Preços (S&A Cabelos Naturais)',

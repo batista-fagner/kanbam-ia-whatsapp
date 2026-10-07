@@ -172,10 +172,38 @@ export default function PricesPage() {
     return <div className="p-8 flex items-center gap-2 text-gray-500 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Carregando tabela…</div>
   }
 
+  // Linha de salvar: fica logo abaixo do que a pessoa está editando (lista de
+  // produtos e acréscimos), não flutuando no rodapé da tela.
+  const saveRow = (
+    <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+      <div className="text-xs min-w-0">
+        {error ? (
+          <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{error}</span>
+        ) : liveError && dirty ? (
+          <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{liveError}</span>
+        ) : dirty ? (
+          <span className="text-amber-700">Alterações não salvas</span>
+        ) : savedAt ? (
+          <span className="flex items-center gap-1.5 text-green-700"><CheckCircle2 className="w-4 h-4" /> Salvo — já vale na próxima mensagem da IA</span>
+        ) : updatedAt ? (
+          <span className="text-gray-400">Última alteração em {new Date(updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+        ) : null}
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={saving || !dirty || !!liveError}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-medium hover:bg-pink-700 disabled:opacity-50"
+      >
+        {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+        Salvar tabela
+      </button>
+    </div>
+  )
+
   const input = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400'
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto pb-28">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
       <h1 className="text-xl font-bold text-gray-800 mb-2">Tabela de preços</h1>
       <p className="text-sm text-gray-500 mb-6">
         Preço de cada cabelo por 100g. A IA entende o que a cliente quer (cabelo, gramatura, forma de pagamento) e o sistema faz a conta com estes valores — ela nunca calcula de cabeça. O que você salvar aqui já vale na próxima mensagem.
@@ -265,6 +293,11 @@ export default function PricesPage() {
             )})}
           </div>
         )}
+
+        <button onClick={addProduct} className="mt-3 flex items-center gap-1.5 text-sm font-medium text-pink-600 hover:text-pink-700">
+          <Plus className="w-4 h-4" /> Adicionar produto
+        </button>
+        {saveRow}
       </div>
 
       {/* Regras */}
@@ -293,6 +326,7 @@ export default function PricesPage() {
             <input value={form.gramStep} onChange={(e) => setForm({ ...form, gramStep: e.target.value.replace(/\D/g, '') })} inputMode="numeric" className={`${input} mt-1`} />
           </label>
         </div>
+        {saveRow}
       </div>
 
       {/* Simulador */}
@@ -340,35 +374,6 @@ export default function PricesPage() {
         <span>Se o preço também aparece escrito na legenda de algum vídeo ou foto em <b>Mídias</b>, atualize a legenda também — senão a cliente vê um valor no vídeo e recebe outro na conversa.</span>
       </div>
 
-      {/* Barra de salvar — fixa na tela (não "sticky": numa tabela grande o
-          usuário fica rolando no meio da página e nunca chega onde ela ficaria) */}
-      <div className="fixed bottom-0 left-16 right-0 z-20 pointer-events-none">
-        <div className="max-w-4xl mx-auto px-4 sm:px-8 pb-4">
-          <div className="pointer-events-auto bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs min-w-0">
-              {error ? (
-                <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{error}</span>
-              ) : liveError && dirty ? (
-                <span className="flex items-center gap-1.5 text-red-600"><AlertCircle className="w-4 h-4 shrink-0" />{liveError}</span>
-              ) : dirty ? (
-                <span className="text-amber-700">Alterações não salvas</span>
-              ) : savedAt ? (
-                <span className="flex items-center gap-1.5 text-green-700"><CheckCircle2 className="w-4 h-4" /> Salvo — já vale na próxima mensagem da IA</span>
-              ) : updatedAt ? (
-                <span className="text-gray-400">Última alteração em {new Date(updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
-              ) : null}
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving || !dirty || !!liveError}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-medium hover:bg-pink-700 disabled:opacity-50"
-            >
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              Salvar tabela
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
