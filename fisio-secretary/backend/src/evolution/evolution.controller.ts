@@ -953,7 +953,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
     const finalReply = mediaNotFoundFallback ?? aiResponse.reply;
     this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${finalReply.substring(0, 60)}...`);
-    await this.evolutionService.sendTextMessage(phone, finalReply, tenantToken, tenantId);
+    await this.evolutionService.sendTextMessage(phone, finalReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);
 
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', finalReply.replace(/\|\|\|/g, '\n\n'));
