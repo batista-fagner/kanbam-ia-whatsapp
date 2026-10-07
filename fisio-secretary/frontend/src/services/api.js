@@ -281,6 +281,13 @@ export const clearClientPastDue = (id) =>
   authFetch(`${BASE}/admin/clients/${id}/clear-past-due`, { method: 'PATCH' }).then(json)
 
 // --- Drawer do cliente: teste/lead, churn, serviços extras ---
+export const updateClientBubbleMode = (id, bubbleMode) =>
+  authFetch(`${BASE}/admin/clients/${id}/bubble-mode`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bubbleMode }),
+  }).then(json)
+
 export const updateClientTestFlag = (id, isTest) =>
   authFetch(`${BASE}/admin/clients/${id}/test-flag`, {
     method: 'PATCH',

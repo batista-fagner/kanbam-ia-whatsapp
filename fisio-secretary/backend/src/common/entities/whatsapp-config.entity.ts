@@ -113,6 +113,12 @@ export class WhatsappConfig {
   @Column({ name: 'scheduling_handoff_enabled', type: 'boolean', default: false })
   schedulingHandoffEnabled: boolean;
 
+  // Respostas da IA em "bolhas" (várias mensagens curtas em vez de 1 bloco grande):
+  // acrescenta BUBBLE_RULE_BLOCK (ai/bubble-rule.ts) ao prompt e liga o "digitando..."
+  // proporcional antes de cada bolha. Ligado por cliente no Admin (painel do cliente).
+  @Column({ name: 'bubble_mode', type: 'boolean', default: false })
+  bubbleMode: boolean;
+
   // --- Pagamento Stripe (D2) ---
   @Column({ name: 'stripe_customer_id', type: 'varchar', nullable: true })
   stripeCustomerId: string | null;

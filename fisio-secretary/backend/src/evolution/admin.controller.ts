@@ -114,6 +114,7 @@ export class AdminController {
         planValue: t.planValue,
         createdAt: t.createdAt, // "cliente desde" — usado na aba Financeiro
         isTest: t.isTest,
+        bubbleMode: t.bubbleMode,
         churnedAt: t.churnedAt,
         churnReason: t.churnReason,
         archivedAt: t.archivedAt,
@@ -228,6 +229,14 @@ export class AdminController {
     const updated = await this.whatsappConfigService.setTestFlag(id, body.isTest);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true, isTest: updated.isTest };
+  }
+
+  // Liga/desliga respostas da IA em bolhas (várias mensagens curtas) — ver ai/bubble-rule.ts.
+  @Patch('clients/:id/bubble-mode')
+  async setBubbleMode(@Param('id') id: string, @Body() body: { bubbleMode: boolean }) {
+    const updated = await this.whatsappConfigService.setBubbleMode(id, !!body.bubbleMode);
+    if (!updated) throw new BadRequestException('Cliente não encontrado');
+    return { ok: true, bubbleMode: updated.bubbleMode };
   }
 
   // Marca/desmarca churn manual — cliente que pagou ao menos 1 vez e saiu. Sai do MRR/ativos

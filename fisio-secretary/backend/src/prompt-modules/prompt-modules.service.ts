@@ -9,6 +9,7 @@ import { MediaService } from '../media/media.service';
 import { PriceConfig } from '../common/entities/price-config.entity';
 import { buildPriceCatalogBlock } from '../pricing/price-calc';
 import { applyPriceQuotes } from '../pricing/price-quote-applier';
+import { BUBBLE_RULE_BLOCK } from '../ai/bubble-rule';
 
 type ModuleInput = Partial<Pick<PromptModule, 'name' | 'isCore' | 'keywords' | 'content' | 'isActive' | 'sortOrder' | 'injectsMediaCatalog' | 'injectsDateTable'>>;
 
@@ -208,7 +209,7 @@ export class PromptModulesService {
     return hasAnyCaption(media) ? `${base}\n${CAPTION_PRICE_RULE}` : base;
   }
 
-  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[], priceConfig?: PriceConfig | null): string {
+  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[], priceConfig?: PriceConfig | null, bubbleMode = false): string {
     const moduleBlocks = selected.map((m) => {
       if (!m.injectsMediaCatalog) return m.content;
       return [m.content, this.buildMediaCatalogBlock(media)].filter(Boolean).join('\n\n');
@@ -226,7 +227,9 @@ export class PromptModulesService {
       : buildMiniDateBlock();
     const hasPriceCalc = !!(priceConfig?.isActive && priceConfig.products.length);
     const priceBlock = hasPriceCalc ? buildPriceCatalogBlock(priceConfig!) : '';
-    const parts = [core?.content ?? '', ...moduleBlocks, priceBlock, buildJsonSchema(hasPriceCalc), dateTail];
+    // Regra de bolhas é estática (por tenant) — fica antes do bloco de data pra não quebrar o cache.
+    const bubbleBlock = bubbleMode ? BUBBLE_RULE_BLOCK : '';
+    const parts = [core?.content ?? '', ...moduleBlocks, priceBlock, buildJsonSchema(hasPriceCalc), bubbleBlock, dateTail];
     return parts.filter((p) => p?.trim()).join('\n\n');
   }
 
@@ -247,6 +250,7 @@ export class PromptModulesService {
     lead: Lead,
     message: string,
     imageUrl?: string,
+    bubbleMode = false,
   ): Promise<{ aiResponse: AiResponse; moduleNames: string[]; freshNames: string[] } | null> {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) return null;
@@ -258,7 +262,7 @@ export class PromptModulesService {
       ? await this.mediaService.listAll(tenantId)
       : [];
     const priceConfig = await this.getActivePriceConfig(tenantId);
-    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig, bubbleMode);
 
     // Imagem só entra no conteúdo multimodal desta chamada — o que fica
     // persistido em lead.aiContext (via aiService.buildUpdatedContext, chamado

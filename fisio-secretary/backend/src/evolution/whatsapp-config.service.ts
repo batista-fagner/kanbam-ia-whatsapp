@@ -83,6 +83,13 @@ export class WhatsappConfigService {
     return this.repo.save(record);
   }
 
+  async setBubbleMode(tenantId: string, bubbleMode: boolean): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.bubbleMode = bubbleMode;
+    return this.repo.save(record);
+  }
+
   // Churn manual — pagou ao menos 1 vez, mas saiu. Prioridade sobre plan_status/is_active
   // na hora de classificar o cliente na tela Financeiro (ver admin.controller.ts).
   async setChurn(tenantId: string, churned: boolean, reason?: string | null): Promise<WhatsappConfig | null> {

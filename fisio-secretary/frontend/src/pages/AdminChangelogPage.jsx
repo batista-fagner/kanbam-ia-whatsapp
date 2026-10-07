@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Respostas da IA em bolhas, ligadas por cliente (teste: Tiago Adan)',
+    date: '07/10/2026',
+    detail: 'Nova opção "Respostas em bolhas" no painel do cliente (Admin → Clientes → detalhes). Ligada, a IA quebra respostas longas em até 3 mensagens curtas (~150 caracteres cada) e o WhatsApp mostra "digitando…" antes de cada uma, no tempo de uma pessoa digitando — mesmo modelo do CRM do Marcel. Vale pros dois tipos de prompt (único e por módulos), sem precisar reescrever o prompt do cliente. De quebra, corrigido um bug: quando a IA mandava 4 bolhas ou mais, o texto a partir da 4ª se perdia; agora é juntado na última. Listas com "•" também não viram mais uma mensagem por item.',
+  },
+  {
     title: 'Tabela de preços: confirmação antes de excluir produto (S&A)',
     date: '07/10/2026',
     detail: 'Clicar na lixeira de um produto agora abre uma janela de confirmação com o nome e o preço dele, em vez de apagar direto. Linha nova ainda em branco continua saindo sem perguntar.',
@@ -214,6 +219,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },
   { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },
   { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },
   { title: 'Claudia Ribeiro: preencher o número de aviso em Configurações', detail: 'Sem o número no card "Notificação de agendamento", os avisos de agendamento e de intenção de compra ficam ligados mas não chegam em ninguém.' },

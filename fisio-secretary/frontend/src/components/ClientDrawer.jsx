@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Loader2, Trash2, Plus, AlertTriangle, FlaskConical } from 'lucide-react'
+import { X, Loader2, Trash2, Plus, AlertTriangle, FlaskConical, MessagesSquare } from 'lucide-react'
 import {
   updateClientTestFlag,
+  updateClientBubbleMode,
   updateClientChurn,
   getClientExtraCharges,
   addClientExtraCharge,
@@ -20,6 +21,11 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
   const [churned, setChurned] = useState(!!(client?.churnedAt))
   const [churnReason, setChurnReason] = useState(client?.churnReason || '')
   const [savingTest, setSavingTest] = useState(false)
+  // bubbleMode só vem na lista da aba Clientes (/admin/clients); na aba Financeiro
+  // o campo não existe e a opção fica escondida pra não mostrar "desligado" errado.
+  const hasBubbleField = client?.bubbleMode !== undefined
+  const [bubbleMode, setBubbleMode] = useState(!!client?.bubbleMode)
+  const [savingBubble, setSavingBubble] = useState(false)
   const [savingChurn, setSavingChurn] = useState(false)
   const [charges, setCharges] = useState([])
   const [loadingCharges, setLoadingCharges] = useState(true)
@@ -54,6 +60,15 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
       setIsTest(next)
       onChanged?.()
     } catch (e) { setError(e.message) } finally { setSavingTest(false) }
+  }
+
+  async function handleToggleBubble(next) {
+    setSavingBubble(true); setError('')
+    try {
+      await updateClientBubbleMode(client.id, next)
+      setBubbleMode(next)
+      onChanged?.()
+    } catch (e) { setError(e.message) } finally { setSavingBubble(false) }
   }
 
   async function handleToggleChurn(next) {
@@ -140,6 +155,25 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
             </label>
             <p className="text-xs text-gray-400 mt-1.5">Exclui esse cliente por completo da tela Financeiro (MRR, receita, listas) — nunca pagou de verdade.</p>
           </div>
+
+          {/* Respostas em bolhas */}
+          {hasBubbleField && (
+            <div className="mb-5 border border-gray-200 rounded-xl p-4">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <MessagesSquare className="w-4 h-4 text-pink-400" /> Respostas em bolhas
+                </span>
+                <input
+                  type="checkbox"
+                  checked={bubbleMode}
+                  disabled={savingBubble}
+                  onChange={e => handleToggleBubble(e.target.checked)}
+                  className="w-4 h-4 accent-pink-600"
+                />
+              </label>
+              <p className="text-xs text-gray-400 mt-1.5">A IA quebra respostas longas em até 3 mensagens curtas (~150 caracteres), com "digitando…" antes de cada uma. Vale na próxima mensagem.</p>
+            </div>
+          )}
 
           {/* Churn */}
           <div className="mb-5 border border-gray-200 rounded-xl p-4">

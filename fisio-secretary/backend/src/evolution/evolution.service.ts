@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { IWhatsAppProvider } from './providers/whatsapp-provider.interface';
+import { splitBubbles } from '../ai/bubble-rule';
 
 // Alguns prompts instruem a IA a citar "action=send_media com mediaName=X" em
 // prosa (pra explicar quando enviar mídia) — o modelo às vezes generaliza esse
@@ -10,9 +11,11 @@ import type { IWhatsAppProvider } from './providers/whatsapp-provider.interface'
 const LEAKED_FIELD_RE = /^(action|mediaName)\s*=/i;
 
 // Typing indicator com duração dinâmica (proporcional ao tamanho do texto, como
-// um humano digitando) — pedido pontual da demo de prospecção ativa
-// (claudia_teste@hotmail.com). Nos demais tenants mantém o comportamento antigo
-// (bolha fixa de 2500ms, sem indicador antes da 1ª bolha/mensagem única).
+// um humano digitando) — começou como pedido pontual da demo de prospecção ativa
+// (claudia_teste@hotmail.com) e hoje também vale pra todo tenant com
+// bubble_mode ligado (quem chama passa opts.dynamicTyping). Nos demais tenants
+// mantém o comportamento antigo (bolha fixa de 2500ms, sem indicador antes da
+// 1ª bolha/mensagem única).
 const DYNAMIC_TYPING_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 
 const TYPING_MS_PER_CHAR = 45;
@@ -34,11 +37,11 @@ export class EvolutionService {
 
   // Suporte a "bolhas": se o prompt do agente marcar quebras com "|||" (resposta
   // longa demais pra 1 mensagem só), envia como várias mensagens WhatsApp em
-  // sequência (máx. 3), com indicador de "digitando..." + delay maior entre elas —
+  // sequência (máx. 3, listas "•" ficam numa bolha só), com indicador de "digitando..." + delay maior entre elas —
   // mais natural que 1 texto gigante. Sem "|||" no texto, comportamento idêntico
   // ao de sempre (1 chamada, sem delay).
-  async sendTextMessage(phone: string, text: string, token?: string, tenantId?: string): Promise<void> {
-    const dynamicTyping = !!tenantId && DYNAMIC_TYPING_TENANT_IDS.includes(tenantId);
+  async sendTextMessage(phone: string, text: string, token?: string, tenantId?: string, opts?: { dynamicTyping?: boolean }): Promise<void> {
+    const dynamicTyping = !!opts?.dynamicTyping || (!!tenantId && DYNAMIC_TYPING_TENANT_IDS.includes(tenantId));
 
     if (!text?.includes('|||')) {
       if (dynamicTyping) {
@@ -49,7 +52,9 @@ export class EvolutionService {
       return this.provider.sendTextMessage(phone, text, token);
     }
     const allBubbles = text.split('|||').map(b => b.trim()).filter(Boolean);
-    const bubbles = allBubbles.filter(b => !LEAKED_FIELD_RE.test(b)).slice(0, 3);
+    // Teto de 3 bolhas: o excedente é juntado na última (antes era cortado e o
+    // texto da 4ª bolha em diante se perdia sem aviso).
+    const bubbles = splitBubbles(allBubbles.filter(b => !LEAKED_FIELD_RE.test(b)).join('|||'), 3);
     if (bubbles.length < allBubbles.length) {
       this.logger.warn(`[BOLHAS] Bolha com campo JSON vazado descartada antes do envio (tenant ${tenantId ?? 'N/A'}): "${allBubbles.find(b => LEAKED_FIELD_RE.test(b))}"`);
     }

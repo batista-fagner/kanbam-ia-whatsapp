@@ -1,3 +1,4 @@
+import { BUBBLE_RULE_BLOCK } from '../ai/bubble-rule';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -576,7 +577,7 @@ export class EvolutionController {
       if (matchedKeyword) {
         this.logger.warn(`[PURCHASE-HANDOFF] "${matchedKeyword}" detectada em "${combinedText.substring(0, 60)}" — encaminhando ${phone} sem IA`);
         const handoffReply = 'Perfeito! Vou deixar tudo encaminhado e o Alex já continua com você pra confirmar certinho, tá bom? 😊';
-        await this.evolutionService.sendTextMessage(phone, handoffReply, tenantToken, tenantId);
+        await this.evolutionService.sendTextMessage(phone, handoffReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', handoffReply);
         await this.leadsService.toggleAi(lead.id, false);
         this.notifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, matchedKeyword);
@@ -630,7 +631,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     let aiResponse: AiResponse | null = null;
     if (instanceConfig?.promptEngine === 'dynamic_modules') {
       try {
-        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, imageDataUri);
+        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, imageDataUri, !!instanceConfig?.bubbleMode);
         if (result) {
           aiResponse = result.aiResponse;
           // Persiste só o sinal deste turno (freshNames), não a união carregada
@@ -694,7 +695,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       // Só carrega a agenda quando a IA pode agendar sozinha — tenant sem agenda
       // configurada (ou desligada) recebe null e o comportamento antigo (09:00 fixo).
       const availabilityBlock = schedulingHandoffEnabled ? null : await this.scheduleService.buildAvailabilityBlock(tenantId);
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, instanceConfig?.customPromptMegaHair ?? undefined, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock);
+      // Regra de bolhas colada no prompt do cliente: fica no prefixo estático (antes
+      // de JSON/extra/data), então não quebra o cache.
+      const megaHairPrompt = instanceConfig?.customPromptMegaHair
+        ? (instanceConfig.bubbleMode ? `${instanceConfig.customPromptMegaHair}\n\n${BUBBLE_RULE_BLOCK}` : instanceConfig.customPromptMegaHair)
+        : undefined;
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, megaHairPrompt, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock);
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
@@ -765,7 +771,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (!available) {
         this.logger.warn(`Reagendamento bloqueado — horário ocupado: ${newDateTime.toISOString()}`);
         const busyReply = `Esse horário também está ocupado (${conflictingEvent}). Tem outro horário de preferência? 😊`;
-        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken, tenantId);
+        await this.evolutionService.sendTextMessage(phone, busyReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', busyReply);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
@@ -811,7 +817,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (shouldIgnoreReply) {
         if (mediaSentCount > 0) await new Promise(r => setTimeout(r, 500));
         this.logger.log(`📤 [SHOULDIGNORE] Enviando ${shouldIgnoreReply.substring(0, 40)}...`);
-        await this.evolutionService.sendTextMessage(phone, shouldIgnoreReply, tenantToken, tenantId);
+        await this.evolutionService.sendTextMessage(phone, shouldIgnoreReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', shouldIgnoreReply.replace(/\|\|\|/g, '\n\n'));
       }
 
@@ -925,7 +931,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         if (aiResponse.reply?.trim()) {
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
-          await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId);
+          await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
           await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', aiResponse.reply.replace(/\|\|\|/g, '\n\n'));
           this.logger.log(`✅ [TEXT REPLY] Resposta enviada para ${phone}`);
         }
