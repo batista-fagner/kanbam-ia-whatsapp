@@ -75,9 +75,21 @@ export default function PricesPage() {
   function setProduct(uid, patch) {
     setForm((f) => ({ ...f, products: f.products.map((p) => (p.uid === uid ? { ...p, ...patch } : p)) }))
   }
+  // Em tabela grande o produto novo entra lá no fim, fora da tela — sem isso o
+  // clique em "Adicionar produto" parece não ter feito nada.
+  const [focusUid, setFocusUid] = useState(null)
   function addProduct() {
-    setForm((f) => ({ ...f, products: [...f.products, { uid: `new-${Date.now()}`, key: null, label: '', price: '' }] }))
+    const uid = `new-${Date.now()}`
+    setForm((f) => ({ ...f, products: [...f.products, { uid, key: null, label: '', price: '' }] }))
+    setFocusUid(uid)
   }
+  useEffect(() => {
+    if (!focusUid) return
+    const el = document.querySelector(`[data-product-uid="${focusUid}"] input`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el?.focus()
+    setFocusUid(null)
+  }, [focusUid, form.products])
   function removeProduct(uid) {
     setForm((f) => ({ ...f, products: f.products.filter((p) => p.uid !== uid) }))
   }
@@ -208,7 +220,7 @@ export default function PricesPage() {
               <span />
             </div>
             {form.products.map((p) => (
-              <div key={p.uid} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_160px_36px] gap-2 items-center">
+              <div key={p.uid} data-product-uid={p.uid} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_160px_36px] gap-2 items-center transition-colors duration-700 has-[:focus]:bg-pink-50/60 rounded-lg -mx-1 px-1">
                 <input
                   value={p.label}
                   onChange={(e) => setProduct(p.uid, { label: e.target.value })}
