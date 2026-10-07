@@ -18,9 +18,14 @@ const LEAKED_FIELD_RE = /^(action|mediaName)\s*=/i;
 // 1ª bolha/mensagem única).
 const DYNAMIC_TYPING_TENANT_IDS = ['1ff3f0b3-52d1-4e89-b7bf-552d0556de29'];
 
-const TYPING_MS_PER_CHAR = 45;
-const TYPING_MIN_MS = 1200;
-const TYPING_MAX_MS = 6000;
+// ~55ms/caractere (digitação de celular), piso de 2s — com o piso antigo de 1,2s
+// uma bolha curta ("Quantas gramas você costuma usar?") aparecia quase colada na
+// anterior e parecia robô. A pausa antes de começar a digitar simula o tempo de
+// "reler" a bolha anterior.
+const TYPING_MS_PER_CHAR = 55;
+const TYPING_MIN_MS = 2000;
+const TYPING_MAX_MS = 7000;
+const PAUSE_BETWEEN_BUBBLES_MS = 800;
 
 function computeTypingDurationMs(text: string): number {
   const raw = (text?.length ?? 0) * TYPING_MS_PER_CHAR;
@@ -60,7 +65,9 @@ export class EvolutionService {
     }
     for (let i = 0; i < bubbles.length; i++) {
       if (dynamicTyping) {
+        if (i > 0) await new Promise(r => setTimeout(r, PAUSE_BETWEEN_BUBBLES_MS));
         const duration = computeTypingDurationMs(bubbles[i]);
+        this.logger.log(`[BOLHAS] ${i + 1}/${bubbles.length} (${bubbles[i].length} chars) digitando ${duration}ms para ${phone}`);
         await this.provider.sendTypingIndicator(phone, duration, token);
         await new Promise(r => setTimeout(r, duration));
       } else if (i > 0) {

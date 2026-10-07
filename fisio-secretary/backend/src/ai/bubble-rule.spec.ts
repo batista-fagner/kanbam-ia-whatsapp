@@ -62,4 +62,18 @@ describe('EvolutionService.sendTextMessage (bolhas)', () => {
     await p;
     expect(provider.sendTextMessage.mock.calls.map((c) => c[1])).toEqual(['a', 'b', 'c\n\nd']);
   });
+
+  it('bolha curta ainda espera >= 2s digitando, mais a pausa de 0,8s entre bolhas', async () => {
+    const { provider, svc } = make();
+    const p = svc.sendTextMessage('5511999', 'Que legal!|||Quantas gramas?', 'tok', 'tenant-x', { dynamicTyping: true });
+    await jest.advanceTimersByTimeAsync(1999);
+    expect(provider.sendTextMessage).toHaveBeenCalledTimes(0); // 1ª bolha só sai depois de digitar
+    await jest.advanceTimersByTimeAsync(1);
+    expect(provider.sendTextMessage).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(800 + 1999);
+    expect(provider.sendTextMessage).toHaveBeenCalledTimes(1); // 2ª bolha ainda digitando
+    await jest.advanceTimersByTimeAsync(1);
+    await p;
+    expect(provider.sendTextMessage).toHaveBeenCalledTimes(2);
+  });
 });
