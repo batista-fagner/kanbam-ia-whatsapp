@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Loader2, CheckCircle2, AlertCircle, Calculator, Info } from 'lucide-react'
+import { Plus, Trash2, Loader2, CheckCircle2, AlertCircle, Calculator, Info, AlertTriangle, X } from 'lucide-react'
 import { getPriceConfig, savePriceConfig, getMediaList } from '../services/api'
 import { hasKeywordMatch } from '../utils/priceMediaMatch'
 import { useAuth } from '../context/AuthContext'
@@ -97,6 +97,18 @@ export default function PricesPage() {
   function removeProduct(uid) {
     setForm((f) => ({ ...f, products: f.products.filter((p) => p.uid !== uid) }))
   }
+  // Excluir pede confirmação, exceto linha nova ainda vazia (não tem o que perder).
+  const [confirmRemove, setConfirmRemove] = useState(null)
+  function askRemove(p) {
+    if (!p.label.trim() && !p.price) return removeProduct(p.uid)
+    setConfirmRemove(p)
+  }
+  useEffect(() => {
+    if (!confirmRemove) return
+    const onKey = (e) => { if (e.key === 'Escape') setConfirmRemove(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmRemove])
 
   function validate() {
     const names = new Set()
@@ -276,7 +288,7 @@ export default function PricesPage() {
                     className={`${input} pl-9 ${priceMissing ? 'border-red-300 focus:ring-red-500/30 focus:border-red-400' : ''}`}
                   />
                 </div>
-                <button onClick={() => removeProduct(p.uid)} title="Remover produto" className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg justify-self-end">
+                <button onClick={() => askRemove(p)} title="Remover produto" className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg justify-self-end">
                   <Trash2 className="w-4 h-4" />
                 </button>
                 {priceMissing && (
@@ -374,6 +386,53 @@ export default function PricesPage() {
         <span>Se o preço também aparece escrito na legenda de algum vídeo ou foto em <b>Mídias</b>, atualize a legenda também — senão a cliente vê um valor no vídeo e recebe outro na conversa.</span>
       </div>
 
+      {confirmRemove && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(2px)' }}
+          onClick={() => setConfirmRemove(null)}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-red-500 px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-white" />
+                <span className="text-white text-sm font-semibold">Excluir produto</span>
+              </div>
+              <button onClick={() => setConfirmRemove(null)} className="text-white/70 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 py-5">
+              <div className="bg-gray-50 rounded-xl p-3 mb-4 border border-gray-100">
+                <p className="text-sm font-semibold text-gray-800">{confirmRemove.label.trim() || 'Sem nome'}</p>
+                {parseMoney(confirmRemove.price) > 0 && (
+                  <p className="text-xs text-gray-400">{BRL(parseMoney(confirmRemove.price))} por 100g</p>
+                )}
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                A IA deixa de cotar esse produto. A exclusão só vale depois de clicar em
+                <span className="font-medium text-gray-800"> Salvar tabela</span>.
+              </p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button
+                onClick={() => setConfirmRemove(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { removeProduct(confirmRemove.uid); setConfirmRemove(null) }}
+                autoFocus
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

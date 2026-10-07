@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tabela de preços: confirmação antes de excluir produto (S&A)',
+    date: '07/10/2026',
+    detail: 'Clicar na lixeira de um produto agora abre uma janela de confirmação com o nome e o preço dele, em vez de apagar direto. Linha nova ainda em branco continua saindo sem perguntar.',
+  },
+  {
     title: 'Tabela de preços: botão Salvar sumia em tabela grande + preço virou obrigatório (S&A)',
     date: '07/10/2026',
     detail: 'O botão "Salvar tabela" usava um posicionamento que só aparecia quando rolava até o fim da página — numa tabela com muitos produtos, o Alex ficava no meio da tela e nunca via o botão. Agora o botão fica logo abaixo da lista de produtos (junto com um segundo "Adicionar produto") e no fim do card de acréscimos. Também passou a ser obrigatório preencher o preço de cada produto: o campo fica vermelho e o botão de salvar desliga até o preço ser preenchido.',
