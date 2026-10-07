@@ -23,6 +23,7 @@ import CheckoutPage from './pages/CheckoutPage'
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage'
 import PixRenewalPage from './pages/PixRenewalPage'
 import FinanceiroWhatsappPage from './pages/FinanceiroWhatsappPage'
+import PricesPage from './pages/PricesPage'
 import Layout from './components/Layout'
 
 function Routing() {
@@ -56,6 +57,7 @@ function Routing() {
         <Route path="/deleted-leads" element={<DeletedLeadsPage />} />
         <Route path="/mass-message" element={<BulkMessagePage />} />
         <Route path="/media" element={<MediaPage />} />
+        <Route path="/prices" element={<PricesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/admin/prompts" element={<AdminPromptsPage />} />

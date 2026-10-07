@@ -192,6 +192,17 @@ export const updateAppointment = (id, data) =>
 export const deleteAppointment = (id) =>
   authFetch(`${BASE}/appointments/${id}`, { method: 'DELETE' }).then(json)
 
+// --- Tabela de preços (motor de cálculo por gramatura) ---
+export const getPriceConfig = () =>
+  authFetch(`${BASE}/price-config`).then(json)
+
+export const savePriceConfig = (data) =>
+  authFetch(`${BASE}/price-config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(json)
+
 // --- Minha agenda (ScheduleBuilder) ---
 export const getSchedule = () =>
   authFetch(`${BASE}/schedule`).then(json)

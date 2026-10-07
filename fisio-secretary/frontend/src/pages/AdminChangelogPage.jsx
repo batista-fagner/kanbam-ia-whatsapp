@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tabela de preços editável pelo cliente (S&A Cabelos Naturais)',
+    date: '07/10/2026',
+    detail: 'Nova página "Tabela de preços" no menu, onde o próprio cliente cadastra e edita os cabelos, o preço por 100g, tela, cartão e espécie, com um simulador que mostra o valor exato que a IA vai passar. Antes essa tabela só dava pra mudar direto no banco, e o Alex não tinha como atualizar o preço dos cabelos que chegaram. O menu só aparece pra quem já tem tabela cadastrada (hoje, o S&A) e pro admin.',
+  },
+  {
     title: 'Arquivar clientes (aba Clientes do Admin)',
     date: '05/10/2026',
     detail: 'Novo botão de arquivar em cada cliente e "Selecionar para arquivar" pra marcar vários de uma vez. Arquivar suspende a conta (login e IA param), corta lembrete de cobrança, PIX pendente, follow-ups e lembretes de consulta, e a tarja "PIX expirado" some. Os arquivados ficam na aba "Arquivados" com leads e mensagens guardados; desarquivar devolve o cliente suspenso, e você reativa quando quiser.',
@@ -194,6 +199,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },
   { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },
   { title: 'Claudia Ribeiro: preencher o número de aviso em Configurações', detail: 'Sem o número no card "Notificação de agendamento", os avisos de agendamento e de intenção de compra ficam ligados mas não chegam em ninguém.' },
   { title: 'Ativar o recebimento de mensagem de grupo na instância de onboarding', detail: 'O código do "Relatórios de Grupos" está pronto e testado, mas a instância uazapi que cria os grupos ainda precisa ser reconfigurada manualmente (1x) pra mandar mensagem de grupo pro webhook novo — sem isso, nada é capturado ainda em produção.' },

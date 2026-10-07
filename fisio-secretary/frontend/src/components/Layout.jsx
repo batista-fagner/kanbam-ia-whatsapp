@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getInstanceConfig } from '../services/api'
+import { getInstanceConfig, getPriceConfig } from '../services/api'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
 export default function Layout({ onLogout }) {
@@ -19,6 +19,12 @@ export default function Layout({ onLogout }) {
     if (user?.role === 'admin') return
     getInstanceConfig().then(cfg => setPromptEngine(cfg?.promptEngine ?? null)).catch(() => {})
   }, [user?.role])
+  // Tabela de preços só aparece pra quem vende por gramatura (já tem linha em
+  // price_configs, ex: S&A) — pros outros o menu ficaria sem sentido.
+  const [hasPriceConfig, setHasPriceConfig] = useState(false)
+  useEffect(() => {
+    getPriceConfig().then(cfg => setHasPriceConfig(!!cfg?.exists)).catch(() => {})
+  }, [user?.id])
   const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
   // Multi-agente em rollout controlado: visível em localhost e para contas beta.
   // Todos os outros clientes seguem no monólito (o backend também só ativa via
@@ -40,6 +46,7 @@ export default function Layout({ onLogout }) {
     { icon: Calendar, label: 'Calendário', path: '/calendar' },
     { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
     { icon: Image, label: 'Mídias', path: '/media' },
+    ...(hasPriceConfig || user?.role === 'admin' ? [{ icon: Tag, label: 'Tabela de preços', path: '/prices' }] : []),
     { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
     { icon: Settings, label: 'Configurações', path: '/settings' },
     // Multi-agente em rollout controlado — localhost + conta beta

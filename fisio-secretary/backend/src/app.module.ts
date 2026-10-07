@@ -115,6 +115,7 @@ import { QueueModule } from './queue/queue.module';
 import { FinanceiroWhatsappModule } from './financeiro-whatsapp/financeiro-whatsapp.module';
 import { GroupMonitorModule } from './group-monitor/group-monitor.module';
 import { TenantScheduleModule } from './schedule/schedule.module';
+import { PricingModule } from './pricing/pricing.module';
 
 @Module({
   imports: [
@@ -163,6 +164,7 @@ import { TenantScheduleModule } from './schedule/schedule.module';
     PromptModulesModule,
     FinanceiroWhatsappModule,
     TenantScheduleModule,
+    PricingModule,
   ],
 })
 export class AppModule {}

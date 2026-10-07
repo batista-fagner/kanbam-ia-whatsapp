@@ -14,7 +14,7 @@ describe('PIX — cliente arquivado', () => {
     const implantacaoRepo = { findOne: jest.fn(), update: jest.fn(), find: jest.fn().mockResolvedValue([]), count: jest.fn() };
     const config = { get: (k: string) => (k === 'EFI_CLIENT_ID' ? 'fake-id' : undefined) };
     svc = new PaymentsService(
-      configRepo, implantacaoRepo, {} as any, {} as any,
+      configRepo, implantacaoRepo as any, {} as any, {} as any,
       config as any, {} as any, {} as any, { startCheckChain: jest.fn() } as any,
     );
     efi = jest.fn(async () => 'CONCLUIDA');
