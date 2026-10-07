@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2, MessageSquare } from 'lucide-react'
-import { authFetch } from '../services/api'
+import { authFetch, getPriceConfig } from '../services/api'
+import { hasKeywordMatch } from '../utils/priceMediaMatch'
 
 // Extrai code de um link de Instagram (reel/post) ou valida code direto
 function normalizeReelInput(input) {
@@ -27,6 +28,10 @@ function formatSize(bytes) {
 
 export default function MediaPage() {
   const [files, setFiles] = useState([])
+  // Nomes dos produtos da Tabela de Preços — só pra marcar mídia sem produto
+  // correspondente (ver utils/priceMediaMatch). [] quando o tenant não usa a
+  // tabela de preços; nesse caso nenhuma mídia é marcada.
+  const [priceLabels, setPriceLabels] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -58,6 +63,7 @@ export default function MediaPage() {
       setError('Não foi possível carregar as mídias.')
     } finally {
       setLoading(false)
+      getPriceConfig().then(cfg => setPriceLabels(cfg?.exists ? cfg.products.map(p => p.label) : [])).catch(() => {})
     }
   }
 
@@ -408,6 +414,11 @@ export default function MediaPage() {
                   <p className="text-sm text-gray-400 mt-0.5">
                     {file.mimeType} {file.size ? `· ${formatSize(file.size)}` : ''}
                   </p>
+                  {priceLabels.length > 0 && !hasKeywordMatch(`${file.name} ${file.caption ?? ''}`, priceLabels) && (
+                    <p className="flex items-center gap-1 text-xs text-amber-600 mt-1" title="O nome/legenda desta mídia não bateu com nenhum produto da Tabela de Preços. Pode ser falso alarme — confira.">
+                      <AlertCircle className="w-3 h-3" /> sem preço cadastrado
+                    </p>
+                  )}
 
                   {/* Reel codes do Instagram (opcional) */}
                   <div className="mt-2">

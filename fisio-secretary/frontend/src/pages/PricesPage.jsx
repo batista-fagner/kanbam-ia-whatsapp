@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, Loader2, CheckCircle2, AlertCircle, Calculator, Info } from 'lucide-react'
-import { getPriceConfig, savePriceConfig } from '../services/api'
+import { getPriceConfig, savePriceConfig, getMediaList } from '../services/api'
+import { hasKeywordMatch } from '../utils/priceMediaMatch'
 import { useAuth } from '../context/AuthContext'
 
 // Tabela de preços por gramatura (price_configs). A IA identifica produto,
@@ -45,8 +46,12 @@ export default function PricesPage() {
   const [savedAt, setSavedAt] = useState(null)
   const [updatedAt, setUpdatedAt] = useState(null)
   const [sim, setSim] = useState({ key: '', gramas: '100', tela: false, payment: 'vista' })
+  // Nome+legenda de cada mídia — só pra marcar produto sem mídia correspondente
+  // (ver utils/priceMediaMatch). [] enquanto carrega ou se não há mídia nenhuma.
+  const [mediaLabels, setMediaLabels] = useState([])
 
   useEffect(() => {
+    getMediaList().then(list => setMediaLabels((list || []).map(f => `${f.name} ${f.caption ?? ''}`))).catch(() => {})
     getPriceConfig()
       .then((cfg) => {
         const f = cfg.exists ? fromServer(cfg) : EMPTY
@@ -223,6 +228,11 @@ export default function PricesPage() {
                 <button onClick={() => removeProduct(p.uid)} title="Remover produto" className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg justify-self-end">
                   <Trash2 className="w-4 h-4" />
                 </button>
+                {mediaLabels.length > 0 && p.label.trim() && !hasKeywordMatch(p.label, mediaLabels) && (
+                  <p className="flex items-center gap-1 text-xs text-amber-600 col-span-2 sm:col-span-3 -mt-1" title="O nome deste produto não bateu com nenhuma mídia cadastrada. Pode ser falso alarme — confira.">
+                    <AlertCircle className="w-3 h-3" /> sem mídia cadastrada
+                  </p>
+                )}
               </div>
             ))}
           </div>

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Aviso cruzado entre Mídias e Tabela de Preços (S&A Cabelos Naturais)',
+    date: '07/10/2026',
+    detail: 'Cada mídia sem produto correspondente na Tabela de Preços ganha a tag "sem preço cadastrado", e cada produto sem mídia correspondente ganha "sem mídia cadastrada". Comparação é só por palavra-chave do nome, direto no navegador — sem custo de IA. Ajuda o cliente a lembrar de cadastrar os dois lados juntos quando chega um cabelo novo.',
+  },
+  {
     title: 'Tabela de preços editável pelo cliente (S&A Cabelos Naturais)',
     date: '07/10/2026',
     detail: 'Nova página "Tabela de preços" no menu, onde o próprio cliente cadastra e edita os cabelos, o preço por 100g, tela, cartão e espécie, com um simulador que mostra o valor exato que a IA vai passar. Antes essa tabela só dava pra mudar direto no banco, e o Alex não tinha como atualizar o preço dos cabelos que chegaram. O menu só aparece pra quem já tem tabela cadastrada (hoje, o S&A) e pro admin.',
