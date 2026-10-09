@@ -9,7 +9,7 @@ const DONE = [
   {
     title: 'Reconhecimento de imagem ligado na conta de teste (Tiago Adan)',
     date: '09/10/2026',
-    detail: 'A conta do Tiago, usada pra demonstrar a IA a clientes, agora recebe as fotos que a cliente manda, igual ao S&A (Alex), que usa isso em produção desde agosto sem erro. A IA identifica textura e cor pela foto, nunca o tamanho e nunca a origem (brasileiro/vietnamita/indiano), que não dá pra saber só olhando. Pra funcionar, a regra antiga "você NÃO consegue ver imagens" precisa ser trocada no prompt do Tiago.',
+    detail: 'A conta do Tiago, usada pra demonstrar a IA a clientes, agora recebe as fotos que a cliente manda, igual ao S&A (Alex), que usa isso em produção desde agosto sem erro. A IA identifica textura e cor pela foto, nunca o tamanho e nunca a origem (brasileiro/vietnamita/indiano), que não dá pra saber só olhando. A regra antiga do prompt do Tiago ("você NÃO consegue ver imagens") foi trocada pela nova no mesmo dia; o prompt original ficou salvo como backup.',
   },
   {
     title: 'Áudio: transcrição reserva pelo Gemini quando a OpenAI falha (todos os clientes)',
@@ -234,7 +234,6 @@ const DONE = [
 ]
 
 const PENDING = [
-  { title: 'Tiago: trocar a "REGRA DE IMAGEM" do prompt', detail: 'O código já manda a foto pra IA, mas o prompt ainda diz "você NÃO consegue ver imagens". Enquanto o trecho não for trocado, ela continua respondendo que não vê imagens.' },
   { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },
   { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },
   { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },
