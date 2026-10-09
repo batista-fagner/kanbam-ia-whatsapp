@@ -36,6 +36,32 @@ export class AudioService {
     return transcription.text;
   }
 
+  // Reserva da transcrição: a principal é o Whisper da OpenAI rodado pela uazapi
+  // (transcribeAudio). Quando ela volta vazia — ex: conta OpenAI sem crédito, que em
+  // out/2026 deixou ~300 áudios em branco e a IA respondendo no escuro — o áudio vai
+  // pro Gemini, que já é a IA principal e tem chave própria. Custo ~200 tokens/áudio.
+  async transcribeWithGemini(buffer: Buffer, mimeType = 'audio/ogg'): Promise<string> {
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) return '';
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: mimeType.split(';')[0].trim() || 'audio/ogg', data: buffer.toString('base64') } },
+            { text: 'Transcreva exatamente o que é falado neste áudio, em português do Brasil. Responda só com a transcrição, sem comentários. Se não houver fala, responda vazio.' },
+          ],
+        }],
+        generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const json: any = await res.json();
+    return (json?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('').trim();
+  }
+
   private readonly MESES = [
     'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
     'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',

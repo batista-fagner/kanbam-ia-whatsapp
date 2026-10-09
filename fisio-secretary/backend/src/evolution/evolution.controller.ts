@@ -87,6 +87,9 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
   'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
 ];
 
+// Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
+const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouvir — peça com carinho pra ela escrever a mensagem]';
+
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
@@ -392,7 +395,14 @@ export class EvolutionController {
   private async transcribeAndEnqueue(tenantId: string, phone: string, message: any, messageId: string, pushName?: string | null) {
     this.logger.log(`Transcrevendo áudio de ${phone}...`);
     const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
-    const transcribedText = await this.evolutionService.transcribeAudio(message.messageid, tenantToken);
+    let transcribedText = (await this.evolutionService.transcribeAudio(message.messageid, tenantToken).catch((err) => {
+      this.logger.warn(`[AUDIO] Transcrição OpenAI/uazapi falhou pra ${phone}: ${err.message}`);
+      return '';
+    }))?.trim() ?? '';
+    if (!transcribedText) transcribedText = await this.transcribeWithGeminiFallback(phone, message.messageid, tenantToken);
+    // Nunca manda texto vazio pra IA: sem transcrição ela respondia qualquer coisa
+    // (chegou a remarcar agendamento). Com esse aviso ela pede pra cliente escrever.
+    if (!transcribedText) transcribedText = AUDIO_NOT_TRANSCRIBED;
     this.logger.log(`Áudio transcrito de ${phone}: "${transcribedText}"`);
 
     const queueKey = `${tenantId}:${phone}`;
@@ -408,6 +418,20 @@ export class EvolutionController {
         this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
       );
     });
+  }
+
+  private async transcribeWithGeminiFallback(phone: string, messageId: string, tenantToken: string): Promise<string> {
+    try {
+      const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
+      if (!downloaded) return '';
+      const audioResponse = await axios.get(downloaded.fileURL, { responseType: 'arraybuffer' });
+      const text = await this.audioService.transcribeWithGemini(Buffer.from(audioResponse.data), downloaded.mimetype || 'audio/ogg');
+      this.logger.warn(`[AUDIO] Transcrição principal veio vazia pra ${phone} — usada a reserva Gemini (${text.length} chars)`);
+      return text;
+    } catch (err) {
+      this.logger.error(`[AUDIO] Reserva Gemini também falhou pra ${phone}: ${err.message}`);
+      return '';
+    }
   }
 
   private async downloadAndStoreInboundAudio(tenantId: string, phone: string, messageId: string, tenantToken: string, queueKey: string) {

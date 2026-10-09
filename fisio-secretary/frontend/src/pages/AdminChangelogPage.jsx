@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Áudio: transcrição reserva pelo Gemini quando a OpenAI falha (todos os clientes)',
+    date: '09/10/2026',
+    detail: 'A transcrição dos áudios usa a OpenAI, e a conta ficou sem crédito em 07/10: desde então ~300 áudios chegaram em branco e a IA respondia sem saber o que a cliente falou (na conta de teste do Tiago chegou a remarcar o agendamento da lead pra sábado). Agora, se a transcrição vier vazia, o áudio vai pro Gemini, que já é a IA principal (testado com o áudio real: "Oi, bom dia. Você tem foto de cabelo castanho?", custo quase zero). Se os dois falharem, a IA recebe um aviso e pede pra cliente escrever, em vez de responder no escuro.',
+  },
+  {
     title: 'Bolhas no CRM + lembrete de agendamento registrado na conversa',
     date: '08/10/2026',
     detail: 'Nos clientes com "Respostas em bolhas" ligado, a conversa do CRM agora mostra cada bolha da IA como um balão separado, igual ao WhatsApp, e as quebras de linha das mensagens passam a ser respeitadas. O lembrete de agendamento (Regras de alerta) já era enviado ao cliente, mas não ficava gravado: não aparecia no CRM e a IA não sabia que tinha mandado. Agora ele entra na conversa como mensagem do Operador, o card atualiza na hora e a IA enxerga o lembrete se a lead responder.',
@@ -241,6 +246,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Áudios chegando em branco pra IA desde 07/10 (todos os clientes)',
+    date: '09/10/2026',
+    detail: 'Conta da OpenAI sem crédito: a transcrição voltava vazia sem erro e a IA respondia qualquer coisa. Ex: lead da conta Tiago perguntou por áudio se tinha foto de cabelo castanho e a IA remarcou o agendamento dela.',
+    status: 'corrigido',
+  },
   {
     title: 'Claudia Ribeiro: IA pedia foto que o sistema nunca lia (loop de "não consigo ver imagens")',
     date: '23/09/2026',
