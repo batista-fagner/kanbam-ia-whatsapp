@@ -85,6 +85,7 @@ function matchPurchaseHandoffKeyword(text: string): string | null {
 const IMAGE_ANALYSIS_TENANT_IDS = [
   'e624e817-5b6c-4840-b0ea-269eb78afe8d', // alex_teste (sandbox)
   'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
+  '6fac64ce-9189-414a-9ad9-fd2fc102e599', // Tiago Adan (conta de teste p/ demonstração a clientes, 2026-10-09)
 ];
 
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.

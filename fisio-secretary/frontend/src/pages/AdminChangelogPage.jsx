@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Reconhecimento de imagem ligado na conta de teste (Tiago Adan)',
+    date: '09/10/2026',
+    detail: 'A conta do Tiago, usada pra demonstrar a IA a clientes, agora recebe as fotos que a cliente manda, igual ao S&A (Alex), que usa isso em produção desde agosto sem erro. A IA identifica textura e cor pela foto, nunca o tamanho e nunca a origem (brasileiro/vietnamita/indiano), que não dá pra saber só olhando. Pra funcionar, a regra antiga "você NÃO consegue ver imagens" precisa ser trocada no prompt do Tiago.',
+  },
+  {
     title: 'Áudio: transcrição reserva pelo Gemini quando a OpenAI falha (todos os clientes)',
     date: '09/10/2026',
     detail: 'A transcrição dos áudios usa a OpenAI, e a conta ficou sem crédito em 07/10: desde então ~300 áudios chegaram em branco e a IA respondia sem saber o que a cliente falou (na conta de teste do Tiago chegou a remarcar o agendamento da lead pra sábado). Agora, se a transcrição vier vazia, o áudio vai pro Gemini, que já é a IA principal (testado com o áudio real: "Oi, bom dia. Você tem foto de cabelo castanho?", custo quase zero). Se os dois falharem, a IA recebe um aviso e pede pra cliente escrever, em vez de responder no escuro.',
@@ -229,6 +234,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Tiago: trocar a "REGRA DE IMAGEM" do prompt', detail: 'O código já manda a foto pra IA, mas o prompt ainda diz "você NÃO consegue ver imagens". Enquanto o trecho não for trocado, ela continua respondendo que não vê imagens.' },
   { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },
   { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },
   { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },
