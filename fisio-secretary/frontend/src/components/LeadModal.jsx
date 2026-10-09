@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil, Mic, Square } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName } from '../services/api'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName, getInstanceConfig } from '../services/api'
 import { useDemoMode, displayPhone } from '../hooks/useDemoMode'
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -37,6 +37,13 @@ function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// Resposta da IA em "bolhas": o backend grava as bolhas separadas por linha em branco
+// (o "|||" vira "\n\n" ao salvar). No WhatsApp elas chegam como mensagens separadas,
+// então aqui cada trecho vira um balão próprio — só quando o cliente usa o modo bolhas.
+function splitBubbleText(content) {
+  return String(content ?? '').split(/\n{2,}/).map(t => t.trim()).filter(Boolean)
+}
+
 function mapMessages(messages = []) {
   return messages.map(msg => ({
     id: msg.id,
@@ -59,6 +66,10 @@ function mapHistory(history = []) {
 
 export default function LeadModal({ lead, onClose }) {
   const chatRef = useRef(null)
+  const [bubbleMode, setBubbleMode] = useState(false)
+  useEffect(() => {
+    getInstanceConfig().then(cfg => setBubbleMode(!!cfg?.bubbleMode)).catch(() => {})
+  }, [])
   const [aiEnabled, setAiEnabled] = useState(true)
   const [messages, setMessages] = useState([])
   const [history, setHistory] = useState([])
@@ -620,19 +631,27 @@ export default function LeadModal({ lead, onClose }) {
                     </div>
                   )}
                   <div className="max-w-[75%]">
-                    <div className={`px-3.5 py-2.5 rounded-2xl text-sm shadow-sm ${
-                      msg.sender === 'lead'
-                        ? 'bg-white text-gray-800 rounded-tl-sm'
-                        : msg.sender === 'operator'
-                          ? 'bg-teal-600 text-white rounded-tr-sm'
-                          : 'bg-blue-600 text-white rounded-tr-sm'
-                    }`}>
-                      {msg.mediaType === 'audio' && msg.mediaUrl ? (
-                        <audio src={msg.mediaUrl} controls preload="metadata" className="max-w-full h-9" />
-                      ) : (
-                        msg.content
-                      )}
-                    </div>
+                    {(() => {
+                      const bubbleClass = `px-3.5 py-2.5 rounded-2xl text-sm shadow-sm whitespace-pre-line break-words ${
+                        msg.sender === 'lead'
+                          ? 'bg-white text-gray-800 rounded-tl-sm'
+                          : msg.sender === 'operator'
+                            ? 'bg-teal-600 text-white rounded-tr-sm'
+                            : 'bg-blue-600 text-white rounded-tr-sm'
+                      }`
+                      if (msg.mediaType === 'audio' && msg.mediaUrl) {
+                        return <div className={bubbleClass}><audio src={msg.mediaUrl} controls preload="metadata" className="max-w-full h-9" /></div>
+                      }
+                      const parts = bubbleMode && msg.sender === 'ai' ? splitBubbleText(msg.content) : []
+                      if (parts.length > 1) {
+                        return (
+                          <div className="flex flex-col items-end gap-1">
+                            {parts.map((part, i) => <div key={i} className={bubbleClass}>{part}</div>)}
+                          </div>
+                        )
+                      }
+                      return <div className={bubbleClass}>{msg.content}</div>
+                    })()}
                     <div className={`flex items-center gap-1 mt-0.5 ${msg.sender === 'lead' ? 'justify-start' : 'justify-end'}`}>
                       {msg.sender === 'ai' && (
                         <span className="text-[10px] text-gray-400 flex items-center gap-0.5">

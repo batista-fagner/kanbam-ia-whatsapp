@@ -573,6 +573,21 @@ export class FollowupService {
             this.http.post(`${baseUrl}/send/text`, { number: appt.clientPhone, text: message }, { headers: { token } }),
           );
           this.logger.log(`[REMINDER] Enviado → ${appt.clientPhone} (appt ${appt.id}, ${data} ${hora})`);
+
+          // Registra na conversa do lead (aparece no CRM e entra no histórico da IA). Falha aqui
+          // não pode derrubar o loop: o lembrete já foi enviado e reminder_sent_at já está marcado.
+          if (appt.leadId) {
+            try {
+              const conversation = await this.leadsService.getConversationWithMessages(appt.leadId, cfg.id);
+              if (conversation?.id) {
+                await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', message);
+                const lead = await this.leadsService.findOne(appt.leadId, cfg.id);
+                if (lead) this.leadsGateway.emitLeadUpdated(lead);
+              }
+            } catch (err) {
+              this.logger.error(`[REMINDER] Enviado, mas falhou ao gravar na conversa (appt ${appt.id}): ${err?.message ?? err}`);
+            }
+          }
         }
       } catch (err) {
         this.logger.error(`[REMINDER] Falha no tenant ${cfg.id}: ${err?.message ?? err}`);
