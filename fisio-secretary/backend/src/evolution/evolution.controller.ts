@@ -1,4 +1,4 @@
-import { BUBBLE_RULE_BLOCK } from '../ai/bubble-rule';
+import { BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia } from '../ai/bubble-rule';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -90,6 +90,12 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
 
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
 const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouvir — peça com carinho pra ela escrever a mensagem]';
+
+// Tenants em que a resposta que acompanha uma mídia tem no máximo 2 bolhas (ver
+// limitReplyBubblesAfterMedia). HE Cabelos / Heline — pedido do Fagner em 13/10/2026.
+const MEDIA_REPLY_MAX_2_BUBBLES_TENANT_IDS = [
+  '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline Carvalho / HE Cabelos
+];
 
 @Controller('webhooks')
 export class EvolutionController {
@@ -954,6 +960,9 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (mediaResult.sentCount > 0) {
         // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
         if (aiResponse.reply?.trim()) {
+          if (MEDIA_REPLY_MAX_2_BUBBLES_TENANT_IDS.includes(tenantId)) {
+            aiResponse.reply = limitReplyBubblesAfterMedia(aiResponse.reply, 2);
+          }
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
           await this.evolutionService.sendTextMessage(phone, aiResponse.reply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });

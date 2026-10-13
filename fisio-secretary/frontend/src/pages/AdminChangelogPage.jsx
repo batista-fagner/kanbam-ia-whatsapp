@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Heline / HE Cabelos: no máximo 2 bolhas depois de enviar foto ou vídeo',
+    date: '13/10/2026',
+    detail: 'Depois de mandar uma mídia, a IA mandava 3 bolhas de texto e ainda dizia "vou te mostrar" com o cabelo já na tela. Agora a resposta tem no máximo 2 bolhas: uma reação ao que ela está vendo e uma pergunta pra conversa andar. Além do prompt, o sistema corta sozinho as bolhas que só anunciam o envio, porque o modelo não obedecia sempre. Vale só pra HE Cabelos por enquanto.',
+  },
+  {
+    title: 'Heline / HE Cabelos: IA montada com mídias, tabela de preços e o jeito dela de atender',
+    date: '13/10/2026',
+    detail: 'As 56 fotos e vídeos que a Heline mandou no grupo foram pro CRM com legenda (linha do cabelo e faixa de tamanho, sem preço, porque ela corta sob medida). O prompt foi montado no motor de módulos, igual ao S&A, juntando os templates treinados de venda e serviço com o estilo dela: chama de "Diva" e faz 2 a 4 perguntas de autoestima antes do orçamento. Os preços saíram do prompt e foram pra tabela de preços (castanho, Cabelo do Sul, cacheado por encomenda, loiros e os serviços por grama). Ela não agenda aplicação, só visita à loja; aplicação e pagamento vão pra Heline.',
+  },
+  {
     title: 'Reconhecimento de imagem ligado na conta de teste (Tiago Adan)',
     date: '09/10/2026',
     detail: 'A conta do Tiago, usada pra demonstrar a IA a clientes, agora recebe as fotos que a cliente manda, igual ao S&A (Alex), que usa isso em produção desde agosto sem erro. A IA identifica textura e cor pela foto, nunca o tamanho e nunca a origem (brasileiro/vietnamita/indiano), que não dá pra saber só olhando. A regra antiga do prompt do Tiago ("você NÃO consegue ver imagens") foi trocada pela nova no mesmo dia; o prompt original ficou salvo como backup.',
@@ -234,6 +244,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Heline: confirmar preços e dados que faltam', detail: 'O formulário e as tabelas que ela mandou não batem: castanho R$800 x R$900, "Loiro do Sul" R$2.000 só no formulário, "Cabelo do Sul" castanho R$1.500 só na tabela. Ficou a tabela mais recente (12/10). Falta: horário da loja, valor do frete, garantia, valor da fita adesiva. Depois, conectar o número e testar.' },
   { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },
   { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },
   { title: 'Arquivar clientes: rodar a migration e testar em produção', detail: 'Falta rodar npm run migration:run (cria a coluna archived_at em whatsapp_config) antes do deploy. Depois, arquivar um cliente de teste e conferir que a tarja de PIX some e nenhum aviso sai.' },

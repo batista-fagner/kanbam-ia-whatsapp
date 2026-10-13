@@ -1,4 +1,4 @@
-import { splitBubbles, BUBBLE_RULE_BLOCK } from './bubble-rule';
+import { splitBubbles, BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia } from './bubble-rule';
 import { EvolutionService } from '../evolution/evolution.service';
 import { buildTypingPlan } from '../evolution/typing-plan';
 
@@ -106,5 +106,33 @@ describe('EvolutionService com digitando humanizado', () => {
     await jest.advanceTimersByTimeAsync(1);
     await p;
     expect(provider.sendTextMessage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('limitReplyBubblesAfterMedia', () => {
+  it('mantém resposta com até 2 bolhas', () => {
+    expect(limitReplyBubblesAfterMedia('Olha o brilho!|||Era esse tom?')).toBe('Olha o brilho!|||Era esse tom?');
+    expect(limitReplyBubblesAfterMedia('Uma só?')).toBe('Uma só?');
+  });
+
+  it('caso real: descarta o "vou te mostrar" e fica reação + pergunta', () => {
+    const out = limitReplyBubblesAfterMedia(
+      'O loiro é maravilhoso, traz uma luz incrível!|||Vou te mostrar um dos nossos loiros brasileiros, descoloridos pela Heline.|||O que acha desse brilho?',
+    );
+    expect(out).toBe('O loiro é maravilhoso, traz uma luz incrível!|||O que acha desse brilho?');
+  });
+
+  it('4 bolhas sem anúncio: junta as anteriores e mantém a pergunta por último', () => {
+    const out = limitReplyBubblesAfterMedia('Boa tarde, Diva!|||Estamos desde 2006.|||Temos loja em Ponta Negra.|||Como você se sente com o cabelo hoje?');
+    const bubbles = out.split('|||');
+    expect(bubbles).toHaveLength(2);
+    expect(bubbles[0]).toBe('Boa tarde, Diva! Estamos desde 2006. Temos loja em Ponta Negra.');
+    expect(bubbles[1]).toBe('Como você se sente com o cabelo hoje?');
+  });
+
+  it('nunca descarta a última bolha, mesmo que pareça anúncio', () => {
+    const out = limitReplyBubblesAfterMedia('Que lindo!|||Quer ver mais?|||Posso te mandar outro vídeo?');
+    expect(out.split('|||').pop()).toBe('Posso te mandar outro vídeo?');
+    expect(out.split('|||')).toHaveLength(2);
   });
 });

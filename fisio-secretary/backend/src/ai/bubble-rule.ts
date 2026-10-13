@@ -44,3 +44,26 @@ export function splitBubbles(text: string, max = 3): string[] {
   if (merged.length <= max) return merged;
   return [...merged.slice(0, max - 1), merged.slice(max - 1).join('\n\n')];
 }
+
+// Bolha que ANUNCIA o envio da mídia ("vou te mostrar…", "dá uma olhadinha nesse
+// vídeo", "segue o vídeo"). Depois de action=send_media a mídia chega na cliente
+// ANTES do texto, então esse anúncio sai atrasado e soa errado (visto em prod,
+// 13/10/2026, HE Cabelos: o loiro já estava na tela e a IA dizia "vou te mostrar").
+const MEDIA_ANNOUNCE_RE = /\b(vou|deixa eu|deixe eu|posso|irei)\s+(te\s+)?(mostrar|mandar|enviar)\b|\bte\s+(mostro|mando|envio)\b|d[aá] uma olhad|\bsegue\s+(o|a|um|uma)\b|\baqui\s+est[aá]\s+(o|a|um|uma)\s+(v[ií]deo|foto|imagem)/i;
+
+// Trava determinística (o prompt sozinho não segura: o modelo segue a regra geral
+// de "2 a 3 bolhas"). Depois de enviar mídia, a resposta tem no máximo `max` bolhas:
+// 1) descarta bolhas que só anunciam o envio (nunca a última — é a pergunta de ação);
+// 2) se ainda passar do limite, mantém a última bolha (a pergunta que faz a
+//    conversa andar) e junta as anteriores numa só, sem perder conteúdo.
+export function limitReplyBubblesAfterMedia(reply: string, max = 2): string {
+  const bubbles = (reply ?? '').split('|||').map((b) => b.trim()).filter(Boolean);
+  if (bubbles.length <= max) return bubbles.join('|||');
+  const last = bubbles.length - 1;
+  let kept = bubbles.filter((b, i) => i === last || !MEDIA_ANNOUNCE_RE.test(b));
+  if (kept.length > max) {
+    const head = kept.slice(0, kept.length - (max - 1)).join(' ');
+    kept = [head, ...kept.slice(kept.length - (max - 1))];
+  }
+  return kept.join('|||');
+}
