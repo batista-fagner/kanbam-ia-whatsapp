@@ -1,4 +1,4 @@
-import { splitBubbles, BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia } from './bubble-rule';
+import { trimMediaReplyToQuestion, splitBubbles, BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia } from './bubble-rule';
 import { EvolutionService } from '../evolution/evolution.service';
 import { buildTypingPlan } from '../evolution/typing-plan';
 
@@ -140,5 +140,15 @@ describe('limitReplyBubblesAfterMedia', () => {
     expect(limitReplyBubblesAfterMedia('Vou te mostrar o esfumado|||Essa é a raiz escura|||Quer o valor?', 1))
       .toBe('Essa é a raiz escura Quer o valor?');
     expect(limitReplyBubblesAfterMedia('Quer que eu já te passe o valor?', 1)).toBe('Quer que eu já te passe o valor?');
+  });
+
+  it('trimMediaReplyToQuestion: reply longa depois de mídia fica só com a pergunta final', () => {
+    const longa = 'O loiro brasileiro é perfeito pra isso, ele traz o volume e a saúde que suas pontas estão precisando 😍 Olha só esse brilho e movimento que a Heline deixa no acabamento. Qual tamanho você tá pensando em colocar?';
+    expect(trimMediaReplyToQuestion(longa)).toBe('Qual tamanho você tá pensando em colocar?');
+    expect(trimMediaReplyToQuestion('Qual tamanho você tá pensando?')).toBe('Qual tamanho você tá pensando?');
+    // não corta quando não termina em pergunta, nem quando são várias bolhas
+    const semPergunta = 'Estamos desde 2006 e temos loja física em Natal, na Ponta Negra, com envio pra todo o Brasil e também pra fora do país.';
+    expect(trimMediaReplyToQuestion(semPergunta)).toBe(semPergunta);
+    expect(trimMediaReplyToQuestion('a|||b?')).toBe('a|||b?');
   });
 });

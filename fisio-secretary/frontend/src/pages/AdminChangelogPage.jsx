@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Heline / HE Cabelos: respostas diretas, sem abertura e sem repetir mídia',
+    date: '14/10/2026',
+    detail: 'No teste, depois da foto a IA mandava um parágrafo elogiando o cabelo antes de perguntar o tamanho, abria toda resposta comentando o que ela disse, repetia "Diva" e às vezes reenviava o mesmo vídeo. Agora a regra é: sem informação nova, uma bolha só com a pergunta; depois de mídia, só a pergunta curta; "Diva" só na saudação e raramente depois. No código: resposta longa depois de mídia é cortada na pergunta final e a mesma mídia não é enviada duas vezes na mesma conversa.',
+  },
+  {
     title: 'Uma resposta por cliente de cada vez (todos os clientes)',
     date: '14/10/2026',
     detail: 'Quando a cliente mandava mensagens com 15-20s de intervalo, duas respostas da IA rodavam ao mesmo tempo sem ver uma à outra: preço repetido, pergunta já respondida feita de novo, resposta fora de ordem (visto no teste da Heline). Agora, se a IA ainda está respondendo, as mensagens novas esperam e saem juntas numa resposta só logo depois. Se uma resposta travar, a fila é liberada em 3 minutos.',

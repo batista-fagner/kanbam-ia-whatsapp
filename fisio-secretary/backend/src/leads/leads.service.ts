@@ -222,6 +222,20 @@ export class LeadsService implements OnApplicationBootstrap {
     });
   }
 
+  // Nomes das mídias já enviadas pela IA nesta conversa (mensagens "[mídia: <nome>] <legenda>").
+  async getSentMediaNames(conversationId: string): Promise<Set<string>> {
+    const rows = await this.messagesRepo.query(
+      `SELECT content FROM messages WHERE conversation_id = $1 AND direction = 'outbound' AND content LIKE '[mídia:%'`,
+      [conversationId],
+    );
+    const names = new Set<string>();
+    for (const r of rows) {
+      const m = /^\[mídia: ([^\]]+)\]/.exec(r.content ?? '');
+      if (m) names.add(m[1]);
+    }
+    return names;
+  }
+
   async countTodayOutboundMedia(tenantId: string): Promise<number> {
     const result = await this.messagesRepo.query(
       `SELECT COUNT(*) AS cnt

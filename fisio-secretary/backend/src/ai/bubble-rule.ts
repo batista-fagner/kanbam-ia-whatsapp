@@ -56,6 +56,18 @@ const MEDIA_ANNOUNCE_RE = /\b(vou|deixa eu|deixe eu|posso|irei)\s+(te\s+)?(mostr
 // 1) descarta bolhas que só anunciam o envio (nunca a última — é a pergunta de ação);
 // 2) se ainda passar do limite, mantém a última bolha (a pergunta que faz a
 //    conversa andar) e junta as anteriores numa só, sem perder conteúdo.
+// Depois de uma mídia a cliente já está vendo o cabelo e leu a legenda: se a reply ficou longa
+// (elogio + descrição + pergunta), fica só a pergunta final. Reply curta, sem "?" no fim ou
+// em várias bolhas passa intacta.
+export function trimMediaReplyToQuestion(reply: string, maxChars = 110): string {
+  const text = (reply ?? '').trim();
+  if (text.length <= maxChars || text.includes('|||') || !text.endsWith('?')) return text;
+  const sentences = text.split(/(?<=[.!?…])\s+/);
+  if (sentences.length < 2) return text;
+  const last = sentences[sentences.length - 1].replace(/^[^\p{L}]+/u, '').trim();
+  return last.length >= 8 ? last : text;
+}
+
 export function limitReplyBubblesAfterMedia(reply: string, max = 2): string {
   const bubbles = (reply ?? '').split('|||').map((b) => b.trim()).filter(Boolean);
   if (bubbles.length <= max) return bubbles.join('|||');

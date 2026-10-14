@@ -1,4 +1,4 @@
-import { BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia } from '../ai/bubble-rule';
+import { BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -963,7 +963,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
         if (aiResponse.reply?.trim()) {
           if (COMPACT_REPLY_TENANT_IDS.includes(tenantId)) {
-            aiResponse.reply = limitReplyBubblesAfterMedia(aiResponse.reply, 1);
+            aiResponse.reply = trimMediaReplyToQuestion(limitReplyBubblesAfterMedia(aiResponse.reply, 1));
           }
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
@@ -1079,6 +1079,17 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         } catch (err) {
           this.logger.error(`[MEDIA-LIMIT] Falha ao notificar ${instanceConfig.billingPhone}: ${err.message}`);
         }
+      }
+    }
+
+    // Tenants compactos (HE Cabelos): nunca reenvia uma mídia já enviada nesta conversa — o modelo
+    // às vezes repete o mesmo vídeo quando a cliente responde só "60 cm". A reply segue normal.
+    if (COMPACT_REPLY_TENANT_IDS.includes(tenantId)) {
+      const already = await this.leadsService.getSentMediaNames(conversationId);
+      const fresh = names.filter((n) => !already.has(n));
+      if (fresh.length < names.length) {
+        this.logger.warn(`[MEDIA-DEDUP] Mídia(s) já enviada(s) nesta conversa ignorada(s) (${phone}): ${names.filter((n) => already.has(n)).join(', ')}`);
+        names.splice(0, names.length, ...fresh);
       }
     }
 
