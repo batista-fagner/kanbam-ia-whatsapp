@@ -7,6 +7,21 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Uma resposta por cliente de cada vez (todos os clientes)',
+    date: '14/10/2026',
+    detail: 'Quando a cliente mandava mensagens com 15-20s de intervalo, duas respostas da IA rodavam ao mesmo tempo sem ver uma à outra: preço repetido, pergunta já respondida feita de novo, resposta fora de ordem (visto no teste da Heline). Agora, se a IA ainda está respondendo, as mensagens novas esperam e saem juntas numa resposta só logo depois. Se uma resposta travar, a fila é liberada em 3 minutos.',
+  },
+  {
+    title: 'Heline / HE Cabelos: IA vê foto, mídia certa por tipo de raiz e respostas mais curtas',
+    date: '14/10/2026',
+    detail: 'No teste ela mandou foto do cabelo e a IA dizia que não via (ou inventava a cor); pediu loiro mechado com raiz escura e recebeu loiro inteiro; e reclamou de mensagem demais. Agora a HE Cabelos tem reconhecimento de imagem; as legendas do esfumado foram corrigidas olhando cada foto (raiz escura, raiz suave, quase todo loiro) e o "mechado" aponta pras fotos de iluminado; a IA responde em no máximo 2 bolhas curtas (1 depois de mídia), 1 pergunta por vez, e não repete "já usa mega hair?".',
+  },
+  {
+    title: 'Fabiana (Mega Hair): IA reduzida a "só responde o que perguntaram"',
+    date: '13/10/2026',
+    detail: 'As clientes reclamaram que a IA falava demais e perguntava demais (até ligando pra Fabiana). O prompt foi trocado: cumprimento vira só cumprimento; pediu valor, recebe só a tabela (castanho, loiro, tecelagem ou manutenção) sem texto; vídeo só se pedir; endereço, horário e curso respondem direto. Agendamento, frete, pagamento, foto da cliente ou qualquer dúvida passa pra Fabiana. Testado em 25 cenários. O número dela está desconectado desde 10/10 e precisa ser reconectado pra valer. Prompt antigo guardado no backup da sessão.',
+  },
+  {
     title: 'Heline / HE Cabelos: no máximo 2 bolhas depois de enviar foto ou vídeo',
     date: '13/10/2026',
     detail: 'Depois de mandar uma mídia, a IA mandava 3 bolhas de texto e ainda dizia "vou te mostrar" com o cabelo já na tela. Agora a resposta tem no máximo 2 bolhas: uma reação ao que ela está vendo e uma pergunta pra conversa andar. Além do prompt, o sistema corta sozinho as bolhas que só anunciam o envio, porque o modelo não obedecia sempre. Vale só pra HE Cabelos por enquanto.',
@@ -244,6 +259,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Fabiana: reconectar o WhatsApp e acompanhar as primeiras conversas', detail: 'O número está desconectado desde 10/10 (09:36). Ela precisa ler o QR code de novo. Depois, conferir nas primeiras conversas se a IA só manda a tabela e passa pra ela o que não sabe, e se a Fabiana aprova o novo jeito.' },
   { title: 'Heline: confirmar preços e dados que faltam', detail: 'O formulário e as tabelas que ela mandou não batem: castanho R$800 x R$900, "Loiro do Sul" R$2.000 só no formulário, "Cabelo do Sul" castanho R$1.500 só na tabela. Ficou a tabela mais recente (12/10). Falta: horário da loja, valor do frete, garantia, valor da fita adesiva. Depois, conectar o número e testar.' },
   { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },
   { title: 'Tabela de preços: testar com o Alex em produção', detail: 'Abrir a tela logado como S&A, conferir que os produtos atuais carregaram, mudar um preço e mandar uma mensagem de teste pra ver a IA cotando o valor novo. Lembrar ele de atualizar também a legenda dos vídeos que mostram preço.' },

@@ -86,14 +86,16 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
   'e624e817-5b6c-4840-b0ea-269eb78afe8d', // alex_teste (sandbox)
   'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
   '6fac64ce-9189-414a-9ad9-fd2fc102e599', // Tiago Adan (conta de teste p/ demonstração a clientes, 2026-10-09)
+  '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline / HE Cabelos (2026-10-14) — cliente manda foto do próprio cabelo pra pedir indicação de cor
 ];
 
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
 const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouvir — peça com carinho pra ela escrever a mensagem]';
 
-// Tenants em que a resposta que acompanha uma mídia tem no máximo 2 bolhas (ver
-// limitReplyBubblesAfterMedia). HE Cabelos / Heline — pedido do Fagner em 13/10/2026.
-const MEDIA_REPLY_MAX_2_BUBBLES_TENANT_IDS = [
+// Tenants com respostas mais enxutas (ver limitReplyBubblesAfterMedia): no máximo
+// 1 bolha depois de mídia e 2 nas demais respostas. HE Cabelos / Heline — pedido do
+// Fagner em 13/10/2026; apertado em 14/10 depois do teste dela ("manda mensagem demais").
+const COMPACT_REPLY_TENANT_IDS = [
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline Carvalho / HE Cabelos
 ];
 
@@ -272,7 +274,7 @@ export class EvolutionController {
         this.pendingImageUrl.set(queueKey, imageUrl);
 
         this.messageQueue.enqueue(queueKey, captionText, (combinedText) => {
-          this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
+          return this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
             this.logger.error(`❌ [ERRO AO PROCESSAR IMAGEM] ${phone}: ${err.message}`);
           });
         });
@@ -365,7 +367,7 @@ export class EvolutionController {
 
     this.messageQueue.enqueue(queueKey, text, (combinedText) => {
       this.logger.log(`[PROCESSANDO] messageId=${messageId}, phone=${phone}, texto="${combinedText.substring(0, 40)}..."`);
-      this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
+      return this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
         this.logger.error(`❌ [ERRO AO PROCESSAR] ${phone}: ${err.message}`);
         this.logger.error(`❌ [ERRO AO PROCESSAR] Stack: ${err.stack}`);
       });
@@ -421,7 +423,7 @@ export class EvolutionController {
     );
 
     this.messageQueue.enqueue(queueKey, transcribedText, (combinedText) => {
-      this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) =>
+      return this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) =>
         this.logger.error(`Erro ao processar áudio transcrito de ${phone}: ${err.message}`),
       );
     });
@@ -960,8 +962,8 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (mediaResult.sentCount > 0) {
         // Envia o reply após todos os vídeos (com pequeno delay pra parecer natural).
         if (aiResponse.reply?.trim()) {
-          if (MEDIA_REPLY_MAX_2_BUBBLES_TENANT_IDS.includes(tenantId)) {
-            aiResponse.reply = limitReplyBubblesAfterMedia(aiResponse.reply, 2);
+          if (COMPACT_REPLY_TENANT_IDS.includes(tenantId)) {
+            aiResponse.reply = limitReplyBubblesAfterMedia(aiResponse.reply, 1);
           }
           await new Promise(r => setTimeout(r, 500));
           this.logger.log(`📤 [TEXT REPLY] Enviando resposta após mídias para ${phone}: ${aiResponse.reply.substring(0, 60)}...`);
@@ -985,7 +987,10 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     this.lastMessageWasAudio.delete(`${tenantId}:${phone}`);
 
     // Resposta sempre em texto (mesmo quando a mensagem do lead foi áudio).
-    const finalReply = mediaNotFoundFallback ?? aiResponse.reply;
+    let finalReply = mediaNotFoundFallback ?? aiResponse.reply;
+    if (COMPACT_REPLY_TENANT_IDS.includes(tenantId)) {
+      finalReply = limitReplyBubblesAfterMedia(finalReply, 2);
+    }
     this.logger.log(`📤 [TEXT] Enviando resposta para ${phone}: ${finalReply.substring(0, 60)}...`);
     await this.evolutionService.sendTextMessage(phone, finalReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
     this.logger.log(`✅ [TEXT] Resposta enviada para ${phone}`);

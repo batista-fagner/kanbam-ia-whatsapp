@@ -135,4 +135,10 @@ describe('limitReplyBubblesAfterMedia', () => {
     expect(out.split('|||').pop()).toBe('Posso te mandar outro vídeo?');
     expect(out.split('|||')).toHaveLength(2);
   });
+
+  it('limite 1 (depois de mídia na HE Cabelos): junta tudo numa bolha e tira o anúncio do envio', () => {
+    expect(limitReplyBubblesAfterMedia('Vou te mostrar o esfumado|||Essa é a raiz escura|||Quer o valor?', 1))
+      .toBe('Essa é a raiz escura Quer o valor?');
+    expect(limitReplyBubblesAfterMedia('Quer que eu já te passe o valor?', 1)).toBe('Quer que eu já te passe o valor?');
+  });
 });
