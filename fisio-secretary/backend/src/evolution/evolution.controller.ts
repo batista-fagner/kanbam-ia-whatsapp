@@ -92,6 +92,12 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
 const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouvir — peça com carinho pra ela escrever a mensagem]';
 
+// Tenants em que a foto sem legenda vai pra IA como "[imagem]" em vez do aviso fixo "não consigo
+// ver imagens" — o prompt deles tem regra própria pra foto (ex.: passar pra dona). Fabiana (13/10/2026).
+const IMAGE_PLACEHOLDER_TO_AI_TENANT_IDS = [
+  'e70ccdef-c21a-4f2f-9082-b71073b04b31', // Fabiana Cavalcanti Mega Hair
+];
+
 // Tenants com respostas mais enxutas (ver limitReplyBubblesAfterMedia): no máximo
 // 1 bolha depois de mídia e 2 nas demais respostas. HE Cabelos / Heline — pedido do
 // Fagner em 13/10/2026; apertado em 14/10 depois do teste dela ("manda mensagem demais").
@@ -239,7 +245,8 @@ export class EvolutionController {
     const rawText: string = message.text;
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
     const isImage = message.type === 'media' && message.mediaType === 'image';
-    const text: string = (isImage && rawText) ? `[imagem] ${rawText}` : rawText;
+    const imageToAi = isImage && !rawText && IMAGE_PLACEHOLDER_TO_AI_TENANT_IDS.includes(tenantId);
+    const text: string = (isImage && rawText) ? `[imagem] ${rawText}` : imageToAi ? '[imagem]' : rawText;
     const pushName: string | null = body.chat?.name ?? body.chat?.wa_name ?? message?.senderName ?? null;
 
     if (!phone) return { ok: true };
@@ -314,6 +321,14 @@ export class EvolutionController {
             }
 
             const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
+            // Aviso fixo: só UMA vez por conversa. Fotos que chegam com mais de 15s de intervalo
+            // passam do debounce separadamente e geravam o mesmo aviso a cada foto.
+            if (await this.leadsService.wasOutboundSentRecently(conversation.id, reply, 24)) {
+              this.logger.log(`Aviso de imagem já enviado para ${phone} — não repete`);
+              const updatedLeadRepeat = await this.leadsService.findOne(lead.id);
+              this.leadsGateway.emitLeadUpdated(updatedLeadRepeat);
+              return;
+            }
             const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
             await this.evolutionService.sendTextMessage(phone, reply, tenantToken, tenantId);
             await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', reply);

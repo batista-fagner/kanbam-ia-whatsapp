@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Aviso "não consigo ver imagens" enviado uma vez só + saudação da Fabiana',
+    date: '14/10/2026',
+    detail: 'Quando a cliente mandava 3 fotos com mais de 15 segundos entre elas, a IA respondia "não consigo ver imagens" 3 vezes (Kelly Hair, Niltoncabelos e outros). Agora o aviso sai uma vez por conversa a cada 24h. Fabiana: o "Boa tarde" seco virou "Boa tarde! Você já usa mega hair ou seria a primeira vez?"; depois da resposta a IA pergunta se ela procura castanho, loiro ou manutenção e o resto segue só com tabela ou passa pra Fabiana. Foto da cliente da Fabiana agora vai pra IA (que passa pra Fabiana) em vez do aviso fixo com pergunta.',
+  },
+  {
     title: 'Heline / HE Cabelos: respostas diretas, sem abertura e sem repetir mídia',
     date: '14/10/2026',
     detail: 'No teste, depois da foto a IA mandava um parágrafo elogiando o cabelo antes de perguntar o tamanho, abria toda resposta comentando o que ela disse, repetia "Diva" e às vezes reenviava o mesmo vídeo. Agora a regra é: sem informação nova, uma bolha só com a pergunta; depois de mídia, só a pergunta curta; "Diva" só na saudação e raramente depois. No código: resposta longa depois de mídia é cortada na pergunta final e a mesma mídia não é enviada duas vezes na mesma conversa.',

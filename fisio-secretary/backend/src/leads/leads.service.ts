@@ -222,6 +222,18 @@ export class LeadsService implements OnApplicationBootstrap {
     });
   }
 
+  // true se a IA já mandou exatamente esse texto nesta conversa nas últimas `hours` horas.
+  async wasOutboundSentRecently(conversationId: string, content: string, hours = 24): Promise<boolean> {
+    const rows = await this.messagesRepo.query(
+      `SELECT 1 FROM messages
+       WHERE conversation_id = $1 AND direction = 'outbound' AND content = $2
+         AND created_at > NOW() - ($3 || ' hours')::interval
+       LIMIT 1`,
+      [conversationId, content, String(hours)],
+    );
+    return rows.length > 0;
+  }
+
   // Nomes das mídias já enviadas pela IA nesta conversa (mensagens "[mídia: <nome>] <legenda>").
   async getSentMediaNames(conversationId: string): Promise<Set<string>> {
     const rows = await this.messagesRepo.query(
