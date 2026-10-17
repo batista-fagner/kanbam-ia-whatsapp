@@ -184,13 +184,25 @@ export class PaymentsService implements OnModuleInit {
     if (!settings.planoEnabled) throw new BadRequestException('Plano mensal está desabilitado no momento.');
     if (!settings.cardEnabled) throw new BadRequestException('Pagamento por cartão está desabilitado no momento.');
     if (!this.stripe) throw new BadRequestException('Checkout por cartão não configurado (STRIPE_SECRET_KEY ausente)');
-    const priceId = this.config.get<string>('STRIPE_PRICE_ID_MONTHLY');
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
-    if (!priceId) throw new BadRequestException('STRIPE_PRICE_ID_MONTHLY não configurado');
+    // Valor vem do mesmo campo "Valor do plano" do Admin que o PIX usa — trocar o preço
+    // não exige criar Price no Stripe. STRIPE_PRODUCT_ID (opcional) agrupa as assinaturas
+    // num produto só; sem ele o Stripe cria um produto por checkout.
+    const unitAmount = Math.round(Number(settings.planoPrice) * 100);
+    if (!Number.isFinite(unitAmount) || unitAmount <= 0) throw new BadRequestException('Valor do plano inválido');
+    const productId = this.config.get<string>('STRIPE_PRODUCT_ID');
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'brl',
+          unit_amount: unitAmount,
+          recurring: { interval: 'month' },
+          ...(productId ? { product: productId } : { product_data: { name: 'Plano Mensal Convert Hair' } }),
+        },
+      }],
       customer_email: email,
       // A origem viaja no metadata porque a conta só é criada lá no webhook
       // (checkout.session.completed) — é o único jeito de o UTM sobreviver até lá.

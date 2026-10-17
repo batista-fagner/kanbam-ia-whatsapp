@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Cartão (Stripe) cobra o "Valor do plano" do Admin',
+    date: '16/10/2026',
+    detail: 'Antes, trocar o preço do cartão exigia criar um preço novo no Stripe e mudar a variável no Railway, e o valor podia ficar diferente do que aparecia na página e no PIX. Agora o checkout do cartão usa o mesmo campo "Valor do plano" do Admin: mudou lá, o próximo checkout já cobra o novo valor. Quem já assina continua no valor antigo.',
+  },
+  {
     title: 'Aviso "não consigo ver imagens" enviado uma vez só + saudação da Fabiana',
     date: '14/10/2026',
     detail: 'Quando a cliente mandava 3 fotos com mais de 15 segundos entre elas, a IA respondia "não consigo ver imagens" 3 vezes (Kelly Hair, Niltoncabelos e outros). Agora o aviso sai uma vez por conversa a cada 24h. Fabiana: o "Boa tarde" seco virou "Boa tarde! Você já usa mega hair ou seria a primeira vez?"; depois da resposta a IA pergunta se ela procura castanho, loiro ou manutenção e o resto segue só com tabela ou passa pra Fabiana. Foto da cliente da Fabiana agora vai pra IA (que passa pra Fabiana) em vez do aviso fixo com pergunta.',
