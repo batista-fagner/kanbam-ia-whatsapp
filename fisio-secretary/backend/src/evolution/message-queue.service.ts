@@ -17,9 +17,12 @@ const MAX_PROCESSING_LOCK_MS = 3 * 60 * 1000;
 // picadas e quer mais margem pra IA juntar tudo antes de responder. Não generalizar.
 // alex_teste (e624e817...): debounce reduzido pra 5s pra agilizar os testes
 // de reconhecimento de imagem no tenant sandbox — não generalizar.
+// Heline / HE Cabelos (3ff8efe4...): 45s — pedido do Fagner (19/10/2026), as clientes
+// mandam a frase picada em várias mensagens e a IA respondia antes de ler tudo.
 const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
   '1ff3f0b3-52d1-4e89-b7bf-552d0556de29': 25000,
   'e624e817-5b6c-4840-b0ea-269eb78afe8d': 5000,
+  '3ff8efe4-7a7c-44ee-b98b-548e5921b174': 45000,
 };
 
 @Injectable()

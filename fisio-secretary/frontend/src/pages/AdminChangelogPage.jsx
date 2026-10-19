@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Heline / HE Cabelos: espera de 45 segundos antes de responder',
+    date: '19/10/2026',
+    detail: 'O padrão é esperar 15 segundos de silêncio antes de a IA responder. Para a Heline subiu para 45 segundos, a pedido seu, para a IA juntar as mensagens picadas da cliente antes de responder. Cada resposta passa a chegar em cerca de 50 a 60 segundos depois da última mensagem da cliente. Outros clientes continuam em 15 segundos.',
+  },
+  {
     title: 'Cartão (Stripe) cobra o "Valor do plano" do Admin',
     date: '16/10/2026',
     detail: 'Antes, trocar o preço do cartão exigia criar um preço novo no Stripe e mudar a variável no Railway, e o valor podia ficar diferente do que aparecia na página e no PIX. Agora o checkout do cartão usa o mesmo campo "Valor do plano" do Admin: mudou lá, o próximo checkout já cobra o novo valor. Quem já assina continua no valor antigo.',
