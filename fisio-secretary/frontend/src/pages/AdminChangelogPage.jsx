@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Heline / HE Cabelos: "Diva" só na 1ª mensagem',
+    date: '19/10/2026',
+    detail: 'A IA repetia "Diva" em várias respostas seguidas (no teste, 3 vezes seguidas), porque 9 exemplos espalhados pelos módulos do prompt traziam "Diva" no meio da frase e ela copiava. Agora "Diva" só aparece na saudação da 1ª mensagem; depois disso a IA responde sem vocativo, e só usa o nome real da cliente, no máximo 1 vez a cada 4 mensagens. O prompt não pergunta o nome da cliente em nenhum ponto. Backup dos módulos antigos guardado antes da troca.',
+  },
+  {
     title: 'Heline / HE Cabelos: espera de 45 segundos antes de responder',
     date: '19/10/2026',
     detail: 'O padrão é esperar 15 segundos de silêncio antes de a IA responder. Para a Heline subiu para 45 segundos, a pedido seu, para a IA juntar as mensagens picadas da cliente antes de responder. Cada resposta passa a chegar em cerca de 50 a 60 segundos depois da última mensagem da cliente. Outros clientes continuam em 15 segundos.',
