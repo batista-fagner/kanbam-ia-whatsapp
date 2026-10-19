@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Heline / HE Cabelos: mostra 3 mídias da cor e pergunta qual ela gostou',
+    date: '19/10/2026',
+    detail: 'Antes a IA mandava uma foto ou vídeo só quando a cliente falava a cor (ex.: loiro). Agora manda 3 mídias diferentes da linha de uma vez (variando raiz suave, raiz escura, mel…) e pergunta \"Qual dessas você mais gostou?\"; depois segue a conversa a partir da escolha (tamanho, gramas, valor). Casos específicos continuam com 1 mídia (vídeo da loja, foto de referência, pedido de uma mídia pelo nome). Não repete mídia já enviada. Backup do prompt anterior guardado antes da troca.',
+  },
+  {
     title: 'Formulário próprio de onboarding (sem Google Forms), com anexos',
     date: '19/10/2026',
     detail: 'Em Admin → Onboarding dá para gerar um link por cliente (primeiro formulário: festas, 12 perguntas, para o Mult Festa). O cliente responde sem login, as respostas ficam salvas automaticamente, ele pode voltar no mesmo link e anexar tabela de preços, fotos, vídeos e prints. No envio, as respostas caem na mesma lista de formulários de Onboarding (e dá para gerar rascunho de prompt a partir delas). Para outro nicho, basta adicionar uma nova definição de perguntas no código. A pergunta dos prints de conversas aparece marcada como opcional.',
