@@ -9,7 +9,7 @@ const DONE = [
   {
     title: 'Formulário próprio de onboarding (sem Google Forms), com anexos',
     date: '19/10/2026',
-    detail: 'Em Admin → Onboarding dá para gerar um link por cliente (primeiro formulário: festas, 12 perguntas, para o Mult Festa). O cliente responde sem login, as respostas ficam salvas automaticamente, ele pode voltar no mesmo link e anexar tabela de preços, fotos, vídeos e prints. No envio, as respostas caem na mesma lista de formulários de Onboarding (e dá para gerar rascunho de prompt a partir delas). Para outro nicho, basta adicionar uma nova definição de perguntas no código.',
+    detail: 'Em Admin → Onboarding dá para gerar um link por cliente (primeiro formulário: festas, 12 perguntas, para o Mult Festa). O cliente responde sem login, as respostas ficam salvas automaticamente, ele pode voltar no mesmo link e anexar tabela de preços, fotos, vídeos e prints. No envio, as respostas caem na mesma lista de formulários de Onboarding (e dá para gerar rascunho de prompt a partir delas). Para outro nicho, basta adicionar uma nova definição de perguntas no código. A pergunta dos prints de conversas aparece marcada como opcional.',
   },
   {
     title: 'Heline / HE Cabelos: "Diva" só na 1ª mensagem',

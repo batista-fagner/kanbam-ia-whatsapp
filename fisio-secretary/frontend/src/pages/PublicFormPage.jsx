@@ -179,6 +179,7 @@ export default function PublicFormPage() {
               <div key={q.id} className="bg-white rounded-xl border border-gray-200 p-4">
                 <label className="block text-sm font-medium text-gray-800">
                   <span className="text-gray-400 mr-1">{i + 1}.</span>{q.label}
+                  {q.optional && <span className="ml-2 text-xs font-normal text-gray-400 border border-gray-200 rounded-full px-2 py-0.5">opcional</span>}
                 </label>
                 {q.hint && <p className="text-xs text-gray-400 mt-1">{q.hint}</p>}
 

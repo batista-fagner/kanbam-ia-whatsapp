@@ -9,6 +9,8 @@ export interface FormQuestion {
   type: FormQuestionType;
   // Pergunta de texto que também aceita anexos (ex.: tabela de preços em foto/PDF).
   allowFiles?: boolean;
+  // Só informativo na tela (etiqueta "opcional"): nenhuma pergunta bloqueia o envio.
+  optional?: boolean;
 }
 
 export interface FormDefinition {
@@ -36,7 +38,7 @@ export const FORM_DEFINITIONS: Record<string, FormDefinition> = {
       { id: 'orcamento', type: 'textarea', label: 'O que você precisa saber do cliente para fazer um orçamento?', hint: 'Ex.: data, local, número de convidados, tema, idade, horário.' },
       { id: 'passar_humano', type: 'textarea', label: 'Quando a IA deve parar e chamar uma pessoa? Para qual número devemos avisar?', hint: 'Ex.: orçamento grande, festa de empresa, reclamação, data específica.' },
       { id: 'midias', type: 'file', label: 'Fotos e vídeos de festas que vocês já fizeram', hint: 'Se puder, separe por tema. Pode enviar vários arquivos; coloque o tema no nome do arquivo.' },
-      { id: 'conversas', type: 'file', label: 'Prints de 3 conversas reais que fecharam venda', hint: 'Isso ajuda a IA a falar do jeito de vocês. Pode cobrir o nome e o telefone dos clientes.' },
+      { id: 'conversas', type: 'file', optional: true, label: 'Prints de 3 conversas reais que fecharam venda', hint: 'Isso ajuda a IA a falar do jeito de vocês. Pode cobrir o nome e o telefone dos clientes.' },
     ],
   },
 };
