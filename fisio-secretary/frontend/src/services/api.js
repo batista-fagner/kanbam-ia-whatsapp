@@ -386,6 +386,20 @@ export const updateAdminPromptModule = (tenantId, moduleId, body) =>
 export const listOnboardingForms = () =>
   authFetch(`${BASE}/admin/prompt-drafts/forms`).then(json)
 
+// --- Onboarding: formulário próprio (link público por cliente) ---
+export const listClientFormDefinitions = () =>
+  authFetch(`${BASE}/admin/client-forms/definitions`).then(json)
+
+export const listClientForms = () =>
+  authFetch(`${BASE}/admin/client-forms`).then(json)
+
+export const createClientForm = (tenantId, formKey) =>
+  authFetch(`${BASE}/admin/client-forms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantId, formKey }),
+  }).then(json)
+
 export const listPromptDrafts = (status) => {
   const qs = status ? `?status=${status}` : ''
   return authFetch(`${BASE}/admin/prompt-drafts${qs}`).then(json)

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Formulário próprio de onboarding (sem Google Forms), com anexos',
+    date: '19/10/2026',
+    detail: 'Em Admin → Onboarding dá para gerar um link por cliente (primeiro formulário: festas, 12 perguntas, para o Mult Festa). O cliente responde sem login, as respostas ficam salvas automaticamente, ele pode voltar no mesmo link e anexar tabela de preços, fotos, vídeos e prints. No envio, as respostas caem na mesma lista de formulários de Onboarding (e dá para gerar rascunho de prompt a partir delas). Para outro nicho, basta adicionar uma nova definição de perguntas no código.',
+  },
+  {
     title: 'Heline / HE Cabelos: "Diva" só na 1ª mensagem',
     date: '19/10/2026',
     detail: 'A IA repetia "Diva" em várias respostas seguidas (no teste, 3 vezes seguidas), porque 9 exemplos espalhados pelos módulos do prompt traziam "Diva" no meio da frase e ela copiava. Agora "Diva" só aparece na saudação da 1ª mensagem; depois disso a IA responde sem vocativo, e só usa o nome real da cliente, no máximo 1 vez a cada 4 mensagens. O prompt não pergunta o nome da cliente em nenhum ponto. Backup dos módulos antigos guardado antes da troca.',

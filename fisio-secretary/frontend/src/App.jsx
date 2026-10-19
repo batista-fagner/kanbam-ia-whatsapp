@@ -13,6 +13,7 @@ import AdminPage from './pages/AdminPage'
 import AdminPromptsPage from './pages/AdminPromptsPage'
 import AdminChangelogPage from './pages/AdminChangelogPage'
 import OnboardingPage from './pages/OnboardingPage'
+import PublicFormPage from './pages/PublicFormPage'
 import MonitoringPage from './pages/MonitoringPage'
 import GroupReportsPage from './pages/GroupReportsPage'
 import TemplatesPage from './pages/TemplatesPage'
@@ -44,6 +45,7 @@ function Routing() {
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
       <Route path="/pix/:txid" element={<PixRenewalPage />} />
+      <Route path="/f/:token" element={<PublicFormPage />} />
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ClipboardList, Loader2, AlertCircle, Sparkles, Check, X, Save } from 'lucide-react'
+import ClientFormLinks from '../components/ClientFormLinks'
 import { listOnboardingForms, getPromptDraft, generatePromptDraft, updatePromptDraft, approvePromptDraft, discardPromptDraft } from '../services/api'
 
 const STATUS_LABEL = {
@@ -126,6 +127,8 @@ export default function OnboardingPage() {
         <h1 className="text-lg font-semibold text-gray-800">Onboarding — formulários e rascunhos de prompt</h1>
         <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{forms.length}</span>
       </div>
+
+      <ClientFormLinks />
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-center gap-2">
