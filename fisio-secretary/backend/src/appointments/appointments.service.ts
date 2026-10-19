@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Appointment, AppointmentService as ServiceType, AppointmentStatus } from '../common/entities/appointment.entity';
+import { AgendaProfessional } from '../common/entities/agenda-professional.entity';
 
 export interface CreateAppointmentDto {
   tenantId?: string | null;
@@ -33,6 +34,13 @@ export class AppointmentsService {
       order: { startDateTime: 'ASC' },
       relations: ['lead'],
     });
+  }
+
+  // Nome do profissional (agenda com profissionais) pro lembrete — null nos agendamentos antigos.
+  async professionalNameFor(appt: Appointment): Promise<string | null> {
+    if (!appt.professionalId) return null;
+    const p = await this.repo.manager.findOne(AgendaProfessional, { where: { id: appt.professionalId } });
+    return p?.name ?? null;
   }
 
   async findOne(id: string, tenantId?: string): Promise<Appointment> {

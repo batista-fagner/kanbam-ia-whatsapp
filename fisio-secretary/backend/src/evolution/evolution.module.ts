@@ -36,6 +36,7 @@ import { Followup } from '../common/entities/followup.entity';
 import { FinanceiroWhatsappModule } from '../financeiro-whatsapp/financeiro-whatsapp.module';
 import { GroupMonitorModule } from '../group-monitor/group-monitor.module';
 import { TenantScheduleModule } from '../schedule/schedule.module';
+import { AgendaModule } from '../agenda/agenda.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { TenantScheduleModule } from '../schedule/schedule.module';
     FinanceiroWhatsappModule,
     GroupMonitorModule,
     TenantScheduleModule,
+    AgendaModule,
   ],
   controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
   providers: [

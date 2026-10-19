@@ -230,6 +230,51 @@ export const createScheduleBlock = (data) =>
 export const deleteScheduleBlock = (id) =>
   authFetch(`${BASE}/schedule/blocks/${id}`, { method: 'DELETE' }).then(json)
 
+// --- Agenda com profissionais (backend/src/agenda) ---
+// 409 de conflito volta com { message, alternatives } — a tela usa pra oferecer "Marcar mesmo assim".
+const agendaJson = async (r) => {
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) {
+    const err = new Error(data?.message?.message || data?.message || `HTTP ${r.status}`)
+    err.status = r.status
+    err.alternatives = data?.message?.alternatives || data?.alternatives || []
+    throw err
+  }
+  return data
+}
+const agendaSend = (path, method, body) =>
+  authFetch(`${BASE}/agenda${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(agendaJson)
+
+export const getAgendaSettings = () => authFetch(`${BASE}/agenda/settings`).then(agendaJson)
+export const updateAgendaSettings = (payload) => agendaSend('/settings', 'PUT', payload)
+export const listAgendaProfessionals = () => authFetch(`${BASE}/agenda/professionals`).then(agendaJson)
+export const createAgendaProfessional = (payload) => agendaSend('/professionals', 'POST', payload)
+export const updateAgendaProfessional = (id, payload) => agendaSend(`/professionals/${id}`, 'PATCH', payload)
+export const deactivateAgendaProfessional = (id) => agendaSend(`/professionals/${id}`, 'DELETE')
+export const listAgendaServices = () => authFetch(`${BASE}/agenda/services`).then(agendaJson)
+export const createAgendaService = (payload) => agendaSend('/services', 'POST', payload)
+export const updateAgendaService = (id, payload) => agendaSend(`/services/${id}`, 'PATCH', payload)
+export const deactivateAgendaService = (id) => agendaSend(`/services/${id}`, 'DELETE')
+export const listAgendaBlocks = (from, to) => authFetch(`${BASE}/agenda/blocks?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then(agendaJson)
+export const createAgendaBlock = (payload) => agendaSend('/blocks', 'POST', payload)
+export const deleteAgendaBlock = (id) => agendaSend(`/blocks/${id}`, 'DELETE')
+export const listAgendaAppointments = (from, to) => authFetch(`${BASE}/agenda/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then(agendaJson)
+export const createAgendaAppointment = (payload) => agendaSend('/appointments', 'POST', payload)
+export const updateAgendaAppointment = (id, payload) => agendaSend(`/appointments/${id}`, 'PATCH', payload)
+export const searchAgendaClients = (q) => authFetch(`${BASE}/agenda/clients?q=${encodeURIComponent(q)}`).then(agendaJson)
+export const getAgendaSlots = (serviceId, from, days = 7) => authFetch(`${BASE}/agenda/slots?serviceId=${serviceId}&from=${from}&days=${days}`).then(agendaJson)
+export const getAdminAgendaModes = () => authFetch(`${BASE}/admin/agenda/modes`).then(agendaJson)
+export const setAdminAgendaMode = (tenantId, mode) =>
+  authFetch(`${BASE}/admin/agenda/${tenantId}/mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  }).then(agendaJson)
+
 // --- Admin: gestão de clientes ---
 export const getClients = () =>
   authFetch(`${BASE}/admin/clients`).then(json)

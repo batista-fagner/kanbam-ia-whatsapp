@@ -19,6 +19,10 @@ export class ScheduleBlock {
   @Column({ type: 'varchar', nullable: true })
   reason: string | null;
 
+  // Agenda com profissionais: null = bloqueia o salão inteiro; preenchido = só esse profissional.
+  @Column({ name: 'professional_id', type: 'uuid', nullable: true })
+  professionalId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

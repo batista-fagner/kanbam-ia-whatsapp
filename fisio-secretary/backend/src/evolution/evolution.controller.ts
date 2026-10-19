@@ -10,6 +10,7 @@ import axios from 'axios';
 import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { GroupMonitorService } from '../group-monitor/group-monitor.service';
 import { ScheduleService } from '../schedule/schedule.service';
+import { AgendaAiService, AgendaPromptParts, buildLegacyAgendaFormat, syncRawJson } from '../agenda/agenda-ai.service';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -165,6 +166,7 @@ export class EvolutionController {
     private readonly mediaSendErrorRepo: Repository<MediaSendError>,
     private readonly groupMonitorService: GroupMonitorService,
     private readonly scheduleService: ScheduleService,
+    private readonly agendaAiService: AgendaAiService,
   ) {}
 
   // Webhook multi-tenant: a URL carrega o tenantId. Toda instância (incl. legadas
@@ -677,9 +679,17 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // abaixo; a diferença é que não há handoff/agentId, só o registro de quais
     // módulos foram carregados (persistido pra continuidade no próximo turno).
     let aiResponse: AiResponse | null = null;
+    // Agenda com profissionais (tenant_schedules.mode='professionals' + IA autorizada): regras,
+    // serviços e horários entram no prompt; null = fluxo de agendamento antigo. Multi-agente fora.
+    const agendaParts: AgendaPromptParts | null = instanceConfig?.multiAgentEnabled
+      ? null
+      : await this.agendaAiService.prepare(tenantId, lead).catch((err) => {
+          this.logger.error(`[AGENDA-IA] Falha ao montar a agenda (${phone}): ${err?.message} — seguindo sem agenda`);
+          return null;
+        });
     if (instanceConfig?.promptEngine === 'dynamic_modules') {
       try {
-        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, imageDataUri, !!instanceConfig?.bubbleMode);
+        const result = await this.promptModulesService.chatForLead(tenantId, lead, combinedText, imageDataUri, !!instanceConfig?.bubbleMode, agendaParts);
         if (result) {
           aiResponse = result.aiResponse;
           // Persiste só o sinal deste turno (freshNames), não a união carregada
@@ -748,7 +758,14 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       const megaHairPrompt = instanceConfig?.customPromptMegaHair
         ? (instanceConfig.bubbleMode ? `${instanceConfig.customPromptMegaHair}\n\n${BUBBLE_RULE_BLOCK}` : instanceConfig.customPromptMegaHair)
         : undefined;
-      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, megaHairPrompt, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock);
+      aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, megaHairPrompt, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock,
+        agendaParts ? { format: buildLegacyAgendaFormat(agendaParts), dynamic: agendaParts.dynamic } : null);
+    }
+
+    // Agenda com profissionais: a IA pediu consulta de horários → grava o pedido e chama a IA de
+    // novo (mesmo motor, mesma conversa), agora com os HORÁRIOS LIVRES no fim do prompt.
+    if (agendaParts && aiResponse.action === 'check_availability') {
+      aiResponse = await this.runAgendaSecondPass(tenantId, lead, aiResponse, agendaParts, { instanceConfig, combinedText, imageDataUri, allMedia, extraSystemContext });
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
 
@@ -765,8 +782,13 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // early-return do shouldIgnore, o agendamento nunca seria criado nesse caso.
     const action = aiResponse.action;
 
+    // Agenda com profissionais: agenda/remarca/cancela de verdade e ajusta o reply ao resultado.
+    if (agendaParts) {
+      await this.agendaAiService.applyAction(tenantId, lead, aiResponse, agendaParts);
+    }
+
     // Agendamento interno (tabela appointments) — não usa Google Calendar
-    if (action === 'schedule' && aiResponse.appointmentDateTime) {
+    if (!agendaParts && action === 'schedule' && aiResponse.appointmentDateTime) {
       try {
         const startDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
         // Reconfirma o horário no momento da criação — protege contra corrida (2 clientes
@@ -807,12 +829,12 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
-    if (action === 'cancel' && lead.calendarEventId) {
+    if (!agendaParts && action === 'cancel' && lead.calendarEventId) {
       await this.calendarService.cancelAppointment(lead.calendarEventId);
       await this.leadsService.update(lead.id, { calendarEventId: null, calendarEventLink: null, appointmentAt: null });
     }
 
-    if (action === 'reschedule' && aiResponse.appointmentDateTime) {
+    if (!agendaParts && action === 'reschedule' && aiResponse.appointmentDateTime) {
       const newDateTime = this.parseBrazilianDateTime(aiResponse.appointmentDateTime);
       const { available, conflictingEvent } = await this.calendarService.checkAvailability(newDateTime);
 
@@ -1058,6 +1080,46 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
   // uma como mensagem outbound. Extraído pra ser chamado tanto no fluxo normal quanto
   // no early-return de shouldIgnore (que antes descartava o envio de mídia — ver bug
   // do handoff de "tela" perdendo o vídeo quando a IA desliga na mesma resposta).
+  // 2ª chamada da IA na mesma rodada, depois de action=check_availability. Se o pedido for
+  // inválido, a chamada falhar ou a IA pedir outra consulta, responde com os horários reais
+  // por texto fixo — a cliente nunca fica sem resposta nem recebe horário inventado.
+  private async runAgendaSecondPass(
+    tenantId: string,
+    lead: any,
+    first: AiResponse,
+    parts: AgendaPromptParts,
+    ctx: { instanceConfig: any; combinedText: string; imageDataUri?: string; allMedia: any[]; extraSystemContext?: string },
+  ): Promise<AiResponse> {
+    const registered = await this.agendaAiService.registerCheck(tenantId, lead, first, parts).catch(() => false);
+    if (!registered) {
+      return syncRawJson({ ...first, action: 'none', reply: first.reply?.trim() || 'Qual serviço você quer agendar e pra qual dia?' });
+    }
+    try {
+      const fresh = await this.agendaAiService.prepare(tenantId, lead, true);
+      if (!fresh) throw new Error('agenda desligada no meio da rodada');
+      let second: AiResponse | null = null;
+      if (ctx.instanceConfig?.promptEngine === 'dynamic_modules') {
+        const r = await this.promptModulesService.chatForLead(tenantId, lead, ctx.combinedText, ctx.imageDataUri, !!ctx.instanceConfig?.bubbleMode, fresh);
+        second = r?.aiResponse ?? null;
+      }
+      if (!second) {
+        const prompt = ctx.instanceConfig?.customPromptMegaHair
+          ? (ctx.instanceConfig.bubbleMode ? `${ctx.instanceConfig.customPromptMegaHair}\n\n${BUBBLE_RULE_BLOCK}` : ctx.instanceConfig.customPromptMegaHair)
+          : undefined;
+        second = await this.aiService.processMessageMegaHair(lead, ctx.combinedText, ctx.allMedia, prompt, ctx.extraSystemContext, ctx.imageDataUri, false, null,
+          { format: buildLegacyAgendaFormat(fresh), dynamic: fresh.dynamic });
+      }
+      if (second.success === false || second.action === 'check_availability' || !second.reply?.trim()) {
+        throw new Error(`2ª resposta inválida (action=${second.action})`);
+      }
+      this.logger.log(`[AGENDA-IA] 2ª chamada ok (${lead.phone}) action=${second.action}`);
+      return second;
+    } catch (err) {
+      this.logger.warn(`[AGENDA-IA] ${err?.message} — usando resposta pronta (${lead.phone})`);
+      return syncRawJson({ ...first, action: 'none', reply: await this.agendaAiService.fallbackReply(tenantId, lead) });
+    }
+  }
+
   private async sendMediaMessages(
     tenantId: string,
     phone: string,

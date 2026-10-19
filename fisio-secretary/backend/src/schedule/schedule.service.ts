@@ -4,10 +4,7 @@ import { Repository, Between, In } from 'typeorm';
 import { TenantSchedule, WeeklyHours, WeeklyHoursInterval } from '../common/entities/tenant-schedule.entity';
 import { ScheduleBlock } from '../common/entities/schedule-block.entity';
 import { Appointment } from '../common/entities/appointment.entity';
-
-const TZ = 'America/Sao_Paulo';
-const DAY_NAMES_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+import { DAY_NAMES_SHORT, TIME_RE, formatInTZ, toSPDate, timeToMinutes } from '../common/utils/sp-time.util';
 
 export interface UpsertScheduleDto {
   enabled?: boolean;
@@ -29,35 +26,6 @@ export interface DaySlots {
   weekday: string; // "seg", "ter"...
   closed: boolean;
   slots: string[]; // "HH:MM" livres
-}
-
-// Extrai data/hora civis em America/Sao_Paulo de um Date (mesma técnica de buildDateBlock
-// em ai.service.ts — soma de ms em vez de setDate evita bug de DST, e o Brasil não observa
-// DST atualmente, então o offset -03:00 é sempre fixo).
-function formatInTZ(d: Date): { date: string; weekdayIdx: number; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find(p => p.type === t)!.value;
-  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return {
-    date: `${get('year')}-${get('month')}-${get('day')}`,
-    weekdayIdx: weekdayMap[get('weekday')],
-    hour: parseInt(get('hour'), 10),
-    minute: parseInt(get('minute'), 10),
-  };
-}
-
-// Monta um Date a partir de uma data civil + hora em São Paulo — mesmo padrão de
-// parseBrazilianDateTime em evolution.controller.ts (offset -03:00 fixo).
-function toSPDate(dateStr: string, hhmm: string): Date {
-  return new Date(`${dateStr}T${hhmm}:00-03:00`);
-}
-
-function timeToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
 }
 
 function* iterateSlots(interval: WeeklyHoursInterval, slotMinutes: number): Generator<string> {

@@ -4,7 +4,7 @@ import {
 } from 'typeorm';
 import { Lead } from './lead.entity';
 
-export type AppointmentService = 'mega_hair' | 'manutencao';
+export type AppointmentService = 'mega_hair' | 'manutencao' | (string & {});
 export type AppointmentStatus = 'agendado' | 'confirmado' | 'realizado' | 'cancelado' | 'nao_compareceu';
 
 @Entity('appointments')
@@ -48,6 +48,18 @@ export class Appointment {
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
+
+  // Agenda com profissionais (tenant_schedules.mode='professionals'). Null nos agendamentos
+  // antigos e nos tenants com agenda simples.
+  @Column({ name: 'professional_id', type: 'uuid', nullable: true })
+  professionalId: string | null;
+
+  @Column({ name: 'service_id', type: 'uuid', nullable: true })
+  serviceId: string | null;
+
+  // 'ia' = marcado pela IA no WhatsApp; 'manual' = marcado pela recepção na tela.
+  @Column({ type: 'varchar', nullable: true })
+  source: 'ia' | 'manual' | null;
 
   @Column({ name: 'reminder_sent_at', type: 'timestamp', nullable: true })
   reminderSentAt: Date | null;

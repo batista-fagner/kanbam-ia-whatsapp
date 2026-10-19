@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PromptModule } from '../common/entities/prompt-module.entity';
 import { AiService, AiResponse, buildDateBlock, buildMiniDateBlock, AGENT_SCHEDULING_RULES } from '../ai/ai.service';
+import { AgendaPromptParts, buildAgendaJsonSchema } from '../agenda/agenda-ai.service';
 import { Lead } from '../common/entities/lead.entity';
 import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { MediaService } from '../media/media.service';
@@ -209,7 +210,7 @@ export class PromptModulesService {
     return hasAnyCaption(media) ? `${base}\n${CAPTION_PRICE_RULE}` : base;
   }
 
-  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[], priceConfig?: PriceConfig | null, bubbleMode = false): string {
+  buildSystemPrompt(core: PromptModule | undefined, selected: PromptModule[], media: CatalogEntry[], priceConfig?: PriceConfig | null, bubbleMode = false, agenda?: AgendaPromptParts | null): string {
     const moduleBlocks = selected.map((m) => {
       if (!m.injectsMediaCatalog) return m.content;
       return [m.content, this.buildMediaCatalogBlock(media)].filter(Boolean).join('\n\n');
@@ -222,14 +223,20 @@ export class PromptModulesService {
     // ("amanhã") num appointmentDateTime real — senão só a versão enxuta
     // (dia de hoje + saudação), que toda conversa precisa de qualquer forma.
     const needsFullDateTable = selected.some((m) => m.injectsDateTable);
-    const dateTail = needsFullDateTable
+    // Agenda com profissionais: as regras dela substituem o AGENT_SCHEDULING_RULES (09:00 fixo),
+    // a tabela de datas vai sempre inteira (a IA converte "sexta" em agendaDate) e o bloco
+    // variável da agenda fica por último, depois das datas.
+    const dateTail = agenda
+      ? [agenda.rules, buildDateBlock(), agenda.dynamic].join('\n\n')
+      : needsFullDateTable
       ? [AGENT_SCHEDULING_RULES, buildDateBlock()].join('\n\n')
       : buildMiniDateBlock();
     const hasPriceCalc = !!(priceConfig?.isActive && priceConfig.products.length);
     const priceBlock = hasPriceCalc ? buildPriceCatalogBlock(priceConfig!) : '';
     // Regra de bolhas é estática (por tenant) — fica antes do bloco de data pra não quebrar o cache.
     const bubbleBlock = bubbleMode ? BUBBLE_RULE_BLOCK : '';
-    const parts = [core?.content ?? '', ...moduleBlocks, priceBlock, buildJsonSchema(hasPriceCalc), bubbleBlock, dateTail];
+    const schema = agenda ? buildAgendaJsonSchema(hasPriceCalc ? PRICE_QUOTES_FIELD : '') : buildJsonSchema(hasPriceCalc);
+    const parts = [core?.content ?? '', ...moduleBlocks, priceBlock, schema, bubbleBlock, dateTail];
     return parts.filter((p) => p?.trim()).join('\n\n');
   }
 
@@ -251,6 +258,7 @@ export class PromptModulesService {
     message: string,
     imageUrl?: string,
     bubbleMode = false,
+    agenda?: AgendaPromptParts | null,
   ): Promise<{ aiResponse: AiResponse; moduleNames: string[]; freshNames: string[] } | null> {
     const allModules = await this.repo.find({ where: { tenantId, isActive: true } });
     if (!allModules.length) return null;
@@ -262,7 +270,7 @@ export class PromptModulesService {
       ? await this.mediaService.listAll(tenantId)
       : [];
     const priceConfig = await this.getActivePriceConfig(tenantId);
-    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig, bubbleMode);
+    const systemPrompt = this.buildSystemPrompt(core, selected, media, priceConfig, bubbleMode, agenda);
 
     // Imagem só entra no conteúdo multimodal desta chamada — o que fica
     // persistido em lead.aiContext (via aiService.buildUpdatedContext, chamado

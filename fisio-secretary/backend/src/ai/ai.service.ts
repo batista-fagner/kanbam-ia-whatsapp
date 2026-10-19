@@ -14,11 +14,14 @@ export interface AiResponse {
   rawJson?: string;
   stage?: string;
   temperature?: string;
-  action?: 'schedule' | 'cancel' | 'reschedule' | 'send_media' | 'none';
+  action?: 'schedule' | 'cancel' | 'reschedule' | 'send_media' | 'check_availability' | 'none';
   mediaName?: string | string[]; // nome(s) da mídia cadastrada (quando action='send_media'). Array = enviar vários vídeos.
   appointmentDateTime?: string; // ISO 8601: "2026-03-28T09:00:00"
   appointmentService?: 'mega_hair' | 'manutencao' | null; // MegaHair: tipo do serviço
   appointmentValue?: number | null; // MegaHair: valor em reais
+  // Agenda com profissionais (agenda/agenda-ai.service.ts): código do serviço (S1, S2…) e dia consultado.
+  agendaServiceCode?: string | null;
+  agendaDate?: string | null;
   tags?: string[]; // Tags para marcar lead como inativo, desrespeitoso, etc
   shouldIgnore?: boolean; // Se true, não responder mais mensagens deste lead
   handoff?: boolean; // Multi-agente: true = o agente pediu pra passar o bastão pro supervisor
@@ -1159,7 +1162,7 @@ OUTRAS REGRAS:
       : `AVISO: Sem mídias cadastradas. Não ofereça vídeos — vá direto ao fechamento.`;
   }
 
-  async processMessageMegaHair(lead: Lead, incomingText: string, availableMedia: CatalogEntry[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean, availabilityBlock?: string | null): Promise<AiResponse> {
+  async processMessageMegaHair(lead: Lead, incomingText: string, availableMedia: CatalogEntry[], customPromptMegaHair?: string, extraSystemContext?: string, imageUrl?: string, schedulingHandoffEnabled?: boolean, availabilityBlock?: string | null, agendaBlocks?: { format: string; dynamic: string } | null): Promise<AiResponse> {
     const history = (lead.aiContext as any[]) ?? [];
     const mediaInstructions = this.buildMediaInstructions(availableMedia);
 
@@ -1240,14 +1243,19 @@ REGRAS:
     // buildDateBlock no final: prefixo estático (basePrompt+media+JSON) fica idêntico
     // entre todas as conversas → habilita cache automático (OpenAI 50%, Gemini 75%).
     const extraBlock = extraSystemContext ? `\n\n${extraSystemContext}` : '';
-    const jsonFormatBlock = schedulingHandoffEnabled
+    // Agenda com profissionais: o bloco dela substitui as regras de agendamento antigas.
+    const jsonFormatBlock = agendaBlocks
+      ? agendaBlocks.format
+      : schedulingHandoffEnabled
       ? JSON_FORMAT_MEGAHAIR_HANDOFF
       : availabilityBlock
         ? JSON_FORMAT_MEGAHAIR_AGENDA
         : JSON_FORMAT_MEGAHAIR;
     // availabilityBlock (variável, muda a cada mensagem) fica depois de buildDateBlock() —
     // mesma regra do bloco de datas: variável sempre no final, pra não quebrar o cache.
-    const availabilitySuffix = availabilityBlock ? `\n\n${availabilityBlock}` : '';
+    const availabilitySuffix = agendaBlocks
+      ? `\n\n${agendaBlocks.dynamic}`
+      : availabilityBlock ? `\n\n${availabilityBlock}` : '';
     const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${extraBlock}\n\n${buildDateBlock()}${availabilitySuffix}`;
 
     // Imagem só entra no conteúdo multimodal desta chamada — o histórico

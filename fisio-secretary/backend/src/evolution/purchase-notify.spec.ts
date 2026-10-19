@@ -17,7 +17,7 @@ describe('EvolutionController — maybeNotifyPurchaseIntent', () => {
     controller = new EvolutionController(
       evolutionService, {} as any, {} as any, {} as any, leadsService, {} as any, {} as any,
       {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
-      {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any, {} as any,
     );
   });
 

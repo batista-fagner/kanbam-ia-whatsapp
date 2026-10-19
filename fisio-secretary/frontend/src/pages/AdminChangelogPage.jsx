@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Agenda com profissionais e serviços (piloto: DALU)',
+    date: '19/10/2026',
+    detail: 'Agenda nova estilo Trinks, ligada por cliente no Admin (ícone de calendário na linha do cliente). O salão cadastra serviços (com duração e preço), profissionais (o que cada um faz e horário próprio) e folgas. A tela mostra o dia com uma coluna por profissional e a semana de cada um; clique num horário vazio agenda e arrastar remarca. Com "A IA pode agendar sozinha" ligado, a IA consulta os horários livres de verdade, marca, remarca e cancela pelo WhatsApp, e o sistema escolhe quem atende. Dois agendamentos nunca pegam o mesmo horário do mesmo profissional. Cada profissional recebe aviso no WhatsApp. O lembrete aceita {servico} e {profissional}. Os outros clientes continuam com o calendário de antes.',
+  },
+  {
     title: 'Heline / HE Cabelos: mostra 3 mídias da cor e pergunta qual ela gostou',
     date: '19/10/2026',
     detail: 'Antes a IA mandava uma foto ou vídeo só quando a cliente falava a cor (ex.: loiro). Agora manda 3 mídias diferentes da linha de uma vez (variando raiz suave, raiz escura, mel…) e pergunta \"Qual dessas você mais gostou?\"; depois segue a conversa a partir da escolha (tamanho, gramas, valor). Casos específicos continuam com 1 mídia (vídeo da loja, foto de referência, pedido de uma mídia pelo nome). Não repete mídia já enviada. Backup do prompt anterior guardado antes da troca.',

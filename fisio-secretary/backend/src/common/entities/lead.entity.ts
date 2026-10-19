@@ -101,6 +101,11 @@ export class Lead {
   @Column({ name: 'active_modules', type: 'jsonb', default: [] })
   activeModules: string[];
 
+  // Agenda com profissionais: última consulta de horários feita pela IA nesta conversa
+  // (serviço + dia). Reaproveitada nos turnos seguintes pra reinjetar horários frescos.
+  @Column({ name: 'agenda_state', type: 'jsonb', nullable: true })
+  agendaState: { serviceId: string; date: string; checkedAt: string } | null;
+
   // Foto de perfil do WhatsApp, baixada uma vez e persistida no nosso storage
   // (a URL original do WhatsApp expira em alguns dias). Ver LeadsService.fetchAvatar.
   @Column({ name: 'avatar_url', type: 'text', nullable: true })

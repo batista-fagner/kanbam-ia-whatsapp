@@ -24,6 +24,11 @@ export class TenantSchedule {
   @Column({ type: 'boolean', default: false })
   enabled: boolean;
 
+  // 'simple' = agenda de um recurso só (capacity); 'professionals' = agenda com profissionais e
+  // serviços (módulo agenda/). Com 'professionals', slot_minutes vira a grade de início dos horários.
+  @Column({ type: 'varchar', default: 'simple' })
+  mode: 'simple' | 'professionals';
+
   @Column({ name: 'slot_minutes', type: 'integer', default: 60 })
   slotMinutes: number;
 

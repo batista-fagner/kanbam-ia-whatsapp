@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye, Wrench, Archive, ArchiveRestore } from 'lucide-react'
+import { Users, Plus, Power, PowerOff, Loader2, X, AlertCircle, Wifi, WifiOff, Check, Calendar, KeyRound, BarChart2, Trash2, CreditCard, Send, Link2, Download, Copy, MessageSquare, DollarSign, RefreshCw, TrendingUp, Eye, Wrench, Archive, ArchiveRestore, CalendarClock } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { getClients, createClient, setClientActive, archiveClients, unarchiveClients, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins, createToolExpense, updateToolExpense, deleteToolExpense } from '../services/api'
+import { getClients, createClient, setClientActive, archiveClients, unarchiveClients, updateClientBilling, resetClientPassword, getTokenUsage, deleteClient, clearClientPastDue, resendMonthlyPix, getBillingEvents, getAdminCheckoutSettings, updateAdminCheckoutSettings, getAdminOnboardingSettings, updateAdminOnboardingSettings, createOnboardingTestGroup, getFinanceOverview, syncClientOrigins, createToolExpense, updateToolExpense, deleteToolExpense, getAdminAgendaModes, setAdminAgendaMode } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import ClientDrawer from '../components/ClientDrawer'
 
@@ -86,6 +86,8 @@ export default function AdminPage() {
   const [savingCheckout, setSavingCheckout] = useState(false)
   const [checkoutSaved, setCheckoutSaved] = useState(false)
   const [pixSendingId, setPixSendingId] = useState(null)
+  // Agenda com profissionais (piloto): { [tenantId]: 'professionals' }
+  const [agendaModes, setAgendaModes] = useState({})
   const [billingEvents, setBillingEvents] = useState([])
   const [loadingBilling, setLoadingBilling] = useState(false)
   const [billingFilter, setBillingFilter] = useState('')
@@ -116,6 +118,7 @@ export default function AdminPage() {
   const load = async () => {
     try {
       setClients(await getClients())
+      getAdminAgendaModes().then(setAgendaModes).catch(() => {})
     } catch (e) {
       setError(e.message)
     } finally {
@@ -1361,6 +1364,22 @@ export default function AdminPage() {
                       {c.extraChargesCount}
                     </span>
                   )}
+                </button>
+                <button
+                  onClick={async () => {
+                    const on = agendaModes[c.id] === 'professionals'
+                    if (!window.confirm(on
+                      ? `Voltar ${c.displayName || 'este cliente'} para o calendário simples? A IA volta a agendar do jeito antigo.`
+                      : `Ligar a agenda com profissionais para ${c.displayName || 'este cliente'}? A página Agenda dele passa a ter profissionais e serviços. A IA só agenda depois que ele ligar "A IA pode agendar sozinha" lá.`)) return
+                    try {
+                      await setAdminAgendaMode(c.id, on ? 'simple' : 'professionals')
+                      setAgendaModes(await getAdminAgendaModes())
+                    } catch (e) { alert(e.message) }
+                  }}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition ${agendaModes[c.id] === 'professionals' ? 'text-pink-600 bg-pink-50 hover:bg-pink-100' : 'text-gray-500 hover:bg-gray-100'}`}
+                  title={agendaModes[c.id] === 'professionals' ? 'Agenda com profissionais LIGADA — clique para voltar ao calendário simples' : 'Ligar agenda com profissionais (piloto)'}
+                >
+                  <CalendarClock className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => { setResetModal({ id: c.id, name: c.displayName }); setNewPassword('') }}

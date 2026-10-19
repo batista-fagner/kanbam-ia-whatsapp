@@ -563,7 +563,8 @@ export class FollowupService {
 
           const hora = appt.startDateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
           const data = appt.startDateTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
-          const message = this.interpolateAppointment(reminder.message, appt.clientName, hora, data);
+          const profissional = await this.appointmentsService.professionalNameFor(appt);
+          const message = this.interpolateAppointment(reminder.message, appt.clientName, hora, data, appt.service, profissional);
 
           const token = await this.resolveTenantToken(cfg.id);
           if (!token) continue;
@@ -606,12 +607,16 @@ export class FollowupService {
     return msg;
   }
 
-  private interpolateAppointment(template: string, clientName: string, hora: string, data: string): string {
+  private interpolateAppointment(template: string, clientName: string, hora: string, data: string, servico?: string | null, profissional?: string | null): string {
     const nome = (clientName?.trim().split(/\s+/)[0]) || '';
+    const SERVICE_LABEL: Record<string, string> = { mega_hair: 'Mega Hair', manutencao: 'Manutenção' };
     let msg = template
       .replace(/\{nome\}/gi, nome)
       .replace(/\{hora\}/gi, hora)
-      .replace(/\{data\}/gi, data);
+      .replace(/\{data\}/gi, data)
+      // {servico}/{profissional}: agenda com profissionais (agenda/). Vazio nos agendamentos antigos.
+      .replace(/\{servico\}/gi, servico ? (SERVICE_LABEL[servico] ?? servico) : '')
+      .replace(/\{profissional\}/gi, profissional ?? '');
     if (!nome) {
       msg = msg.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim();
     }
