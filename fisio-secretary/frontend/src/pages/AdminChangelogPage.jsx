@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Mult Festa: mídias importadas do formulário e prompt manda foto/vídeo',
+    date: '20/10/2026',
+    detail: 'As 4 mídias que ela anexou no formulário (2 fotos e 2 vídeos de festa) foram para a Mídia dela, com os vídeos convertidos de .mov para MP4 leve (de 41 MB e 18 MB para 3 MB e 1 MB) para o WhatsApp aceitar. O prompt ganhou uma seção de mídias dizendo quando usar cada uma (decoração, bolo, casamento), sem enviar folder de casamento para festa infantil e sem repetir a mesma mídia.',
+  },
+  {
     title: 'Agenda com profissionais e serviços (piloto: DALU)',
     date: '19/10/2026',
     detail: 'Agenda nova estilo Trinks, ligada por cliente no Admin (ícone de calendário na linha do cliente). O salão cadastra serviços (com duração e preço), profissionais (o que cada um faz e horário próprio) e folgas. A tela mostra o dia com uma coluna por profissional e a semana de cada um; clique num horário vazio agenda e arrastar remarca. Com "A IA pode agendar sozinha" ligado, a IA consulta os horários livres de verdade, marca, remarca e cancela pelo WhatsApp, e o sistema escolhe quem atende. Dois agendamentos nunca pegam o mesmo horário do mesmo profissional. Cada profissional recebe aviso no WhatsApp. O lembrete aceita {servico} e {profissional}. Os outros clientes continuam com o calendário de antes.',
