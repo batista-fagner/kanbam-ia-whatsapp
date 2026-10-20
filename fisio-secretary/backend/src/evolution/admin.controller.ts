@@ -569,13 +569,23 @@ export class AdminController {
   // esse campo a tela dava a entender que o monólito ainda estava em uso.
   @Get('prompts')
   async listPrompts() {
-    const tenants = await this.whatsappConfigService.listAll();
+    // 3 consultas paralelas (antes eram 1–2 por cliente, em sequência).
+    const [tenants, allAgents, allModules] = await Promise.all([
+      this.whatsappConfigService.listAll(),
+      this.agentsService.findAllTenants(),
+      this.promptModuleRepo.find({ order: { sortOrder: 'ASC' } }),
+    ]);
+    const groupBy = <T extends { tenantId: string }>(rows: T[]) => {
+      const map = new Map<string, T[]>();
+      for (const r of rows) map.set(r.tenantId, [...(map.get(r.tenantId) ?? []), r]);
+      return map;
+    };
+    const agentsByTenant = groupBy(allAgents);
+    const modulesByTenant = groupBy(allModules);
     const result: any[] = [];
     for (const t of tenants) {
-      const agents = await this.agentsService.findAll(t.id);
-      const modules = t.promptEngine === 'dynamic_modules'
-        ? await this.promptModuleRepo.find({ where: { tenantId: t.id }, order: { sortOrder: 'ASC' } })
-        : [];
+      const agents = agentsByTenant.get(t.id) ?? [];
+      const modules = t.promptEngine === 'dynamic_modules' ? modulesByTenant.get(t.id) ?? [] : [];
       result.push({
         tenantId: t.id,
         displayName: t.displayName ?? t.profileName,

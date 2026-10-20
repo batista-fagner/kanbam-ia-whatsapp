@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Mult Festa: respostas curtas, espera de 30s e as 16 artes de pacote na Mídia',
+    date: '20/10/2026',
+    detail: 'Na conversa da Bruna cada resposta tinha 3 bolhas longas e levava ~1 minuto digitando; enquanto isso ela mandava a data e a IA respondia uma mensagem velha (parecia não ter visto). Agora: uma bolha curta, sem repetir o que a cliente disse, pergunta só o que falta, e o tempo de espera dela passou de 15s para 30s. As 16 artes de pacote do formulário (decoração, kit festa, brinquedos, 15 anos, buffet 60/80 pessoas, entrada de R$300 e 12x) foram para a Mídia com legenda (o que inclui + preço), e o prompt diz qual mandar para cada pedido. A arte da decoração de 2 metros está escrita "R$1.6000,00" — a legenda usa R$ 1.600,00.',
+  },
+  {
+    title: 'Admin → Prompts carrega muito mais rápido',
+    date: '20/10/2026',
+    detail: 'Mesmo problema da lista de clientes: buscava agentes e módulos de um cliente por vez (~40 idas ao banco em sequência). Agora são 3 consultas ao mesmo tempo e o conteúdo da tela é idêntico. Conferimos as outras telas do Admin (Onboarding, Financeiro, Monitoramento, Relatórios de Grupos, Cobranças) e nenhuma tinha esse problema.',
+  },
+  {
     title: 'Admin → Clientes carrega muito mais rápido',
     date: '20/10/2026',
     detail: 'A lista ia ao banco 2 vezes por cliente, uma depois da outra (70 idas para 35 clientes), e ainda trazia os prompts inteiros de todos (~300 KB) sem usar. Agora são 4 consultas ao mesmo tempo, só com as colunas da tabela. Os números (leads, usuários, e-mail) continuam os mesmos.',

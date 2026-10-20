@@ -36,6 +36,11 @@ export class AgentsService {
     return this.repo.find({ where: { tenantId }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
   }
 
+  // Agentes de todos os tenants numa consulta só (lista de prompts do admin).
+  findAllTenants() {
+    return this.repo.find({ order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+  }
+
   async create(tenantId: string, body: AgentInput) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
     this.validatePromptLength(tenantId, body.systemPrompt ?? '', body.canSendMedia ?? true);

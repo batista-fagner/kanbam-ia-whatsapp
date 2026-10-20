@@ -23,6 +23,7 @@ const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
   '1ff3f0b3-52d1-4e89-b7bf-552d0556de29': 25000,
   'e624e817-5b6c-4840-b0ea-269eb78afe8d': 5000,
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174': 45000,
+  '69420c85-634c-451d-af45-2ebccf8aa1d3': 30000, // Mult Festa — clientes mandam data/tema/local em várias mensagens
 };
 
 @Injectable()
