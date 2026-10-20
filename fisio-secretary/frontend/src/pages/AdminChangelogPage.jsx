@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Admin → Clientes carrega muito mais rápido',
+    date: '20/10/2026',
+    detail: 'A lista ia ao banco 2 vezes por cliente, uma depois da outra (70 idas para 35 clientes), e ainda trazia os prompts inteiros de todos (~300 KB) sem usar. Agora são 4 consultas ao mesmo tempo, só com as colunas da tabela. Os números (leads, usuários, e-mail) continuam os mesmos.',
+  },
+  {
     title: 'Mult Festa: mídias importadas do formulário e prompt manda foto/vídeo',
     date: '20/10/2026',
     detail: 'As 4 mídias que ela anexou no formulário (2 fotos e 2 vídeos de festa) foram para a Mídia dela, com os vídeos convertidos de .mov para MP4 leve (de 41 MB e 18 MB para 3 MB e 1 MB) para o WhatsApp aceitar. O prompt ganhou uma seção de mídias dizendo quando usar cada uma (decoração, bolo, casamento), sem enviar folder de casamento para festa infantil e sem repetir a mesma mídia.',
@@ -304,6 +309,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Formulário de onboarding: botão "Enviar para Mídia" nos anexos', detail: 'No Admin → Onboarding, ao lado de cada anexo da pergunta de fotos/vídeos, um botão que pede o nome, converte vídeo (.mov) para MP4 H.264 leve, reduz foto e cadastra na Mídia do cliente. Precisa de ffmpeg no servidor (hoje o backend não tem) e conversão em segundo plano para vídeo grande. Não colocar no formulário público nem automatizar no envio. Decidido adiar (20/10/2026); a Mult Festa foi importada na mão.' },
   { title: 'Fabiana: reconectar o WhatsApp e acompanhar as primeiras conversas', detail: 'O número está desconectado desde 10/10 (09:36). Ela precisa ler o QR code de novo. Depois, conferir nas primeiras conversas se a IA só manda a tabela e passa pra ela o que não sabe, e se a Fabiana aprova o novo jeito.' },
   { title: 'Heline: confirmar preços e dados que faltam', detail: 'O formulário e as tabelas que ela mandou não batem: castanho R$800 x R$900, "Loiro do Sul" R$2.000 só no formulário, "Cabelo do Sul" castanho R$1.500 só na tabela. Ficou a tabela mais recente (12/10). Falta: horário da loja, valor do frete, garantia, valor da fita adesiva. Depois, conectar o número e testar.' },
   { title: 'Bolhas: testar com o Tiago e decidir os próximos clientes', detail: 'Ligar a opção no painel do Tiago Adan, conversar pelo WhatsApp dele e conferir tamanho das bolhas e o "digitando…". Ainda não vale pros clientes no multi-agente.' },

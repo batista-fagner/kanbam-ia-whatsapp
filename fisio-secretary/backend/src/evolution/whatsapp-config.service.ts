@@ -37,6 +37,20 @@ export class WhatsappConfigService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  // Lista do admin: só as colunas da tabela de clientes — sem prompts e QR do PIX,
+  // que somam centenas de KB e deixavam a tela lenta.
+  async listForAdmin(): Promise<WhatsappConfig[]> {
+    return this.repo.find({
+      select: {
+        id: true, displayName: true, profileName: true, phone: true, connected: true, isActive: true,
+        nextPaymentDate: true, billingDay: true, billingPhone: true, agentType: true, paymentMethod: true,
+        planStatus: true, planValue: true, createdAt: true, isTest: true, bubbleMode: true,
+        churnedAt: true, churnReason: true, archivedAt: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   // Cria um tenant NOVO (linha nova em whatsapp_config). NÃO reusa o existente.
   // A instância uazapi é conectada depois, pelo próprio tenant (tela de Settings).
   async createTenant(displayName: string, agentType = 'megahair'): Promise<WhatsappConfig> {

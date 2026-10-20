@@ -81,22 +81,40 @@ export class AdminController {
   // Lista todos os clientes com status (conexão, isActive, vencimento, nº leads/usuários)
   @Get('clients')
   async listClients() {
-    const tenants = await this.whatsappConfigService.listAll();
-    // Total de cobranças avulsas por cliente — pra mostrar um indicador na lista sem
-    // precisar abrir o drawer de cada um pra descobrir se tem algo lançado.
-    const extraTotals = await this.extraChargeRepo
-      .createQueryBuilder('c')
-      .select('c.tenant_id', 'tenantId')
-      .addSelect('SUM(c.amount)', 'total')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('c.tenant_id')
-      .getRawMany();
+    // Tudo em 4 consultas paralelas (antes eram 2 por cliente, em sequência).
+    const [tenants, leadCounts, allUsers, extraTotals] = await Promise.all([
+      this.whatsappConfigService.listForAdmin(),
+      this.leadRepo
+        .createQueryBuilder('l')
+        .select('l.tenant_id', 'tenantId')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('l.tenant_id')
+        .getRawMany(),
+      this.usersService.findAllSummary(),
+      // Total de cobranças avulsas por cliente — pra mostrar um indicador na lista sem
+      // precisar abrir o drawer de cada um pra descobrir se tem algo lançado.
+      this.extraChargeRepo
+        .createQueryBuilder('c')
+        .select('c.tenant_id', 'tenantId')
+        .addSelect('SUM(c.amount)', 'total')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('c.tenant_id')
+        .getRawMany(),
+    ]);
     const extraByTenant = new Map(extraTotals.map((e: any) => [e.tenantId, { total: Number(e.total), count: Number(e.count) }]));
+    const leadsByTenant = new Map(leadCounts.map((e: any) => [e.tenantId, Number(e.count)]));
+    const usersByTenant = new Map<string, typeof allUsers>();
+    for (const u of allUsers) {
+      if (!u.tenantId) continue;
+      const list = usersByTenant.get(u.tenantId) ?? [];
+      list.push(u);
+      usersByTenant.set(u.tenantId, list);
+    }
 
     const result: any[] = [];
     for (const t of tenants) {
-      const leadsCount = await this.leadsService.countByTenant(t.id);
-      const users = await this.usersService.findByTenant(t.id);
+      const leadsCount = leadsByTenant.get(t.id) ?? 0;
+      const users = usersByTenant.get(t.id) ?? [];
       const extra = extraByTenant.get(t.id);
       result.push({
         id: t.id,

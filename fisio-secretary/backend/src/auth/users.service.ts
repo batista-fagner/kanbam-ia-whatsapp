@@ -87,6 +87,11 @@ export class UsersService implements OnApplicationBootstrap {
     return this.repo.find({ where: { tenantId }, order: { createdAt: 'ASC' } });
   }
 
+  // Usuários de todos os tenants numa consulta só (lista do admin) — só os campos que a lista usa.
+  findAllSummary(): Promise<Pick<User, 'tenantId' | 'email' | 'createdAt'>[]> {
+    return this.repo.find({ select: { tenantId: true, email: true, createdAt: true }, order: { createdAt: 'ASC' } });
+  }
+
   listAll(): Promise<User[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
