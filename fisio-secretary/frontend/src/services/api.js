@@ -333,6 +333,13 @@ export const updateClientBubbleMode = (id, bubbleMode) =>
     body: JSON.stringify({ bubbleMode }),
   }).then(json)
 
+export const updateClientTestPhone = (id, phone) =>
+  authFetch(`${BASE}/admin/clients/${id}/test-phone`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  }).then(json)
+
 export const updateClientTestFlag = (id, isTest) =>
   authFetch(`${BASE}/admin/clients/${id}/test-flag`, {
     method: 'PATCH',

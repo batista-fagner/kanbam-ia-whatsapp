@@ -1,4 +1,5 @@
 import { bubbleRuleBlockFor, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
+import { isAllowedInTestMode } from './test-phone.util';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -84,6 +85,7 @@ function matchPurchaseHandoffKeyword(text: string): string | null {
 // habilitado (decisão do cliente, 2026-08-06) — ambos usam o fluxo padrão "não
 // consigo ver imagens, pergunta a textura por texto".
 const IMAGE_ANALYSIS_TENANT_IDS = [
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', // DALU (2026-10-21) — o roteiro dela pede foto de costas da cliente; pedido do Fagner
   'e624e817-5b6c-4840-b0ea-269eb78afe8d', // alex_teste (sandbox)
   'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
   '6fac64ce-9189-414a-9ad9-fd2fc102e599', // Tiago Adan (conta de teste p/ demonstração a clientes, 2026-10-09)
@@ -319,6 +321,12 @@ export class EvolutionController {
               this.logger.log(`IA desativada para ${phone} — imagem sem legenda ignorada`);
               const updatedLeadPaused = await this.leadsService.findOne(lead.id);
               this.leadsGateway.emitLeadUpdated(updatedLeadPaused);
+              return;
+            }
+
+            const testCfg = await this.whatsappConfigService.getByTenant(tenantId);
+            if (!isAllowedInTestMode(testCfg?.testOnlyPhone, phone)) {
+              this.logger.log(`[TEST-ONLY] ${phone} fora do número liberado — imagem sem legenda ignorada`);
               return;
             }
 
@@ -578,6 +586,15 @@ export class EvolutionController {
     const tenantConfigForActive = await this.whatsappConfigService.getByTenant(tenantId);
     if (tenantConfigForActive?.isActive === false) {
       this.logger.log(`Tenant ${tenantId} suspenso — mensagem de ${phone} salva, IA não responde`);
+      const updatedLead = await this.leadsService.findOne(lead.id);
+      this.leadsGateway.emitLeadUpdated(updatedLead);
+      return;
+    }
+
+    // Modo teste da IA (Admin → cliente): só responde ao número configurado; os demais
+    // ficam salvos no Kanban, sem resposta. Ver evolution/test-phone.util.ts.
+    if (!isAllowedInTestMode(tenantConfigForActive?.testOnlyPhone, phone)) {
+      this.logger.log(`[TEST-ONLY] Tenant ${tenantId} em modo teste — ${phone} fora do número liberado, IA não responde`);
       const updatedLead = await this.leadsService.findOne(lead.id);
       this.leadsGateway.emitLeadUpdated(updatedLead);
       return;

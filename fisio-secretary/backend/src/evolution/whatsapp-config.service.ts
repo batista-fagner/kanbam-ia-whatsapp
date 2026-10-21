@@ -44,7 +44,7 @@ export class WhatsappConfigService {
       select: {
         id: true, displayName: true, profileName: true, phone: true, connected: true, isActive: true,
         nextPaymentDate: true, billingDay: true, billingPhone: true, agentType: true, paymentMethod: true,
-        planStatus: true, planValue: true, createdAt: true, isTest: true, bubbleMode: true,
+        planStatus: true, planValue: true, createdAt: true, isTest: true, bubbleMode: true, testOnlyPhone: true,
         churnedAt: true, churnReason: true, archivedAt: true,
       },
       order: { createdAt: 'DESC' },
@@ -101,6 +101,14 @@ export class WhatsappConfigService {
     const record = await this.getByTenant(tenantId);
     if (!record) return null;
     record.bubbleMode = bubbleMode;
+    return this.repo.save(record);
+  }
+
+  // Modo teste da IA: só responde a este número. null/vazio desliga.
+  async setTestOnlyPhone(tenantId: string, phone: string | null): Promise<WhatsappConfig | null> {
+    const record = await this.getByTenant(tenantId);
+    if (!record) return null;
+    record.testOnlyPhone = phone;
     return this.repo.save(record);
   }
 

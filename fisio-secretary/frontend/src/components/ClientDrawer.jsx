@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X, Loader2, Trash2, Plus, AlertTriangle, FlaskConical, MessagesSquare } from 'lucide-react'
+import { X, Loader2, Trash2, Plus, AlertTriangle, FlaskConical, MessagesSquare, PhoneCall } from 'lucide-react'
 import {
   updateClientTestFlag,
   updateClientBubbleMode,
+  updateClientTestPhone,
   updateClientChurn,
   getClientExtraCharges,
   addClientExtraCharge,
@@ -26,6 +27,11 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
   const hasBubbleField = client?.bubbleMode !== undefined
   const [bubbleMode, setBubbleMode] = useState(!!client?.bubbleMode)
   const [savingBubble, setSavingBubble] = useState(false)
+  // Modo teste da IA: só vem na lista da aba Clientes, igual ao bubbleMode.
+  const hasTestPhoneField = client?.testOnlyPhone !== undefined
+  const [testPhone, setTestPhone] = useState(client?.testOnlyPhone || '')
+  const [savedTestPhone, setSavedTestPhone] = useState(client?.testOnlyPhone || '')
+  const [savingTestPhone, setSavingTestPhone] = useState(false)
   const [savingChurn, setSavingChurn] = useState(false)
   const [charges, setCharges] = useState([])
   const [loadingCharges, setLoadingCharges] = useState(true)
@@ -69,6 +75,16 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
       setBubbleMode(next)
       onChanged?.()
     } catch (e) { setError(e.message) } finally { setSavingBubble(false) }
+  }
+
+  async function handleSaveTestPhone(value) {
+    setSavingTestPhone(true); setError('')
+    try {
+      const res = await updateClientTestPhone(client.id, value)
+      const saved = res.testOnlyPhone || ''
+      setTestPhone(saved); setSavedTestPhone(saved)
+      onChanged?.()
+    } catch (e) { setError(e.message) } finally { setSavingTestPhone(false) }
   }
 
   async function handleToggleChurn(next) {
@@ -172,6 +188,42 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
                 />
               </label>
               <p className="text-xs text-gray-400 mt-1.5">A IA quebra respostas longas em até 3 mensagens curtas (~150 caracteres), com "digitando…" antes de cada uma. Vale na próxima mensagem.</p>
+            </div>
+          )}
+
+          {/* Modo teste da IA: responde só a um número */}
+          {hasTestPhoneField && (
+            <div className="mb-5 border border-gray-200 rounded-xl p-4">
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <PhoneCall className="w-4 h-4 text-amber-500" /> Modo teste da IA
+                {savedTestPhone && <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">ligado</span>}
+              </span>
+              <div className="flex gap-2 mt-2">
+                <input
+                  value={testPhone}
+                  onChange={e => setTestPhone(e.target.value)}
+                  placeholder="DDD + número (ex: 71992867765)"
+                  inputMode="tel"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+                <button
+                  onClick={() => handleSaveTestPhone(testPhone)}
+                  disabled={savingTestPhone || testPhone === savedTestPhone}
+                  className="px-3 py-2 text-sm font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-40"
+                >
+                  {savingTestPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
+                </button>
+                {savedTestPhone && (
+                  <button
+                    onClick={() => handleSaveTestPhone('')}
+                    disabled={savingTestPhone}
+                    className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+                  >
+                    Desligar
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">Com número preenchido, a IA responde só a ele; os outros contatos ficam salvos no Kanban, sem resposta. Vazio = IA responde a todos. Follow-ups automáticos não são afetados. Vale na próxima mensagem.</p>
             </div>
           )}
 

@@ -20,6 +20,7 @@ import { MediaSendError } from '../common/entities/media-send-error.entity';
 import { ClientExtraCharge } from '../common/entities/client-extra-charge.entity';
 import { ToolExpense } from '../common/entities/tool-expense.entity';
 import { Followup } from '../common/entities/followup.entity';
+import { normalizeTestPhone } from './test-phone.util';
 
 // Todos os endpoints aqui exigem usuário admin (dono da plataforma).
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -133,6 +134,7 @@ export class AdminController {
         createdAt: t.createdAt, // "cliente desde" — usado na aba Financeiro
         isTest: t.isTest,
         bubbleMode: t.bubbleMode,
+        testOnlyPhone: t.testOnlyPhone,
         churnedAt: t.churnedAt,
         churnReason: t.churnReason,
         archivedAt: t.archivedAt,
@@ -255,6 +257,17 @@ export class AdminController {
     const updated = await this.whatsappConfigService.setBubbleMode(id, !!body.bubbleMode);
     if (!updated) throw new BadRequestException('Cliente não encontrado');
     return { ok: true, bubbleMode: updated.bubbleMode };
+  }
+
+  // Modo teste da IA: responde só a um número (vazio desliga). Ver evolution/test-phone.util.ts.
+  @Patch('clients/:id/test-phone')
+  async setTestOnlyPhone(@Param('id') id: string, @Body() body: { phone?: string | null }) {
+    const raw = (body.phone ?? '').toString().trim();
+    const phone = normalizeTestPhone(raw);
+    if (raw && !phone) throw new BadRequestException('Número inválido — informe DDD + número');
+    const updated = await this.whatsappConfigService.setTestOnlyPhone(id, phone);
+    if (!updated) throw new BadRequestException('Cliente não encontrado');
+    return { ok: true, testOnlyPhone: updated.testOnlyPhone };
   }
 
   // Marca/desmarca churn manual — cliente que pagou ao menos 1 vez e saiu. Sai do MRR/ativos

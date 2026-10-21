@@ -119,6 +119,12 @@ export class WhatsappConfig {
   @Column({ name: 'bubble_mode', type: 'boolean', default: false })
   bubbleMode: boolean;
 
+  // Modo teste da IA: quando preenchido (só dígitos), a IA responde APENAS a este número —
+  // qualquer outro contato é salvo no Kanban mas fica sem resposta. null = desligado.
+  // Ver evolution/test-phone.util.ts. Follow-ups automáticos não passam por esta trava.
+  @Column({ name: 'test_only_phone', type: 'varchar', nullable: true })
+  testOnlyPhone: string | null;
+
   // --- Pagamento Stripe (D2) ---
   @Column({ name: 'stripe_customer_id', type: 'varchar', nullable: true })
   stripeCustomerId: string | null;

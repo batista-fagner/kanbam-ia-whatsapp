@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Modo teste da IA: responde só a um número',
+    date: '21/10/2026',
+    detail: 'Admin → Clientes → abrir o cliente → "Modo teste da IA". Com um número preenchido, a IA responde só a ele; qualquer outro contato fica salvo no Kanban, sem resposta. Vazio desliga. Aceita com ou sem 55 e 9º dígito. Follow-ups automáticos não passam por essa trava (desligue o follow-up do cliente se for testar com leads reais).',
+  },
+  {
+    title: 'DALU: reconhecimento de foto ligado (igual ao S&A)',
+    date: '21/10/2026',
+    detail: 'O roteiro da Luísa pede foto de costas da cliente. Antes a IA não via a foto e só pedia pra cliente descrever. Agora ela vê e comenta comprimento atual, textura, cor e se tem química — nunca chuta altura nem cm pela foto (pergunta). Se a foto não chegar, continua pedindo por texto.',
+  },
+  {
     title: 'DALU: prompt ajustado pelos áudios da Luísa + espera de 35s + no máximo 2 bolhas',
     date: '21/10/2026',
     detail: 'Na conversa de teste dela a IA mandou ir ao salão 4 vezes em 10 minutos, respondeu preço de fita/tela quando ela perguntou do cabelo, falava de personalização sem ela pedir e mandou 5 bolhas depois de "100g". Agora: vende por aqui (a DALU vende muito online — a cliente paga e só vem colocar), visita só se ela pedir ou em caso de cabelo extra curto/cor diferente, roteiro dela pro "quanto é o cabelo?" (já usou? → foto de costas + altura → brasileiro x importado → fotos com valor), cabelo primeiro e serviço depois, uma pergunta por mensagem, e robô/mensagem automática (ex.: Shopee) fica sem resposta. No código: espera de 35s e teto de 2 bolhas só para a DALU.',
