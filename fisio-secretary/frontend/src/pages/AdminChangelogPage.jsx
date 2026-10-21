@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Studio Simone Trindade: prompt reescrito mais enxuto + 6 fotos novas na Mídia',
+    date: '20/10/2026',
+    detail: 'Prompt da Simone reescrito (de ~16 mil para ~13,6 mil caracteres): respostas curtas, foto antes do preço (envia direto, sem perguntar "posso enviar?"), sem os "FALTA" que a IA podia repetir, as duas tabelas de confecção (casa x cliente de fora) consolidadas, horário/prazo/retirada que ela mandou no grupo, e as tabelas novas do cacho vietnamita (cartão x dinheiro). Cada foto da Mídia agora está ligada à tabela de preço certa no prompt. Foram cadastradas 6 fotos que estavam só no grupo (indiano liga rosa, 2 loiros brasileiros, 3 cachos vietnamita) e a "Brasileiro liso preto 65 cm" foi corrigida para 60 cm (a legenda dela dizia 60).',
+  },
+  {
     title: 'Mult Festa: respostas curtas, espera de 30s e as 16 artes de pacote na Mídia',
     date: '20/10/2026',
     detail: 'Na conversa da Bruna cada resposta tinha 3 bolhas longas e levava ~1 minuto digitando; enquanto isso ela mandava a data e a IA respondia uma mensagem velha (parecia não ter visto). Agora: uma bolha curta, sem repetir o que a cliente disse, pergunta só o que falta, e o tempo de espera dela passou de 15s para 30s. As 16 artes de pacote do formulário (decoração, kit festa, brinquedos, 15 anos, buffet 60/80 pessoas, entrada de R$300 e 12x) foram para a Mídia com legenda (o que inclui + preço), e o prompt diz qual mandar para cada pedido. A arte da decoração de 2 metros está escrita "R$1.6000,00" — a legenda usa R$ 1.600,00.',
