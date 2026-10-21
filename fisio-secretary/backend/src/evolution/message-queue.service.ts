@@ -24,6 +24,7 @@ const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
   'e624e817-5b6c-4840-b0ea-269eb78afe8d': 5000,
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174': 45000,
   '69420c85-634c-451d-af45-2ebccf8aa1d3': 30000, // Mult Festa — clientes mandam data/tema/local em várias mensagens
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c': 35000, // DALU — pedido do Fagner (21/10/2026), 15s era pouco pra juntar as mensagens da cliente
 };
 
 @Injectable()

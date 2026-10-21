@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { IWhatsAppProvider } from './providers/whatsapp-provider.interface';
-import { splitBubbles } from '../ai/bubble-rule';
+import { splitBubbles, maxBubblesFor } from '../ai/bubble-rule';
 import { buildTypingPlan, pauseBetweenBubbles } from './typing-plan';
 
 // Alguns prompts instruem a IA a citar "action=send_media com mediaName=X" em
@@ -52,7 +52,7 @@ export class EvolutionService {
     const allBubbles = text.split('|||').map(b => b.trim()).filter(Boolean);
     // Teto de 3 bolhas: o excedente é juntado na última (antes era cortado e o
     // texto da 4ª bolha em diante se perdia sem aviso).
-    const bubbles = splitBubbles(allBubbles.filter(b => !LEAKED_FIELD_RE.test(b)).join('|||'), 3);
+    const bubbles = splitBubbles(allBubbles.filter(b => !LEAKED_FIELD_RE.test(b)).join('|||'), maxBubblesFor(tenantId));
     if (bubbles.length < allBubbles.length) {
       this.logger.warn(`[BOLHAS] Bolha com campo JSON vazado descartada antes do envio (tenant ${tenantId ?? 'N/A'}): "${allBubbles.find(b => LEAKED_FIELD_RE.test(b))}"`);
     }

@@ -27,6 +27,23 @@ Errado (bloco grande):
 Certo:
 "Esse é o liso castanho 65cm, 100% humano e dura até 2 anos com os cuidados certos 😍|||100g sai R$ 479,90 à vista.|||Quantas gramas você costuma usar?"`;
 
+// Teto de bolhas por cliente (padrão 3). DALU: no máximo 2 — pedido do Fagner (21/10/2026).
+const TENANT_MAX_BUBBLES: Record<string, number> = {
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c': 2, // DALU
+};
+export const maxBubblesFor = (tenantId?: string | null): number => (tenantId && TENANT_MAX_BUBBLES[tenantId]) || 3;
+
+// Mesma regra, com o teto do cliente: no prompt (a IA obedece) e em splitBubbles (garantia no envio).
+export function bubbleRuleBlockFor(tenantId?: string | null): string {
+  const max = maxBubblesFor(tenantId);
+  if (max >= 3) return BUBBLE_RULE_BLOCK;
+  return BUBBLE_RULE_BLOCK
+    .replace('separe em 2 ou 3 bolhas', 'separe em 2 bolhas')
+    .replace('- No máximo 3 bolhas por resposta.', `- No máximo ${max} bolhas por resposta (nunca 3). Resposta de 3 ideias: junte as duas primeiras numa bolha só.`)
+    .replace('"Que legal! Fico feliz em saber 😊|||Agora me conta, qual cabelo você tá procurando hoje?"', '"Que legal! Fico feliz em saber 😊|||Agora me conta, qual cabelo você tá procurando hoje?"')
+    .replace('"Esse é o liso castanho 65cm, 100% humano e dura até 2 anos com os cuidados certos 😍|||100g sai R$ 479,90 à vista.|||Quantas gramas você costuma usar?"', '"Esse é o liso castanho 65cm, 100% humano e dura até 2 anos com os cuidados certos 😍 100g sai R$ 479,90 à vista.|||Quantas gramas você costuma usar?"');
+}
+
 // Separa a resposta em bolhas. Proteções determinísticas (nunca depende só do prompt):
 // - bolhas seguidas que começam com "•" voltam a ser uma só (lista não vira 1 msg por item);
 // - teto de `max` bolhas: o excedente é juntado na última, nunca descartado.

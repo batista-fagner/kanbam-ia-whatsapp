@@ -1,4 +1,4 @@
-import { BUBBLE_RULE_BLOCK, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
+import { bubbleRuleBlockFor, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -756,7 +756,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       // Regra de bolhas colada no prompt do cliente: fica no prefixo estático (antes
       // de JSON/extra/data), então não quebra o cache.
       const megaHairPrompt = instanceConfig?.customPromptMegaHair
-        ? (instanceConfig.bubbleMode ? `${instanceConfig.customPromptMegaHair}\n\n${BUBBLE_RULE_BLOCK}` : instanceConfig.customPromptMegaHair)
+        ? (instanceConfig.bubbleMode ? `${instanceConfig.customPromptMegaHair}\n\n${bubbleRuleBlockFor(tenantId)}` : instanceConfig.customPromptMegaHair)
         : undefined;
       aiResponse = await this.aiService.processMessageMegaHair(lead, combinedText, allMedia, megaHairPrompt, extraSystemContext, imageDataUri, schedulingHandoffEnabled, availabilityBlock,
         agendaParts ? { format: buildLegacyAgendaFormat(agendaParts), dynamic: agendaParts.dynamic } : null);
@@ -1104,7 +1104,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
       if (!second) {
         const prompt = ctx.instanceConfig?.customPromptMegaHair
-          ? (ctx.instanceConfig.bubbleMode ? `${ctx.instanceConfig.customPromptMegaHair}\n\n${BUBBLE_RULE_BLOCK}` : ctx.instanceConfig.customPromptMegaHair)
+          ? (ctx.instanceConfig.bubbleMode ? `${ctx.instanceConfig.customPromptMegaHair}\n\n${bubbleRuleBlockFor(ctx.instanceConfig?.id)}` : ctx.instanceConfig.customPromptMegaHair)
           : undefined;
         second = await this.aiService.processMessageMegaHair(lead, ctx.combinedText, ctx.allMedia, prompt, ctx.extraSystemContext, ctx.imageDataUri, false, null,
           { format: buildLegacyAgendaFormat(fresh), dynamic: fresh.dynamic });
