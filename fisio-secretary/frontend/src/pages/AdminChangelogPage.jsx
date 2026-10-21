@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tabela de preços por tamanho (cm) — funciona no motor normal (piloto Studio Simone)',
+    date: '20/10/2026',
+    detail: 'A "Tabela de preços" agora aceita cabelo vendido por tamanho: uma linha por cm com valor à vista e, opcional, valor no cartão. A IA não vê os valores — escreve [[PRECO]] e o sistema coloca o valor da tabela. Tamanho que não existe (ex.: 60cm numa linha de 55/65) vira "esse tamanho não temos, temos 55 e 65cm" em vez de preço inventado. Funciona no motor normal (Simone, DALU…) e no de módulos; as tabelas por 100g (S&A, Heline) continuam iguais. A cliente edita sozinha em Tabela de preços.',
+  },
+  {
     title: 'Studio Simone Trindade: prompt reescrito mais enxuto + 6 fotos novas na Mídia',
     date: '20/10/2026',
     detail: 'Prompt da Simone reescrito (de ~16 mil para ~13,6 mil caracteres): respostas curtas, foto antes do preço (envia direto, sem perguntar "posso enviar?"), sem os "FALTA" que a IA podia repetir, as duas tabelas de confecção (casa x cliente de fora) consolidadas, horário/prazo/retirada que ela mandou no grupo, e as tabelas novas do cacho vietnamita (cartão x dinheiro). Cada foto da Mídia agora está ligada à tabela de preço certa no prompt. Foram cadastradas 6 fotos que estavam só no grupo (indiano liga rosa, 2 loiros brasileiros, 3 cachos vietnamita) e a "Brasileiro liso preto 65 cm" foi corrigida para 60 cm (a legenda dela dizia 60).',
@@ -324,6 +329,7 @@ const DONE = [
 ]
 
 const PENDING = [
+  { title: 'Studio Simone: ligar a tabela por tamanho em produção (depois do deploy)', detail: 'Depois do deploy (a coluna nova sobe junto): cadastrar a tabela dela (8 cabelos, valores do prompt atual + cacho vietnamita cartão/dinheiro), ligar e trocar o prompt pela versão sem valores escritos. Conferir: a foto "Indiano, cacho permanentado, 60 cm" não bate com a tabela (cacho indiano só tem 55 e 65cm) — perguntar pra ela.' },
   { title: 'Formulário de onboarding: botão "Enviar para Mídia" nos anexos', detail: 'No Admin → Onboarding, ao lado de cada anexo da pergunta de fotos/vídeos, um botão que pede o nome, converte vídeo (.mov) para MP4 H.264 leve, reduz foto e cadastra na Mídia do cliente. Precisa de ffmpeg no servidor (hoje o backend não tem) e conversão em segundo plano para vídeo grande. Não colocar no formulário público nem automatizar no envio. Decidido adiar (20/10/2026); a Mult Festa foi importada na mão.' },
   { title: 'Fabiana: reconectar o WhatsApp e acompanhar as primeiras conversas', detail: 'O número está desconectado desde 10/10 (09:36). Ela precisa ler o QR code de novo. Depois, conferir nas primeiras conversas se a IA só manda a tabela e passa pra ela o que não sabe, e se a Fabiana aprova o novo jeito.' },
   { title: 'Heline: confirmar preços e dados que faltam', detail: 'O formulário e as tabelas que ela mandou não batem: castanho R$800 x R$900, "Loiro do Sul" R$2.000 só no formulário, "Cabelo do Sul" castanho R$1.500 só na tabela. Ficou a tabela mais recente (12/10). Falta: horário da loja, valor do frete, garantia, valor da fita adesiva. Depois, conectar o número e testar.' },

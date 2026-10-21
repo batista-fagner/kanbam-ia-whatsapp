@@ -8,7 +8,7 @@ import { Lead } from '../common/entities/lead.entity';
 import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { MediaService } from '../media/media.service';
 import { PriceConfig } from '../common/entities/price-config.entity';
-import { buildPriceCatalogBlock } from '../pricing/price-calc';
+import { buildPriceCatalogBlock, hasPriceTable } from '../pricing/price-calc';
 import { applyPriceQuotes } from '../pricing/price-quote-applier';
 import { BUBBLE_RULE_BLOCK } from '../ai/bubble-rule';
 
@@ -231,7 +231,7 @@ export class PromptModulesService {
       : needsFullDateTable
       ? [AGENT_SCHEDULING_RULES, buildDateBlock()].join('\n\n')
       : buildMiniDateBlock();
-    const hasPriceCalc = !!(priceConfig?.isActive && priceConfig.products.length);
+    const hasPriceCalc = hasPriceTable(priceConfig);
     const priceBlock = hasPriceCalc ? buildPriceCatalogBlock(priceConfig!) : '';
     // Regra de bolhas é estática (por tenant) — fica antes do bloco de data pra não quebrar o cache.
     const bubbleBlock = bubbleMode ? BUBBLE_RULE_BLOCK : '';

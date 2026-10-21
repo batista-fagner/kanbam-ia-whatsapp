@@ -7,6 +7,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { CatalogEntry, buildCatalogLines, hasAnyCaption, CAPTION_PRICE_RULE } from '../media/media-catalog.util';
 import { Lead } from '../common/entities/lead.entity';
 import { TokenUsage } from '../common/entities/token-usage.entity';
+import { PriceConfig } from '../common/entities/price-config.entity';
+import { buildPriceCatalogBlock, hasPriceTable } from '../pricing/price-calc';
+import { applyPriceQuotes, AnyQuoteRequest } from '../pricing/price-quote-applier';
 
 export interface AiResponse {
   reply: string;
@@ -29,7 +32,8 @@ export interface AiResponse {
   // Motor de módulos dinâmicos, só quando o tenant tem PriceConfig ativa: a IA
   // identifica produto/gramatura/pagamento, quem calcula é o código (ver
   // src/pricing). Ausente/vazio pra qualquer tenant sem cálculo por gramatura.
-  priceQuotes?: { id: string; productKey: string; gramas: number; tela: boolean; payment: 'vista' | 'cartao' | 'especie' }[];
+  // Item por grama (gramas/tela) ou por tamanho (cm) — ver price-calc.ts.
+  priceQuotes?: AnyQuoteRequest[];
   fields?: {
     name?: string;
     symptoms?: string;
@@ -63,6 +67,12 @@ async function callWithRetry<T>(
   }
   throw new Error('callWithRetry: máximo de tentativas atingido');
 }
+
+// Campo extra do JSON no motor normal, só pra tenant com tabela de preços ativa
+// (os blocos JSON_FORMAT_MEGAHAIR* não mudam).
+const LEGACY_PRICE_QUOTES_FIELD = `CAMPO EXTRA DO JSON (além dos campos do formato acima, SÓ quando a resposta tiver [[PRECO:id]]):
+  "priceQuotes": [{ "id": "a", "productKey": "key exata da tabela", "cm": 65, "payment": "vista" }]
+  (produto por grama usa "gramas" e "tela" no lugar de "cm", como explicado na tabela)`;
 
 const JSON_FORMAT_MEGAHAIR = `
 
@@ -477,6 +487,7 @@ export class AiService {
   constructor(
     private config: ConfigService,
     @InjectRepository(TokenUsage) private readonly tokenUsageRepo: Repository<TokenUsage>,
+    @InjectRepository(PriceConfig) private readonly priceConfigRepo: Repository<PriceConfig>,
   ) {
     // Pool de provedores: Gemini primário (com cache 75%) → gpt-4o-mini fallback.
     // OpenRouter preservado em branch feat/openrouter.
@@ -1256,7 +1267,13 @@ REGRAS:
     const availabilitySuffix = agendaBlocks
       ? `\n\n${agendaBlocks.dynamic}`
       : availabilityBlock ? `\n\n${availabilityBlock}` : '';
-    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${extraBlock}\n\n${buildDateBlock()}${availabilitySuffix}`;
+    // Tabela de preços no sistema (Tabela de preços → price_configs ativa): a IA
+    // escreve [[PRECO:id]] e o código põe o valor (piloto Studio Simone, por
+    // tamanho). Bloco estático, fica antes do bloco de datas pra não quebrar o cache.
+    // Tenant sem tabela ativa: prompt idêntico ao de antes.
+    const priceConfig = await this.getActivePriceConfig(lead.tenantId);
+    const priceBlock = priceConfig ? `\n\n${buildPriceCatalogBlock(priceConfig)}\n\n${LEGACY_PRICE_QUOTES_FIELD}` : '';
+    const systemPrompt = `${basePrompt}\n\n${mediaInstructions}${jsonFormatBlock}${priceBlock}${extraBlock}\n\n${buildDateBlock()}${availabilitySuffix}`;
 
     // Imagem só entra no conteúdo multimodal desta chamada — o histórico
     // persistido (lead.aiContext) continua sempre com o texto puro, então a
@@ -1279,12 +1296,25 @@ REGRAS:
       void this._trackUsage(lead.tenantId, inputTokens, cachedTokens, outputTokens, 'monolith');
       const parsed = this.parseAiJson(rawText);
       parsed.tokenUsage = { inputTokens, cachedTokens, outputTokens };
+      if (priceConfig && parsed.reply) parsed.reply = applyPriceQuotes(parsed.reply, parsed.priceQuotes, priceConfig);
       return parsed;
     } catch (err) {
       this.logger.error(`❌ [LINDONA] Erro ao chamar IA: ${err.message}`);
       this.logger.error(`❌ [LINDONA] Stack: ${err.stack}`);
       this.logger.error(`❌ [LINDONA] Enviando resposta de fallback "probleminha"`);
       return { reply: 'Oi! Tive um probleminha aqui, pode repetir? 😊', success: false };
+    }
+  }
+
+  // Só devolve a config se houver algo cotável (por grama ou por tamanho).
+  // Falha ao ler o banco não derruba a resposta: segue sem tabela.
+  private async getActivePriceConfig(tenantId: string): Promise<PriceConfig | null> {
+    try {
+      const cfg = await this.priceConfigRepo.findOne({ where: { tenantId, isActive: true } });
+      return hasPriceTable(cfg) ? cfg : null;
+    } catch (err) {
+      this.logger.warn(`[PRICE_CALC] Não consegui ler a tabela de preços (tenant=${tenantId}): ${err.message}`);
+      return null;
     }
   }
 

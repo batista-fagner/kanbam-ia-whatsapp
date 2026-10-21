@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PriceConfig } from '../common/entities/price-config.entity';
+import { PriceConfig, SizeProduct } from '../common/entities/price-config.entity';
 
 export interface PriceConfigDto {
   isActive?: boolean;
   products?: { key?: string; label: string; price100g: number | string }[];
+  sizeProducts?: { key?: string; label: string; sizes: { cm: number | string; price: number | string; cardPrice?: number | string | null }[] }[];
   telaPerGram?: number | string | null;
   cartaoSurchargePer100g?: number | string | null;
   especieDiscountPer100g?: number | string | null;
@@ -51,9 +52,10 @@ export class PriceConfigService {
   async save(tenantId: string, dto: PriceConfigDto, opts: { canToggle?: boolean; actor?: string } = {}) {
     const existing = await this.repo.findOne({ where: { tenantId } });
     const before = existing ? JSON.stringify(this.serialize(existing)) : null;
-    const config = existing ?? this.repo.create({ tenantId, isActive: false, products: [] });
+    const config = existing ?? this.repo.create({ tenantId, isActive: false, products: [], sizeProducts: [] });
 
     if (dto.products !== undefined) config.products = this.normalizeProducts(dto.products, config.products);
+    if (dto.sizeProducts !== undefined) config.sizeProducts = this.normalizeSizeProducts(dto.sizeProducts, config.sizeProducts ?? [], config.products);
     if (dto.isActive !== undefined && opts.canToggle) config.isActive = !!dto.isActive;
     if (dto.telaPerGram !== undefined) config.telaPerGram = optionalMoney(dto.telaPerGram, 'Tela');
     if (dto.cartaoSurchargePer100g !== undefined) config.cartaoSurchargePer100g = optionalMoney(dto.cartaoSurchargePer100g, 'Cartão');
@@ -61,7 +63,11 @@ export class PriceConfigService {
     if (dto.minGram !== undefined) config.minGram = this.positiveInt(dto.minGram, 'Gramatura mínima');
     if (dto.gramStep !== undefined) config.gramStep = this.positiveInt(dto.gramStep, 'Passo de gramatura');
 
-    if (config.isActive && config.products.length === 0) {
+    const gramKeys = new Set(config.products.map((p) => p.key));
+    const clash = (config.sizeProducts ?? []).find((p) => gramKeys.has(p.key));
+    if (clash) throw new BadRequestException(`"${clash.label}" tem o mesmo nome de um produto por grama — mude um dos dois`);
+
+    if (config.isActive && config.products.length === 0 && (config.sizeProducts ?? []).length === 0) {
       throw new BadRequestException('Cadastre pelo menos um produto antes de ligar a tabela.');
     }
 
@@ -106,6 +112,48 @@ export class PriceConfigService {
     });
   }
 
+  // Produtos por tamanho: mesma regra de key estável dos products, e a key não
+  // pode colidir com a de um produto por grama (o applier decide pela key).
+  private normalizeSizeProducts(input: PriceConfigDto['sizeProducts'], current: SizeProduct[], gramProducts: PriceConfig['products']): SizeProduct[] {
+    if (!Array.isArray(input)) throw new BadRequestException('sizeProducts deve ser uma lista');
+    if (input.length > MAX_PRODUCTS) throw new BadRequestException(`Máximo de ${MAX_PRODUCTS} produtos`);
+
+    const currentKeys = new Set(current.map((p) => p.key));
+    const taken = new Set((gramProducts ?? []).map((p) => p.key));
+    const used = new Set<string>();
+    const labels = new Set<string>();
+
+    return input.map((p, i) => {
+      const label = String(p?.label ?? '').trim();
+      if (!label) throw new BadRequestException(`Produto ${i + 1}: nome obrigatório`);
+      if (label.length > 120) throw new BadRequestException(`Produto ${i + 1}: nome muito longo`);
+      if (labels.has(label.toLowerCase())) throw new BadRequestException(`Produto repetido: "${label}"`);
+      labels.add(label.toLowerCase());
+
+      if (!Array.isArray(p?.sizes) || p.sizes.length === 0) throw new BadRequestException(`"${label}": cadastre pelo menos um tamanho`);
+      const cms = new Set<number>();
+      const sizes = p.sizes.map((sz) => {
+        const cm = Number(sz?.cm);
+        if (!Number.isInteger(cm) || cm <= 0 || cm > 300) throw new BadRequestException(`"${label}": tamanho inválido`);
+        if (cms.has(cm)) throw new BadRequestException(`"${label}": tamanho ${cm}cm repetido`);
+        cms.add(cm);
+        const price = optionalMoney(sz?.price, `"${label}" ${cm}cm`);
+        if (price == null || price <= 0) throw new BadRequestException(`"${label}" ${cm}cm: preço obrigatório`);
+        const cardPrice = optionalMoney(sz?.cardPrice, `"${label}" ${cm}cm (cartão)`);
+        return { cm, price, cardPrice };
+      }).sort((a, b) => a.cm - b.cm);
+
+      let key = typeof p?.key === 'string' && currentKeys.has(p.key) && !used.has(p.key) && !taken.has(p.key) ? p.key : '';
+      if (!key) {
+        const base = slugify(label);
+        key = base;
+        for (let n = 2; used.has(key) || currentKeys.has(key) || taken.has(key); n++) key = `${base}_${n}`;
+      }
+      used.add(key);
+      return { key, label, sizes };
+    });
+  }
+
   private positiveInt(v: unknown, field: string): number {
     const n = Number(v);
     if (!Number.isInteger(n) || n <= 0 || n > 5000) throw new BadRequestException(`${field}: valor inválido`);
@@ -117,6 +165,7 @@ export class PriceConfigService {
     return {
       isActive: c.isActive,
       products: c.products ?? [],
+      sizeProducts: c.sizeProducts ?? [],
       telaPerGram: num(c.telaPerGram),
       cartaoSurchargePer100g: num(c.cartaoSurchargePer100g),
       especieDiscountPer100g: num(c.especieDiscountPer100g),

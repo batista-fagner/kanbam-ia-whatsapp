@@ -3,6 +3,7 @@ import { Plus, Trash2, Loader2, CheckCircle2, AlertCircle, Calculator, Info, Ale
 import { getPriceConfig, savePriceConfig, getMediaList } from '../services/api'
 import { hasKeywordMatch } from '../utils/priceMediaMatch'
 import { useAuth } from '../context/AuthContext'
+import SizeProductsEditor, { newSizeRow, validateSizeProducts } from '../components/prices/SizeProductsEditor'
 
 // Tabela de preços por gramatura (price_configs). A IA identifica produto,
 // gramatura e forma de pagamento; quem faz a conta é o sistema, com os valores
@@ -24,6 +25,10 @@ function fromServer(cfg) {
   return {
     isActive: !!cfg.isActive,
     products: (cfg.products || []).map((p, i) => ({ uid: `${p.key}-${i}`, key: p.key, label: p.label, price: toInput(p.price100g) })),
+    sizeProducts: (cfg.sizeProducts || []).map((p, i) => ({
+      uid: `${p.key}-${i}`, key: p.key, label: p.label,
+      sizes: (p.sizes || []).map((s, j) => ({ uid: `${p.key}-${i}-${j}`, cm: String(s.cm), price: toInput(s.price), card: toInput(s.cardPrice) })),
+    })),
     tela: toInput(cfg.telaPerGram),
     cartao: toInput(cfg.cartaoSurchargePer100g),
     especie: toInput(cfg.especieDiscountPer100g),
@@ -32,7 +37,11 @@ function fromServer(cfg) {
   }
 }
 
-const EMPTY = { isActive: false, products: [], tela: '', cartao: '', especie: '', minGram: '50', gramStep: '50' }
+const EMPTY = { isActive: false, products: [], sizeProducts: [], tela: '', cartao: '', especie: '', minGram: '50', gramStep: '50' }
+
+// Tipo de tabela: por tamanho (cm, ex. Studio Simone) ou por 100g (ex. S&A).
+// Vem do que já está cadastrado; tabela vazia começa por 100g e o admin troca.
+const modeOf = (f) => (f.sizeProducts.length > 0 && f.products.length === 0 ? 'size' : 'gram')
 
 export default function PricesPage() {
   const { user } = useAuth()
@@ -53,6 +62,7 @@ export default function PricesPage() {
   // Nome+legenda de cada mídia — só pra marcar produto sem mídia correspondente
   // (ver utils/priceMediaMatch). [] enquanto carrega ou se não há mídia nenhuma.
   const [mediaLabels, setMediaLabels] = useState([])
+  const [mode, setMode] = useState('gram')
 
   useEffect(() => {
     getMediaList().then(list => setMediaLabels((list || []).map(f => `${f.name} ${f.caption ?? ''}`))).catch(() => {})
@@ -60,6 +70,7 @@ export default function PricesPage() {
       .then((cfg) => {
         const f = cfg.exists ? fromServer(cfg) : EMPTY
         setForm(f)
+        setMode(modeOf(f))
         setOriginal(JSON.stringify(f))
         setUpdatedAt(cfg.updatedAt ?? null)
       })
@@ -111,6 +122,12 @@ export default function PricesPage() {
   }, [confirmRemove])
 
   function validate() {
+    if (mode === 'size') {
+      const msg = validateSizeProducts(form.sizeProducts, parseMoney)
+      if (msg) return msg
+      if (form.isActive && form.sizeProducts.length === 0) return 'Cadastre pelo menos um cabelo antes de ligar o cálculo automático.'
+      return ''
+    }
     const names = new Set()
     for (const [i, p] of form.products.entries()) {
       const name = p.label.trim()
@@ -128,12 +145,12 @@ export default function PricesPage() {
       const n = Number(val)
       if (!Number.isInteger(n) || n <= 0) return `${label}: use um número inteiro maior que zero.`
     }
-    if (form.isActive && form.products.length === 0) return 'Cadastre pelo menos um produto antes de ligar o cálculo automático.'
+    if (form.isActive && form.products.length === 0 && form.sizeProducts.length === 0) return 'Cadastre pelo menos um produto antes de ligar o cálculo automático.'
     return ''
   }
   // Recalcula a cada mudança pra desabilitar "Salvar" e mostrar o motivo antes
   // de clicar — não só depois de tentar salvar.
-  const liveError = useMemo(validate, [form])
+  const liveError = useMemo(validate, [form, mode])
 
   async function handleSave() {
     const msg = validate()
@@ -144,6 +161,11 @@ export default function PricesPage() {
       const cfg = await savePriceConfig({
         ...(isAdmin ? { isActive: form.isActive } : {}),
         products: form.products.map((p) => ({ ...(p.key ? { key: p.key } : {}), label: p.label.trim(), price100g: parseMoney(p.price) })),
+        sizeProducts: form.sizeProducts.map((p) => ({
+          ...(p.key ? { key: p.key } : {}),
+          label: p.label.trim(),
+          sizes: p.sizes.map((s) => ({ cm: Number(s.cm), price: parseMoney(s.price), cardPrice: parseMoney(s.card) })),
+        })),
         telaPerGram: parseMoney(form.tela),
         cartaoSurchargePer100g: parseMoney(form.cartao),
         especieDiscountPer100g: parseMoney(form.especie),
@@ -218,8 +240,34 @@ export default function PricesPage() {
     <div className="p-4 sm:p-8 max-w-4xl mx-auto">
       <h1 className="text-xl font-bold text-gray-800 mb-2">Tabela de preços</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Preço de cada cabelo por 100g. A IA entende o que a cliente quer (cabelo, gramatura, forma de pagamento) e o sistema faz a conta com estes valores — ela nunca calcula de cabeça. O que você salvar aqui já vale na próxima mensagem.
+        {mode === 'size'
+          ? 'Preço de cada cabelo por tamanho (cm). A IA entende o que a cliente quer (cabelo, tamanho, forma de pagamento) e o sistema coloca o valor desta tabela — ela nunca escreve o preço de cabeça. O que você salvar aqui já vale na próxima mensagem.'
+          : 'Preço de cada cabelo por 100g. A IA entende o que a cliente quer (cabelo, gramatura, forma de pagamento) e o sistema faz a conta com estes valores — ela nunca calcula de cabeça. O que você salvar aqui já vale na próxima mensagem.'}
       </p>
+
+      {/* Tipo de tabela — só o admin troca, e só enquanto o outro tipo está vazio */}
+      {isAdmin && (
+        <div className="flex gap-2 mb-4">
+          {[['size', 'Por tamanho (cm)'], ['gram', 'Por 100g']].map(([m, label]) => {
+            const otherFilled = m === 'size' ? form.products.length > 0 : form.sizeProducts.length > 0
+            return (
+              <button
+                key={m}
+                type="button"
+                disabled={mode !== m && otherFilled}
+                title={mode !== m && otherFilled ? 'Esvazie a tabela atual antes de trocar o tipo' : ''}
+                onClick={() => {
+                  setMode(m)
+                  if (m === 'size' && form.sizeProducts.length === 0) setForm((f) => ({ ...f, sizeProducts: [{ uid: `new-${Date.now()}`, key: null, label: '', sizes: [newSizeRow()] }] }))
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${mode === m ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} disabled:opacity-40`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Ligado / desligado */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 flex items-start justify-between gap-4">
@@ -248,6 +296,18 @@ export default function PricesPage() {
         )}
       </div>
 
+      {mode === 'size' && (
+        <SizeProductsEditor
+          products={form.sizeProducts}
+          onChange={(sizeProducts) => setForm((f) => ({ ...f, sizeProducts }))}
+          mediaLabels={mediaLabels}
+          input={input}
+          parseMoney={parseMoney}
+          saveRow={saveRow}
+        />
+      )}
+
+      {mode === 'gram' && (<>
       {/* Produtos */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
         <div className="flex items-center justify-between mb-4">
@@ -380,6 +440,8 @@ export default function PricesPage() {
           )}
         </div>
       )}
+
+      </>)}
 
       <div className="flex gap-2 items-start rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />

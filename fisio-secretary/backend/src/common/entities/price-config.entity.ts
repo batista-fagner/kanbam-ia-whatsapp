@@ -1,5 +1,11 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
+export interface SizeProduct {
+  key: string;
+  label: string;
+  sizes: { cm: number; price: number; cardPrice: number | null }[];
+}
+
 // Config de preço ESTRUTURADA (não texto de prompt) usada pelo motor de cálculo
 // determinístico em código — existe pra tenants com venda por gramatura, onde a
 // IA erra a própria conta (~20% medido no S&A em 2026-08-26, ex: 389,90×1,5
@@ -26,6 +32,14 @@ export class PriceConfig {
   // mediaName) — nunca muda mesmo que o `label` seja editado.
   @Column({ name: 'products', type: 'jsonb', default: () => "'[]'" })
   products: { key: string; label: string; price100g: number }[];
+
+  // Produtos vendidos por TAMANHO (cm), não por grama — ex.: Studio Simone,
+  // "Indiano 55cm R$550 / 65cm R$650". Cada tamanho tem o valor à vista e,
+  // opcional, o valor no cartão (null = "cartão com acréscimo, equipe confirma").
+  // Mesma regra de `key` estável dos products; as keys não se repetem entre as
+  // duas listas.
+  @Column({ name: 'size_products', type: 'jsonb', default: () => "'[]'" })
+  sizeProducts: SizeProduct[];
 
   // Regras de acréscimo/desconto — todas em R$ por 100g, exceto tela (R$/grama).
   // null = essa forma de cobrança não existe pra esse tenant (motor não oferece).

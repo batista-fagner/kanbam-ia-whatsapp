@@ -1,4 +1,4 @@
-import { PriceConfig } from '../common/entities/price-config.entity';
+import { PriceConfig, SizeProduct } from '../common/entities/price-config.entity';
 
 // Motor de cálculo determinístico de preço por gramatura — existe pra tirar a
 // aritmética da mão da IA (ver PriceConfig). Espelha as fórmulas que já
@@ -33,13 +33,68 @@ export interface PriceQuoteResult {
 
 export interface PriceQuoteError {
   ok: false;
-  reason: 'produto_desconhecido' | 'gramatura_invalida' | 'gramatura_fora_do_passo';
+  reason: 'produto_desconhecido' | 'gramatura_invalida' | 'gramatura_fora_do_passo' | 'tamanho_indisponivel';
+  // Só em tamanho_indisponivel: frase pra entrar no lugar do placeholder
+  // (os tamanhos que existem), em vez de sumir com o valor e deixar a frase quebrada.
+  text?: string;
+}
+
+// Cotação de produto vendido por tamanho (ver PriceConfig.sizeProducts).
+export interface SizeQuoteRequest {
+  productKey: string;
+  cm: number;
+  payment: PaymentMethod;
+}
+
+export interface SizeQuoteResult {
+  ok: true;
+  productLabel: string;
+  cm: number;
+  total: number;
+  payment: PaymentMethod;
+  text: string;
 }
 
 const BRL = (v: number) => `R$${v.toFixed(2).replace('.', ',')}`;
 
 export function findProduct(config: PriceConfig, key: string) {
   return config.products.find((p) => p.key === key);
+}
+
+export function findSizeProduct(config: PriceConfig, key: string): SizeProduct | undefined {
+  return (config.sizeProducts ?? []).find((p) => p.key === key);
+}
+
+// Tabela tem algo cotável? (por grama OU por tamanho) — decide se o bloco de
+// preço e o campo priceQuotes entram no prompt.
+export function hasPriceTable(config: PriceConfig | null | undefined): boolean {
+  return !!(config?.isActive && ((config.products?.length ?? 0) > 0 || (config.sizeProducts?.length ?? 0) > 0));
+}
+
+const cmList = (p: SizeProduct) => {
+  const cms = [...p.sizes].sort((a, b) => a.cm - b.cm).map((s) => String(s.cm));
+  return (cms.length > 1 ? `${cms.slice(0, -1).join(', ')} e ${cms[cms.length - 1]}` : cms[0]) + 'cm';
+};
+
+// Produto por tamanho: o valor é LIDO da tabela, nunca calculado. Cartão usa o
+// valor de cartão do tamanho; sem ele, devolve o à vista avisando do acréscimo
+// (a loja informou "cartão com acréscimo" sem dizer quanto).
+export function computeSizeQuote(config: PriceConfig, req: SizeQuoteRequest): SizeQuoteResult | PriceQuoteError {
+  const product = findSizeProduct(config, req.productKey);
+  if (!product) return { ok: false, reason: 'produto_desconhecido' };
+  const size = product.sizes.find((s) => s.cm === Number(req.cm));
+  if (!size) {
+    return { ok: false, reason: 'tamanho_indisponivel', text: `Esse tamanho não temos nessa linha — temos ${cmList(product)}. Qual você prefere?` };
+  }
+  const price = Number(size.price);
+  const card = size.cardPrice == null ? null : Number(size.cardPrice);
+  if (req.payment === 'cartao') {
+    if (card != null) {
+      return { ok: true, productLabel: product.label, cm: size.cm, total: card, payment: 'cartao', text: `${BRL(card)} no cartão` };
+    }
+    return { ok: true, productLabel: product.label, cm: size.cm, total: price, payment: 'cartao', text: `${BRL(price)} à vista (no cartão tem acréscimo)` };
+  }
+  return { ok: true, productLabel: product.label, cm: size.cm, total: price, payment: 'vista', text: `${BRL(price)} à vista` };
 }
 
 export function computePriceQuote(config: PriceConfig, req: PriceQuoteRequest): PriceQuoteResult | PriceQuoteError {
@@ -77,7 +132,7 @@ export function computePriceQuote(config: PriceConfig, req: PriceQuoteRequest): 
 // Injetado só quando o tenant tem PriceConfig ativa com produtos cadastrados.
 // A IA continua fazendo o que faz bem (identificar produto/gramatura/forma de
 // pagamento pela conversa) — quem multiplica e soma é o código, nunca o modelo.
-export function buildPriceCatalogBlock(config: PriceConfig): string {
+function buildGramCatalogBlock(config: PriceConfig): string {
   const lines = config.products.map((p) => `- key: "${p.key}" | ${p.label} | R$${Number(p.price100g).toFixed(2).replace('.', ',')} / 100g`).join('\n');
   const telaLine = config.telaPerGram != null ? `- Tela: acréscimo de R$${Number(config.telaPerGram).toFixed(2).replace('.', ',')} por grama.` : '- Não existe tela pra esse catálogo.';
   const cartaoLine = config.cartaoSurchargePer100g != null ? `- Cartão: acréscimo de R$${Number(config.cartaoSurchargePer100g).toFixed(2).replace('.', ',')} a cada 100g.` : '- Não existe pagamento no cartão pra esse catálogo.';
@@ -102,4 +157,35 @@ Quando for informar o preço de um produto que a cliente já identificou (produt
 4. Se o produto OU a gramatura ainda não estiverem claros, NÃO use priceQuotes nem placeholder — pergunte primeiro (mesma regra de sempre: nunca adivinhe produto ou quantidade).
 5. Se a cliente não mencionou explicitamente que quer a tela, assuma tela:false, SEM comentar sobre a tela. Só pergunte ou calcule com tela quando ela pedir "com a tela"/"já na tela"/"colocado na tela" ou similar. Se ela pedir explicitamente "sem a tela", use tela:false mesmo que o padrão da loja seja aplicar.
 6. "payment" é "vista" a não ser que a cliente peça cartão explicitamente (→"cartao") ou peça desconto pagando em dinheiro/pix/espécie (→"especie"). Nunca ofereça desconto em espécie sem ela pedir.`;
+}
+
+// Bloco por tamanho: lista só os TAMANHOS de cada produto, nunca os valores —
+// sem o número no prompt a IA não tem como copiar o valor da linha errada
+// (o erro típico de tabela por comprimento); o valor sempre vem do código.
+function buildSizeCatalogBlock(config: PriceConfig): string {
+  const lines = config.sizeProducts.map((p) => {
+    const hasCard = p.sizes.some((s) => s.cardPrice != null);
+    return `- key: "${p.key}" | ${p.label} | tamanhos: ${cmList(p)}${hasCard ? ' | tem valor próprio no cartão' : ''}`;
+  }).join('\n');
+  return `
+════════ TABELA DE PREÇOS POR TAMANHO (valor automático — LEIA COM ATENÇÃO) ════════
+${lines}
+
+🔴 REGRA — VOCÊ NÃO ESCREVE VALOR. Os valores desses cabelos NÃO estão no prompt: quem coloca o valor é o sistema.
+
+Quando for informar o preço (produto e tamanho já claros na conversa):
+1. Adicione ao JSON o campo "priceQuotes" com um item por valor: {"id": "a", "productKey": "<key exata da lista acima>", "cm": <tamanho em cm, número>, "payment": "vista"|"cartao"}. Use ids curtos (a, b, c...).
+2. No "reply", no lugar EXATO do valor, escreva [[PRECO:a]] (com o id usado). Nunca escreva "R$" nem número de preço você mesma — o placeholder já vira o texto completo (valor + "à vista" ou "no cartão"), então não escreva "à vista"/"no cartão" logo depois dele.
+   Ex.: "O Indiano Premium de 65cm fica [[PRECO:a]] 😊 Quer que eu te passe também o de 55cm?"
+3. Vários tamanhos ou vista + cartão na mesma resposta: um item para cada (a, b, c...).
+4. "payment" é "vista" a não ser que a cliente pergunte do cartão. Se o produto "tem valor próprio no cartão", pode cotar os dois (vista e cartao).
+5. Só cote tamanho que aparece na lista daquele produto. Se ela pedir outro tamanho, diga os tamanhos que existem e pergunte qual prefere — sem placeholder.
+6. Produto ou tamanho ainda não claros → NÃO use priceQuotes nem placeholder: pergunte primeiro.`;
+}
+
+export function buildPriceCatalogBlock(config: PriceConfig): string {
+  const parts: string[] = [];
+  if (config.products?.length) parts.push(buildGramCatalogBlock(config));
+  if (config.sizeProducts?.length) parts.push(buildSizeCatalogBlock(config));
+  return parts.join('\n');
 }
