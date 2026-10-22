@@ -26,7 +26,7 @@ function fromServer(cfg) {
     isActive: !!cfg.isActive,
     products: (cfg.products || []).map((p, i) => ({ uid: `${p.key}-${i}`, key: p.key, label: p.label, price: toInput(p.price100g) })),
     sizeProducts: (cfg.sizeProducts || []).map((p, i) => ({
-      uid: `${p.key}-${i}`, key: p.key, label: p.label,
+      uid: `${p.key}-${i}`, key: p.key, label: p.label, ref: String(p.refGrams ?? 100),
       sizes: (p.sizes || []).map((s, j) => ({ uid: `${p.key}-${i}-${j}`, cm: String(s.cm), price: toInput(s.price), card: toInput(s.cardPrice) })),
     })),
     tela: toInput(cfg.telaPerGram),
@@ -164,6 +164,7 @@ export default function PricesPage() {
         sizeProducts: form.sizeProducts.map((p) => ({
           ...(p.key ? { key: p.key } : {}),
           label: p.label.trim(),
+          refGrams: Number(p.ref || 100),
           sizes: p.sizes.map((s) => ({ cm: Number(s.cm), price: parseMoney(s.price), cardPrice: parseMoney(s.card) })),
         })),
         telaPerGram: parseMoney(form.tela),
@@ -258,7 +259,7 @@ export default function PricesPage() {
                 title={mode !== m && otherFilled ? 'Esvazie a tabela atual antes de trocar o tipo' : ''}
                 onClick={() => {
                   setMode(m)
-                  if (m === 'size' && form.sizeProducts.length === 0) setForm((f) => ({ ...f, sizeProducts: [{ uid: `new-${Date.now()}`, key: null, label: '', sizes: [newSizeRow()] }] }))
+                  if (m === 'size' && form.sizeProducts.length === 0) setForm((f) => ({ ...f, sizeProducts: [{ uid: `new-${Date.now()}`, key: null, label: '', ref: '100', sizes: [newSizeRow()] }] }))
                 }}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${mode === m ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} disabled:opacity-40`}
               >

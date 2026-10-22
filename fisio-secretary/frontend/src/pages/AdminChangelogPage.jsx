@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Studio Simone: tabela por tamanho agora calcula pelos gramas (valores a cada 100 g)',
+    date: '22/10/2026',
+    detail: 'Na tela Tabela de preços → Por tamanho, cada cabelo ganhou o campo "Os valores abaixo são para __ g de cabelo" (padrão 100). A IA passa a informar "R$ 550 à vista a cada 100g" e, quando a cliente diz os gramas (de 50 em 50), o sistema calcula o total (200g = dobro; cartão também) e mostra a conta — a IA nunca faz a conta, como no S&A. Gramas fora do passo viram pergunta, nunca preço quebrado. Antes a IA ora calculava de cabeça, ora não (o prompt dela se contradizia) e o "a cada 100g" não aparecia. O prompt novo da Simone está pronto (sem a contradição) e só deve ser aplicado depois do deploy do backend.',
+  },
+  {
     title: 'CRM: foto, vídeo e documento aparecem na conversa do card (DALU)',
     date: '22/10/2026',
     detail: 'Antes a conversa do card mostrava só "[imagem]" ou "[mídia: nome]". Agora a foto/vídeo aparece na bolha (foto abre em tela cheia, com "Abrir original"), o documento vira um cartão clicável e a legenda vem embaixo. Vale pra mídia que a IA envia e que o operador envia pelo clipe (todos os clientes) e pra foto, vídeo e documento que a cliente manda (só nos clientes com reconhecimento de foto, ex.: DALU — depois do deploy). Várias fotos seguidas viram uma mensagem cada, nenhuma se perde. Vídeo/documento sem legenda só ficam salvos (a IA não responde a eles, como já era); com legenda segue pra IA. Arquivos de até 25 MB. Mensagens antigas com "[mídia: nome]" também mostram a imagem; fotos antigas que chegaram só como "[imagem]" não foram salvas e mostram "Foto não ficou salva no histórico".',
@@ -348,6 +353,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Simone: aplicar o prompt novo (gramas) logo depois do deploy e conversar com ela',
+    detail: 'O prompt ajustado está pronto (com backup do atual) e só deve ser aplicado depois que o backend novo estiver no ar — com o backend antigo a IA diria "200g fica R$ 550". Na reunião confirmar: valores são a cada 100 g em todos os cabelos? A IA dá o total ou só o valor de 100 g? Faltam preços: Indiano cacho permanentado 60 cm, loiros, Vietnamita loiro, peruano. Confecção/colocação ainda são texto do prompt (a IA não multiplica nem soma, a equipe fecha o total).',
+  },
   {
     title: 'Mídias dos clientes no R2: definir por quanto tempo ficam guardadas',
     detail: 'Fotos, vídeos e documentos que o cliente manda ficam em links públicos do R2, sem prazo de expiração. Definir tempo de retenção (ex.: apagar após X dias) e se os links passam a ser assinados/privados.',

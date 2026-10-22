@@ -6,7 +6,7 @@ import { PriceConfig, SizeProduct } from '../common/entities/price-config.entity
 export interface PriceConfigDto {
   isActive?: boolean;
   products?: { key?: string; label: string; price100g: number | string }[];
-  sizeProducts?: { key?: string; label: string; sizes: { cm: number | string; price: number | string; cardPrice?: number | string | null }[] }[];
+  sizeProducts?: { key?: string; label: string; refGrams?: number | string; sizes: { cm: number | string; price: number | string; cardPrice?: number | string | null }[] }[];
   telaPerGram?: number | string | null;
   cartaoSurchargePer100g?: number | string | null;
   especieDiscountPer100g?: number | string | null;
@@ -143,6 +143,10 @@ export class PriceConfigService {
         return { cm, price, cardPrice };
       }).sort((a, b) => a.cm - b.cm);
 
+      // Valores da tabela valem pra quantas gramas (padrão 100g).
+      const refRaw = p?.refGrams === undefined || p.refGrams === null || p.refGrams === '' ? 100 : Number(p.refGrams);
+      if (!Number.isInteger(refRaw) || refRaw < 10 || refRaw > 5000) throw new BadRequestException(`"${label}": gramas de referência inválidas (use um número entre 10 e 5000)`);
+
       let key = typeof p?.key === 'string' && currentKeys.has(p.key) && !used.has(p.key) && !taken.has(p.key) ? p.key : '';
       if (!key) {
         const base = slugify(label);
@@ -150,7 +154,7 @@ export class PriceConfigService {
         for (let n = 2; used.has(key) || currentKeys.has(key) || taken.has(key); n++) key = `${base}_${n}`;
       }
       used.add(key);
-      return { key, label, sizes };
+      return { key, label, refGrams: refRaw, sizes };
     });
   }
 

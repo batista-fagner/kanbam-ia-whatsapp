@@ -34,7 +34,14 @@ export function applyPriceQuotes(reply: string, quotes: AnyQuoteRequest[] | unde
       ? computeSizeQuote(config, q as SizeQuoteRequest)
       : computePriceQuote(config, q as PriceQuoteRequest);
     if (result.ok) {
-      out = out.split(token).join(result.text);
+      // O texto já traz "à vista"/"no cartão": se a IA repetiu logo depois do placeholder, sai uma vez só.
+      const low = result.text.toLowerCase();
+      out = out.split(token).reduce((acc, part, i) => {
+        if (i === 0) return part;
+        const m = /^\s+(à vista|no cartão)/i.exec(part);
+        const rest = m && low.includes(m[1].toLowerCase()) ? part.slice(m[0].length) : part;
+        return acc + result.text + rest;
+      }, '');
     } else if (result.text) {
       // Tamanho fora da tabela: a frase inteira do valor sai ("Ele fica [[PRECO:a]] à vista.")
       // e entra a frase pronta com os tamanhos que existem — sem preço e sem frase quebrada.

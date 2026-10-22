@@ -44,18 +44,30 @@ export interface SizeQuoteRequest {
   productKey: string;
   cm: number;
   payment: PaymentMethod;
+  // Só quando a cliente já disse quantos gramas quer. Sem ela, o valor sai "a cada <refGrams>g".
+  gramas?: number;
 }
 
 export interface SizeQuoteResult {
   ok: true;
   productLabel: string;
   cm: number;
+  // Sem gramas: o valor da tabela (por refGrams). Com gramas: o total pelos gramas.
   total: number;
+  gramas?: number;
+  refGrams: number;
   payment: PaymentMethod;
   text: string;
 }
 
 const BRL = (v: number) => `R$${v.toFixed(2).replace('.', ',')}`;
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+// Os valores da tabela por tamanho valem pra quantas gramas (padrão 100).
+export const refGramsOf = (p: SizeProduct): number => {
+  const n = Number(p.refGrams);
+  return Number.isFinite(n) && n > 0 ? n : 100;
+};
 
 export function findProduct(config: PriceConfig, key: string) {
   return config.products.find((p) => p.key === key);
@@ -76,9 +88,11 @@ const cmList = (p: SizeProduct) => {
   return (cms.length > 1 ? `${cms.slice(0, -1).join(', ')} e ${cms[cms.length - 1]}` : cms[0]) + 'cm';
 };
 
-// Produto por tamanho: o valor é LIDO da tabela, nunca calculado. Cartão usa o
-// valor de cartão do tamanho; sem ele, devolve o à vista avisando do acréscimo
-// (a loja informou "cartão com acréscimo" sem dizer quanto).
+// Produto por tamanho: o valor é LIDO da tabela (que vale pra `refGrams` gramas, padrão 100g).
+// Sem gramas na cotação, devolve o valor "a cada <ref>g". Com gramas, o código multiplica
+// (valor × gramas ÷ ref) — a IA nunca faz a conta. Cartão usa o valor de cartão do tamanho;
+// sem ele, devolve o à vista avisando do acréscimo (a loja informou "cartão com acréscimo"
+// sem dizer quanto).
 export function computeSizeQuote(config: PriceConfig, req: SizeQuoteRequest): SizeQuoteResult | PriceQuoteError {
   const product = findSizeProduct(config, req.productKey);
   if (!product) return { ok: false, reason: 'produto_desconhecido' };
@@ -86,15 +100,41 @@ export function computeSizeQuote(config: PriceConfig, req: SizeQuoteRequest): Si
   if (!size) {
     return { ok: false, reason: 'tamanho_indisponivel', text: `Esse tamanho não temos nessa linha — temos ${cmList(product)}. Qual você prefere?` };
   }
+  const ref = refGramsOf(product);
   const price = Number(size.price);
   const card = size.cardPrice == null ? null : Number(size.cardPrice);
-  if (req.payment === 'cartao') {
-    if (card != null) {
-      return { ok: true, productLabel: product.label, cm: size.cm, total: card, payment: 'cartao', text: `${BRL(card)} no cartão` };
+
+  const gramas = Number(req.gramas);
+  const hasGramas = Number.isFinite(gramas) && gramas > 0;
+  if (hasGramas) {
+    const badMin = gramas < config.minGram;
+    const badStep = config.gramStep > 0 && gramas % config.gramStep !== 0;
+    if (badMin || badStep) {
+      return {
+        ok: false,
+        reason: badMin ? 'gramatura_invalida' : 'gramatura_fora_do_passo',
+        text: `Vendemos a partir de ${config.minGram}g, de ${config.gramStep} em ${config.gramStep}g — quantos gramas você precisa?`,
+      };
     }
-    return { ok: true, productLabel: product.label, cm: size.cm, total: price, payment: 'cartao', text: `${BRL(price)} à vista (no cartão tem acréscimo)` };
   }
-  return { ok: true, productLabel: product.label, cm: size.cm, total: price, payment: 'vista', text: `${BRL(price)} à vista` };
+
+  const factor = hasGramas ? gramas / ref : 1;
+  const vista = round2(price * factor);
+  const cartao = card == null ? null : round2(card * factor);
+  // "(150g — R$550,00 a cada 100g)": mostra a conta pra cliente conferir.
+  const detail = (unit: number, extra = '') => {
+    if (!hasGramas) return '';
+    return gramas === ref ? ` (${gramas}g${extra})` : ` (${gramas}g — ${BRL(unit)} a cada ${ref}g${extra})`;
+  };
+  const per = hasGramas ? '' : ` a cada ${ref}g`;
+
+  if (req.payment === 'cartao') {
+    if (cartao != null && card != null) {
+      return { ok: true, productLabel: product.label, cm: size.cm, total: cartao, gramas: hasGramas ? gramas : undefined, refGrams: ref, payment: 'cartao', text: `${BRL(cartao)} no cartão${per}${detail(card)}` };
+    }
+    return { ok: true, productLabel: product.label, cm: size.cm, total: vista, gramas: hasGramas ? gramas : undefined, refGrams: ref, payment: 'cartao', text: `${BRL(vista)} à vista${per}${detail(price, '; no cartão tem acréscimo')}${hasGramas ? '' : ' (no cartão tem acréscimo)'}` };
+  }
+  return { ok: true, productLabel: product.label, cm: size.cm, total: vista, gramas: hasGramas ? gramas : undefined, refGrams: ref, payment: 'vista', text: `${BRL(vista)} à vista${per}${detail(price)}` };
 }
 
 export function computePriceQuote(config: PriceConfig, req: PriceQuoteRequest): PriceQuoteResult | PriceQuoteError {
@@ -165,18 +205,20 @@ Quando for informar o preço de um produto que a cliente já identificou (produt
 function buildSizeCatalogBlock(config: PriceConfig): string {
   const lines = config.sizeProducts.map((p) => {
     const hasCard = p.sizes.some((s) => s.cardPrice != null);
-    return `- key: "${p.key}" | ${p.label} | tamanhos: ${cmList(p)}${hasCard ? ' | tem valor próprio no cartão' : ''}`;
+    return `- key: "${p.key}" | ${p.label} | tamanhos: ${cmList(p)} | valores a cada ${refGramsOf(p)}g${hasCard ? ' | tem valor próprio no cartão' : ''}`;
   }).join('\n');
   return `
 ════════ TABELA DE PREÇOS POR TAMANHO (valor automático — LEIA COM ATENÇÃO) ════════
 ${lines}
 
-🔴 REGRA — VOCÊ NÃO ESCREVE VALOR. Os valores desses cabelos NÃO estão no prompt: quem coloca o valor é o sistema.
+🔴 REGRA — VOCÊ NÃO ESCREVE VALOR NEM FAZ CONTA. Os valores desses cabelos NÃO estão no prompt: quem coloca o valor (e multiplica pelos gramas) é o sistema.
 
 Quando for informar o preço (produto e tamanho já claros na conversa):
-1. Adicione ao JSON o campo "priceQuotes" com um item por valor: {"id": "a", "productKey": "<key exata da lista acima>", "cm": <tamanho em cm, número>, "payment": "vista"|"cartao"}. Use ids curtos (a, b, c...).
-2. No "reply", no lugar EXATO do valor, escreva [[PRECO:a]] (com o id usado). Nunca escreva "R$" nem número de preço você mesma — o placeholder já vira o texto completo (valor + "à vista" ou "no cartão"), então não escreva "à vista"/"no cartão" logo depois dele.
-   Ex.: "O Indiano Premium de 65cm fica [[PRECO:a]] 😊 Quer que eu te passe também o de 55cm?"
+1. Adicione ao JSON o campo "priceQuotes" com um item por valor: {"id": "a", "productKey": "<key exata da lista acima>", "cm": <tamanho em cm, número>, "gramas": <número>, "payment": "vista"|"cartao"}. Use ids curtos (a, b, c...).
+   • "gramas": SÓ quando a cliente já disse quantos gramas quer (número, de ${config.gramStep} em ${config.gramStep}g, mínimo ${config.minGram}g). Se ela ainda não disse, OMITA o campo — o sistema escreve o valor "a cada 100g" e você pergunta quantos gramas ela precisa. Nunca sugira gramatura por conta própria.
+2. No "reply", no lugar EXATO do valor, escreva [[PRECO:a]] (com o id usado). Nunca escreva "R$" nem número de preço você mesma, e nunca multiplique: o placeholder já vira o texto completo (valor + "à vista"/"no cartão" + "a cada 100g" ou o total pelos gramas). Não escreva "à vista", "no cartão" nem "a cada 100g" perto dele.
+   Ex. sem gramas: "O Indiano Premium de 65cm fica [[PRECO:a]] 😊 Quantos gramas você precisa?"
+   Ex. com gramas: "Pra 200g, o Indiano Premium de 65cm fica [[PRECO:a]] 😊"
 3. Vários tamanhos ou vista + cartão na mesma resposta: um item para cada (a, b, c...).
 4. "payment" é "vista" a não ser que a cliente pergunte do cartão. Se o produto "tem valor próprio no cartão", pode cotar os dois (vista e cartao).
 5. Só cote tamanho que aparece na lista daquele produto. Se ela pedir outro tamanho, diga os tamanhos que existem e pergunte qual prefere — sem placeholder.

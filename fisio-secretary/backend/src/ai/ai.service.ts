@@ -71,8 +71,8 @@ async function callWithRetry<T>(
 // Campo extra do JSON no motor normal, só pra tenant com tabela de preços ativa
 // (os blocos JSON_FORMAT_MEGAHAIR* não mudam).
 const LEGACY_PRICE_QUOTES_FIELD = `CAMPO EXTRA DO JSON (além dos campos do formato acima, SÓ quando a resposta tiver [[PRECO:id]]):
-  "priceQuotes": [{ "id": "a", "productKey": "key exata da tabela", "cm": 65, "payment": "vista" }]
-  (produto por grama usa "gramas" e "tela" no lugar de "cm", como explicado na tabela)`;
+  "priceQuotes": [{ "id": "a", "productKey": "key exata da tabela", "cm": 65, "gramas": 100, "payment": "vista" }]
+  ("gramas" só quando a cliente já disse quantos quer — senão omita; produto por grama usa "gramas" e "tela" no lugar de "cm", como explicado na tabela)`;
 
 const JSON_FORMAT_MEGAHAIR = `
 

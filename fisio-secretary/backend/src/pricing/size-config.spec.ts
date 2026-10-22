@@ -25,9 +25,19 @@ describe('PriceConfigService — produtos por tamanho', () => {
       { label: 'Cacho Vietnamita', sizes: [{ cm: 60, price: 750, cardPrice: 825 }] },
     ] });
     expect(r.sizeProducts).toEqual([
-      { key: 'indiano', label: 'Indiano Premium', sizes: [{ cm: 45, price: 450.5, cardPrice: 500 }, { cm: 65, price: 650, cardPrice: null }] },
-      { key: 'cacho_vietnamita', label: 'Cacho Vietnamita', sizes: [{ cm: 60, price: 750, cardPrice: 825 }] },
+      { key: 'indiano', label: 'Indiano Premium', refGrams: 100, sizes: [{ cm: 45, price: 450.5, cardPrice: 500 }, { cm: 65, price: 650, cardPrice: null }] },
+      { key: 'cacho_vietnamita', label: 'Cacho Vietnamita', refGrams: 100, sizes: [{ cm: 60, price: 750, cardPrice: 825 }] },
     ]);
+  });
+
+  it('guarda a referência de gramas do cabelo (padrão 100) e recusa valores absurdos', async () => {
+    const r: any = await svc.save('t1', { sizeProducts: [
+      { label: 'A', refGrams: '50', sizes: [{ cm: 55, price: 100 }] },
+      { label: 'B', sizes: [{ cm: 55, price: 100 }] },
+    ] });
+    expect(r.sizeProducts.map((p: any) => p.refGrams)).toEqual([50, 100]);
+    await expect(svc.save('t1', { sizeProducts: [{ label: 'C', refGrams: 0, sizes: [{ cm: 55, price: 1 }] }] })).rejects.toThrow('gramas de referência');
+    await expect(svc.save('t1', { sizeProducts: [{ label: 'C', refGrams: 99999, sizes: [{ cm: 55, price: 1 }] }] })).rejects.toThrow('gramas de referência');
   });
 
   it('recusa tamanho repetido, sem preço ou sem tamanhos', async () => {

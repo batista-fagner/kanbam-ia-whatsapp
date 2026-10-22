@@ -3,6 +3,8 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export interface SizeProduct {
   key: string;
   label: string;
+  // Os valores da tabela são pra quantas gramas (ex.: 100 = "a cada 100g"). Ausente = 100.
+  refGrams?: number;
   sizes: { cm: number; price: number; cardPrice: number | null }[];
 }
 

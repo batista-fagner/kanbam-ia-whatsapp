@@ -31,17 +31,64 @@ function cfg(overrides: Partial<PriceConfig> = {}): PriceConfig {
 describe('computeSizeQuote', () => {
   it('lê o valor à vista do tamanho', () => {
     const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 65, payment: 'vista' });
-    expect(r).toMatchObject({ ok: true, total: 650, text: 'R$650,00 à vista' });
+    expect(r).toMatchObject({ ok: true, total: 650, text: 'R$650,00 à vista a cada 100g' });
+  });
+
+  describe('com gramas (valores a cada 100g)', () => {
+    it('200g = dobro do valor de 100g, mostrando a conta', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, gramas: 200, payment: 'vista' });
+      expect(r).toMatchObject({ ok: true, total: 1100, gramas: 200, text: 'R$1100,00 à vista (200g — R$550,00 a cada 100g)' });
+    });
+
+    it('150g = 1,5x', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 65, gramas: 150, payment: 'vista' });
+      expect(r).toMatchObject({ ok: true, total: 975, text: 'R$975,00 à vista (150g — R$650,00 a cada 100g)' });
+    });
+
+    it('100g não repete a conta', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 65, gramas: 100, payment: 'vista' });
+      expect(r).toMatchObject({ ok: true, total: 650, text: 'R$650,00 à vista (100g)' });
+    });
+
+    it('cartão com valor próprio multiplica o valor de cartão', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'cacho_viet_castanho', cm: 60, gramas: 200, payment: 'cartao' });
+      expect(r).toMatchObject({ ok: true, total: 1650, text: 'R$1650,00 no cartão (200g — R$825,00 a cada 100g)' });
+    });
+
+    it('cartão sem valor próprio: total à vista pelos gramas + aviso de acréscimo', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, gramas: 200, payment: 'cartao' });
+      expect(r).toMatchObject({ ok: true, total: 1100, text: 'R$1100,00 à vista (200g — R$550,00 a cada 100g; no cartão tem acréscimo)' });
+    });
+
+    it('referência diferente de 100g (ex.: valores por 50g)', () => {
+      const c = cfg();
+      c.sizeProducts[0].refGrams = 50;
+      expect(computeSizeQuote(c, { productKey: 'indiano_premium', cm: 55, payment: 'vista' })).toMatchObject({ text: 'R$550,00 à vista a cada 50g' });
+      expect(computeSizeQuote(c, { productKey: 'indiano_premium', cm: 55, gramas: 150, payment: 'vista' })).toMatchObject({ total: 1650 });
+    });
+
+    it('gramas fora do passo ou abaixo do mínimo não viram preço', () => {
+      const a = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, gramas: 120, payment: 'vista' });
+      expect(a).toMatchObject({ ok: false, reason: 'gramatura_fora_do_passo' });
+      const b = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, gramas: 30, payment: 'vista' });
+      expect(b).toMatchObject({ ok: false, reason: 'gramatura_invalida' });
+      if (!a.ok) expect(a.text).toContain('50 em 50g');
+    });
+
+    it('gramas 0/ausente = sem gramas (o JSON de exemplo manda 0)', () => {
+      const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, gramas: 0, payment: 'vista' });
+      expect(r).toMatchObject({ ok: true, total: 550, text: 'R$550,00 à vista a cada 100g' });
+    });
   });
 
   it('cartão com valor próprio usa o valor de cartão', () => {
     const r = computeSizeQuote(cfg(), { productKey: 'cacho_viet_castanho', cm: 60, payment: 'cartao' });
-    expect(r).toMatchObject({ ok: true, total: 825, text: 'R$825,00 no cartão' });
+    expect(r).toMatchObject({ ok: true, total: 825, text: 'R$825,00 no cartão a cada 100g' });
   });
 
   it('cartão sem valor cadastrado devolve o à vista avisando do acréscimo (nunca inventa)', () => {
     const r = computeSizeQuote(cfg(), { productKey: 'indiano_premium', cm: 55, payment: 'cartao' });
-    expect(r).toMatchObject({ ok: true, total: 550, text: 'R$550,00 à vista (no cartão tem acréscimo)' });
+    expect(r).toMatchObject({ ok: true, total: 550, text: 'R$550,00 à vista a cada 100g (no cartão tem acréscimo)' });
   });
 
   it('tamanho fora da tabela não vira preço — devolve os tamanhos que existem', () => {
@@ -64,12 +111,23 @@ describe('applyPriceQuotes com tabela por tamanho', () => {
       { id: 'a', productKey: 'cacho_viet_castanho', cm: 60, payment: 'vista' },
       { id: 'b', productKey: 'cacho_viet_castanho', cm: 60, payment: 'cartao' },
     ], cfg());
-    expect(out).toBe('O de 60cm fica R$750,00 à vista ou R$825,00 no cartão 😊');
+    expect(out).toBe('O de 60cm fica R$750,00 à vista a cada 100g ou R$825,00 no cartão a cada 100g 😊');
   });
 
   it('não duplica "à vista" quando a IA repete depois do placeholder', () => {
     const out = applyPriceQuotes('O de 55cm fica [[PRECO:a]] à vista.', [{ id: 'a', productKey: 'indiano_premium', cm: 55, payment: 'vista' }], cfg());
-    expect(out).toBe('O de 55cm fica R$550,00 à vista.');
+    expect(out).toBe('O de 55cm fica R$550,00 à vista a cada 100g.');
+  });
+
+  it('com gramas: total pelos gramas e sem "à vista" repetido', () => {
+    const out = applyPriceQuotes('Pra 200g o de 55cm fica [[PRECO:a]] no cartão 😊', [{ id: 'a', productKey: 'indiano_premium', cm: 55, gramas: 200, payment: 'cartao' }], cfg());
+    expect(out).toBe('Pra 200g o de 55cm fica R$1100,00 à vista (200g — R$550,00 a cada 100g; no cartão tem acréscimo) 😊');
+  });
+
+  it('gramatura inválida troca a frase inteira por uma pergunta (nada de valor quebrado)', () => {
+    const out = applyPriceQuotes('Pra 120g fica [[PRECO:a]] à vista. 😊', [{ id: 'a', productKey: 'indiano_premium', cm: 55, gramas: 120, payment: 'vista' }], cfg());
+    expect(out).toContain('de 50 em 50g');
+    expect(out).not.toContain('R$');
   });
 
   it('tamanho fora da tabela troca a frase inteira (caso real do teste: cacho indiano 60cm)', () => {
@@ -93,6 +151,8 @@ describe('bloco do prompt por tamanho', () => {
     expect(block).toContain('key: "indiano_premium"');
     expect(block).toContain('45, 55, 65 e 75cm');
     expect(block).toContain('tem valor próprio no cartão');
+    expect(block).toContain('valores a cada 100g');
+    expect(block).toContain('"gramas"');
     expect(block).not.toMatch(/650|825|R\$ ?\d/);
   });
 

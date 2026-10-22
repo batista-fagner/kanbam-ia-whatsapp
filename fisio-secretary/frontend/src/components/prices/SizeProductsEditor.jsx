@@ -16,7 +16,7 @@ export default function SizeProductsEditor({ products, onChange, mediaLabels, in
   const updateSize = (p, sid, patch) => update(p.uid, { sizes: p.sizes.map((s) => (s.uid === sid ? { ...s, ...patch } : s)) })
 
   function addProduct() {
-    onChange([...products, { uid: `new-${Date.now()}`, key: null, label: '', sizes: [newSizeRow()] }])
+    onChange([...products, { uid: `new-${Date.now()}`, key: null, label: '', ref: '100', sizes: [newSizeRow()] }])
   }
 
   function removeProduct(p) {
@@ -34,7 +34,7 @@ export default function SizeProductsEditor({ products, onChange, mediaLabels, in
         </button>
       </div>
       <p className="text-xs text-gray-500 mb-4">
-        Um cartão por cabelo, uma linha por tamanho. O valor no cartão é opcional — em branco, a IA avisa que no cartão tem acréscimo.
+        Um cartão por cabelo, uma linha por tamanho. Os valores valem para a quantidade de gramas indicada em cada cabelo (padrão 100 g): a IA informa "a cada 100 g" e, quando a cliente disser quantos gramas quer, o sistema calcula o total. O valor no cartão é opcional — em branco, a IA avisa que no cartão tem acréscimo.
       </p>
 
       {products.length === 0 ? (
@@ -60,6 +60,20 @@ export default function SizeProductsEditor({ products, onChange, mediaLabels, in
                 </p>
               )}
 
+              <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                <span>Os valores abaixo são para</span>
+                <div className="relative w-24">
+                  <input
+                    value={p.ref ?? '100'}
+                    onChange={(e) => update(p.uid, { ref: onlyInt(e.target.value) })}
+                    inputMode="numeric"
+                    placeholder="100"
+                    className={`${input} pr-7 text-center ${(Number(p.ref) < 10 || Number(p.ref) > 5000) ? 'border-red-300' : ''}`}
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">g</span>
+                </div>
+                <span>de cabelo</span>
+              </div>
               <div className="grid grid-cols-[72px_1fr_1fr_32px] gap-2 text-xs font-medium text-gray-500 px-0.5 mb-1">
                 <span>Tamanho</span>
                 <span>À vista <span className="text-red-500">*</span></span>
@@ -119,6 +133,8 @@ export function validateSizeProducts(products, parseMoney) {
     if (!name) return `Cabelo ${i + 1}: falta o nome.`
     if (names.has(name.toLowerCase())) return `O cabelo "${name}" está repetido.`
     names.add(name.toLowerCase())
+    const ref = Number(p.ref ?? 100)
+    if (!Number.isInteger(ref) || ref < 10 || ref > 5000) return `"${name}": informe para quantas gramas valem os valores (ex.: 100).`
     if (p.sizes.length === 0) return `"${name}": cadastre pelo menos um tamanho.`
     const cms = new Set()
     for (const s of p.sizes) {
