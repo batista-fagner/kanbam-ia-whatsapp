@@ -168,7 +168,7 @@ export class UazapiProvider implements IWhatsAppProvider {
   // transcribe:true — a uazapi devolve uma fileURL pronta pra imagem em vez
   // de rodar Whisper nela. Confirmado com teste real (spike da Fase 0 do
   // reconhecimento de imagem, ver memória do projeto).
-  async downloadImageUrl(messageId: string, token?: string): Promise<{ fileURL: string; mimetype: string } | null> {
+  async downloadImageUrl(messageId: string, token?: string): Promise<{ fileURL: string; mimetype: string; fileName?: string } | null> {
     const useToken = await this.resolveToken(token);
     const response = await firstValueFrom(
       this.http.post(
@@ -178,7 +178,7 @@ export class UazapiProvider implements IWhatsAppProvider {
       ),
     );
     const data = response.data as any;
-    return data?.fileURL ? { fileURL: data.fileURL, mimetype: data.mimetype ?? 'image/jpeg' } : null;
+    return data?.fileURL ? { fileURL: data.fileURL, mimetype: data.mimetype ?? 'image/jpeg', fileName: data.fileName ?? data.filename ?? undefined } : null;
   }
 
   async connectInstance(phone?: string, token?: string): Promise<any> {

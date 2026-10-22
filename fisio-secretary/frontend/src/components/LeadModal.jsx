@@ -55,6 +55,35 @@ function mapMessages(messages = []) {
   }))
 }
 
+// Foto/vídeo de uma mensagem: usa a URL salva; mensagens antigas só têm
+// "[mídia: nome]" no texto, então procura o arquivo pelo nome na lista de mídias.
+function resolveVisual(msg, mediaList) {
+  if ((msg.mediaType === 'image' || msg.mediaType === 'video') && msg.mediaUrl) {
+    return { url: msg.mediaUrl, video: msg.mediaType === 'video' }
+  }
+  const m = /^\[mídia: (.+?)\]/.exec(msg.content || '')
+  if (m) {
+    const f = mediaList.find(x => x.name === m[1])
+    if (f) return { url: f.url, video: !!f.mimeType?.startsWith('video/') }
+  }
+  return null
+}
+
+function documentName(content) {
+  const m = /^\[documento: (.+?)\]/.exec(content || '')
+  return m ? m[1] : 'Documento'
+}
+
+// Texto que acompanha a mídia (legenda), sem o marcador "[imagem]" / "[mídia: nome]".
+function mediaCaption(content) {
+  return String(content ?? '')
+    .replace(/^\[imagem\]\s*/, '')
+    .replace(/^\[vídeo\]\s*/, '')
+    .replace(/^\[documento: .+?\]\s*/, '')
+    .replace(/^\[mídia: .+?\]\s*/, '')
+    .trim()
+}
+
 function mapHistory(history = []) {
   return history.map(h => ({
     from: h.fromStage ? (stageLabel[h.fromStage] || h.fromStage) : '—',
@@ -83,6 +112,7 @@ export default function LeadModal({ lead, onClose }) {
   const recordedChunksRef = useRef([])
   const recordTimerRef = useRef(null)
   const [mediaList, setMediaList] = useState([])
+  const [preview, setPreview] = useState(null) // { url, video } da mídia aberta em tela cheia
   const [labels, setLabels] = useState(lead?.labels ?? [])
   const demoMode = useDemoMode()
   const [observations, setObservations] = useState(lead?.observations ?? '')
@@ -98,6 +128,12 @@ export default function LeadModal({ lead, onClose }) {
   const [nameValue, setNameValue] = useState(lead?.name ?? '')
   const [nameSaving, setNameSaving] = useState(false)
   const nameInputRef = useRef(null)
+
+  useEffect(() => {
+    if (mediaList.length > 0) return
+    if (!messages.some(m => !m.mediaUrl && /^\[mídia: /.test(m.content || ''))) return
+    getMediaList().then(setMediaList).catch(() => {})
+  }, [messages, mediaList.length])
 
   useEffect(() => {
     if (!lead) return
@@ -639,6 +675,49 @@ export default function LeadModal({ lead, onClose }) {
                             ? 'bg-teal-600 text-white rounded-tr-sm'
                             : 'bg-blue-600 text-white rounded-tr-sm'
                       }`
+                      if (msg.mediaType === 'document' && msg.mediaUrl) {
+                        const caption = mediaCaption(msg.content)
+                        return (
+                          <div className={bubbleClass}>
+                            <a
+                              href={msg.mediaUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2.5 min-w-0 hover:opacity-90"
+                            >
+                              <FileText className="w-8 h-8 shrink-0 opacity-80" />
+                              <span className="min-w-0">
+                                <span className="block font-medium truncate">{documentName(msg.content)}</span>
+                                <span className="block text-xs underline opacity-80">Abrir documento</span>
+                              </span>
+                            </a>
+                            {caption && <p className="pt-1.5">{caption}</p>}
+                          </div>
+                        )
+                      }
+                      const visual = resolveVisual(msg, mediaList)
+                      if (visual) {
+                        const caption = mediaCaption(msg.content)
+                        return (
+                          <div className={`${bubbleClass} !p-1.5`}>
+                            {visual.video ? (
+                              <video src={visual.url} controls preload="metadata" className="rounded-xl max-h-72 max-w-full" />
+                            ) : (
+                              <img
+                                src={visual.url}
+                                alt="Foto da conversa"
+                                loading="lazy"
+                                onClick={() => setPreview(visual)}
+                                className="rounded-xl max-h-72 max-w-full object-cover cursor-zoom-in"
+                              />
+                            )}
+                            {caption && <p className="px-2 pt-1.5 pb-0.5">{caption}</p>}
+                          </div>
+                        )
+                      }
+                      if (msg.content === '[imagem]') {
+                        return <div className={`${bubbleClass} italic opacity-80`}>📷 Foto (não ficou salva no histórico)</div>
+                      }
                       if (msg.mediaType === 'audio' && msg.mediaUrl) {
                         return <div className={bubbleClass}><audio src={msg.mediaUrl} controls preload="metadata" className="max-w-full h-9" /></div>
                       }
@@ -768,6 +847,35 @@ export default function LeadModal({ lead, onClose }) {
           </div>
         </div>
       </div>
+      {preview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            onClick={() => setPreview(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+            title="Fechar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <a
+            href={preview.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="absolute top-4 right-16 flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm"
+          >
+            <ExternalLink className="w-4 h-4" /> Abrir original
+          </a>
+          <img
+            src={preview.url}
+            alt="Foto ampliada"
+            onClick={e => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain"
+          />
+        </div>
+      )}
     </div>
   )
 }

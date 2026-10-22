@@ -1,5 +1,6 @@
 import { bubbleRuleBlockFor, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
 import { isAllowedInTestMode } from './test-phone.util';
+import { removeQueuedLines } from './inbound-media.util';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -101,6 +102,12 @@ const IMAGE_PLACEHOLDER_TO_AI_TENANT_IDS = [
   'e70ccdef-c21a-4f2f-9082-b71073b04b31', // Fabiana Cavalcanti Mega Hair
 ];
 
+// Tenants em que foto, vídeo e documento recebidos são guardados no R2 e aparecem na
+// conversa do card (CRM). Hoje são os mesmos do reconhecimento de foto.
+const INBOUND_MEDIA_STORE_TENANT_IDS = IMAGE_ANALYSIS_TENANT_IDS;
+// Teto do arquivo baixado do WhatsApp (vídeo grande não trava o servidor).
+const MAX_INBOUND_FILE_BYTES = 25 * 1024 * 1024;
+
 // Tenants com respostas mais enxutas (ver limitReplyBubblesAfterMedia): no máximo
 // 1 bolha depois de mídia e 2 nas demais respostas. HE Cabelos / Heline — pedido do
 // Fagner em 13/10/2026; apertado em 14/10 depois do teste dela ("manda mensagem demais").
@@ -120,6 +127,11 @@ export class EvolutionController {
   // — consumida em processMessage() quando o debounce dispara. Só usado pelos
   // tenants em IMAGE_ANALYSIS_TENANT_IDS.
   private readonly pendingImageUrl = new Map<string, string>();
+  // Mídias (foto/vídeo/documento) recebidas e já salvas no R2, ainda não gravadas como
+  // mensagem — consumidas em processMessage() quando o debounce dispara, uma linha por
+  // arquivo (várias fotos seguidas não perdem nenhuma). `queuedLine` é a linha que
+  // entrou na fila de debounce, pra não gravar o mesmo texto duas vezes.
+  private readonly pendingMedia = new Map<string, Array<{ url: string; type: string; content: string; queuedLine?: string }>>();
   // Último aviso de intenção de compra por lead (chave: leadId) — ver maybeNotifyPurchaseIntent().
   private readonly purchaseNotifiedAt = new Map<string, number>();
   // URL (R2) do ÁUDIO recebido do lead (mensagem de voz) — baixado uma vez em
@@ -283,6 +295,7 @@ export class EvolutionController {
         const captionText = rawText ? `[imagem] ${rawText}` : '[imagem]';
         const queueKey = `${tenantId}:${phone}`;
         this.pendingImageUrl.set(queueKey, imageUrl);
+        this.pushPendingMedia(queueKey, { url: imageUrl, type: 'image', content: captionText, queuedLine: captionText });
 
         this.messageQueue.enqueue(queueKey, captionText, (combinedText) => {
           return this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
@@ -293,6 +306,57 @@ export class EvolutionController {
       } catch (err) {
         this.logger.error(`[IMG-ANALYSIS] Erro ao baixar/processar imagem de ${phone}: ${err.message} — cai pro fluxo padrão`);
         // não retorna — segue pro bloco padrão abaixo
+      }
+    }
+
+    // Vídeo / documento do lead (tenants em INBOUND_MEDIA_STORE_TENANT_IDS): guarda o arquivo
+    // no R2 pra aparecer na conversa do card. Com legenda, ela segue pra IA como antes; sem
+    // legenda só fica salvo (a IA não responde a vídeo/documento sem texto, como já era).
+    // Qualquer falha cai no comportamento padrão (legenda → IA, sem legenda → ignora).
+    const isVideo = message.type === 'media' && ['video', 'ptv'].includes(message.mediaType);
+    const isDocument = message.type === 'media' && message.mediaType === 'document';
+    if ((isVideo || isDocument) && INBOUND_MEDIA_STORE_TENANT_IDS.includes(tenantId)) {
+      const messageId: string = message.messageid;
+      if (messageId && this.processedIds.has(messageId)) return { ok: true };
+      if (messageId) {
+        this.processedIds.add(messageId);
+        setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+      }
+
+      try {
+        const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
+        const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+        const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
+        if (!downloaded) throw new Error('uazapi não devolveu fileURL');
+
+        const fileResponse = await axios.get(downloaded.fileURL, {
+          responseType: 'arraybuffer',
+          maxContentLength: MAX_INBOUND_FILE_BYTES,
+          maxBodyLength: MAX_INBOUND_FILE_BYTES,
+        });
+        const fileName: string = downloaded.fileName ?? message.content?.fileName ?? message.fileName ?? 'documento';
+        const url = await this.mediaService.uploadInboundFile(Buffer.from(fileResponse.data), tenantId, lead.id, downloaded.mimetype, fileName);
+        const type = isVideo ? 'video' : 'document';
+        const marker = isVideo ? '[vídeo]' : `[documento: ${fileName}]`;
+        const content = rawText ? `${marker} ${rawText}` : marker;
+        this.logger.log(`📎 [INBOUND-MEDIA] ${type} de ${phone} salvo no R2: ${url}`);
+
+        if (rawText) {
+          const queueKey = `${tenantId}:${phone}`;
+          this.pushPendingMedia(queueKey, { url, type, content, queuedLine: rawText });
+          this.messageQueue.enqueue(queueKey, rawText, (combinedText) =>
+            this.processMessage(tenantId, phone, combinedText, messageId, pushName).catch((err) => {
+              this.logger.error(`❌ [ERRO AO PROCESSAR ${type.toUpperCase()}] ${phone}: ${err.message}`);
+            }),
+          );
+        } else {
+          await this.leadsService.saveMessage(conversation.id, 'inbound', phone, content, messageId, url, type);
+          await this.followupService.resetCadenceOnReply(tenantId, lead);
+          this.leadsGateway.emitLeadUpdated(await this.leadsService.findOne(lead.id, tenantId));
+        }
+        return { ok: true };
+      } catch (err) {
+        this.logger.error(`[INBOUND-MEDIA] Erro ao salvar ${isVideo ? 'vídeo' : 'documento'} de ${phone}: ${err.message} — cai pro fluxo padrão`);
       }
     }
 
@@ -426,6 +490,13 @@ export class EvolutionController {
     return { ok: true };
   }
 
+  private pushPendingMedia(queueKey: string, item: { url: string; type: string; content: string; queuedLine?: string }) {
+    const list = this.pendingMedia.get(queueKey) ?? [];
+    list.push(item);
+    // Teto só pra nunca crescer sem limite se o debounce não disparar.
+    this.pendingMedia.set(queueKey, list.slice(-30));
+  }
+
   private async transcribeAndEnqueue(tenantId: string, phone: string, message: any, messageId: string, pushName?: string | null) {
     this.logger.log(`Transcrevendo áudio de ${phone}...`);
     const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
@@ -537,6 +608,8 @@ export class EvolutionController {
     if (pendingImageUrl) this.pendingImageUrl.delete(queueKey);
     const pendingAudioUrl = this.pendingAudioUrl.get(queueKey);
     if (pendingAudioUrl) this.pendingAudioUrl.delete(queueKey);
+    const storedMedia = this.pendingMedia.get(queueKey) ?? [];
+    this.pendingMedia.delete(queueKey);
 
     // O Gemini (endpoint OpenAI-compatible) rejeita image_url apontando pra uma
     // URL remota (400 sem corpo, testado direto na API) — só aceita a imagem
@@ -554,11 +627,28 @@ export class EvolutionController {
       }
     }
 
-    await this.leadsService.saveMessage(
-      conversation.id, 'inbound', phone, combinedText, messageKeyId,
-      pendingImageUrl ?? pendingAudioUrl,
-      pendingImageUrl ? 'image' : pendingAudioUrl ? 'audio' : 'text',
-    );
+    if (storedMedia.length === 0) {
+      await this.leadsService.saveMessage(
+        conversation.id, 'inbound', phone, combinedText, messageKeyId,
+        pendingImageUrl ?? pendingAudioUrl,
+        pendingImageUrl ? 'image' : pendingAudioUrl ? 'audio' : 'text',
+      );
+    } else {
+      // Cada foto/vídeo/documento vira uma mensagem própria (com o arquivo); o texto que
+      // sobrar da junção do debounce vira outra, como antes.
+      const remainingText = removeQueuedLines(combinedText, storedMedia.map((m) => m.queuedLine));
+      for (const [i, m] of storedMedia.entries()) {
+        await this.leadsService.saveMessage(
+          conversation.id, 'inbound', phone, m.content, i === 0 && !remainingText ? messageKeyId : undefined, m.url, m.type,
+        );
+      }
+      if (remainingText) {
+        await this.leadsService.saveMessage(
+          conversation.id, 'inbound', phone, remainingText, messageKeyId,
+          pendingAudioUrl, pendingAudioUrl ? 'audio' : 'text',
+        );
+      }
+    }
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() });
     // Lead respondeu → reinicia o relógio de ociosidade da cadência de follow-up
     // (se houver cadência configurada pra raia atual do lead).
@@ -1212,7 +1302,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
           tenantId, phone, mediaName: mediaFile.name, reason: 'send_failed', errorMessage: sendResult.error ?? null,
         }).catch(err => this.logger.error(`Falha ao registrar media_send_error (send_failed): ${err.message}`));
       }
-      await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`);
+      await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`, undefined, mediaFile.url, type);
       sentCount++;
       // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.
       if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
@@ -1330,7 +1420,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     this.logger.log(`📤 [MANUAL-MEDIA] Enviando ${type} "${media.name}" para ${body.phone}`);
     await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '', tenantToken);
     const logMsg = `[mídia: ${media.name}]${body.caption ? ' ' + body.caption : ''}`;
-    await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', logMsg);
+    await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', logMsg, undefined, media.url, type);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() }, tenantId);
     const updatedLead = await this.leadsService.findOne(lead.id, tenantId);
     this.leadsGateway.emitLeadUpdated(updatedLead);

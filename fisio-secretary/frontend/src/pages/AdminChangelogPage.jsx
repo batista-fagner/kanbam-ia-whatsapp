@@ -7,6 +7,10 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'CRM: foto, vídeo e documento aparecem na conversa do card (DALU)',
+    date: '22/10/2026',
+    detail: 'Antes a conversa do card mostrava só "[imagem]" ou "[mídia: nome]". Agora a foto/vídeo aparece na bolha (foto abre em tela cheia, com "Abrir original"), o documento vira um cartão clicável e a legenda vem embaixo. Vale pra mídia que a IA envia e que o operador envia pelo clipe (todos os clientes) e pra foto, vídeo e documento que a cliente manda (só nos clientes com reconhecimento de foto, ex.: DALU — depois do deploy). Várias fotos seguidas viram uma mensagem cada, nenhuma se perde. Vídeo/documento sem legenda só ficam salvos (a IA não responde a eles, como já era); com legenda segue pra IA. Arquivos de até 25 MB. Mensagens antigas com "[mídia: nome]" também mostram a imagem; fotos antigas que chegaram só como "[imagem]" não foram salvas e mostram "Foto não ficou salva no histórico".',
+  },  {
     title: 'Modo teste da IA: responde só a um número',
     date: '21/10/2026',
     detail: 'Admin → Clientes → abrir o cliente → "Modo teste da IA". Com um número preenchido, a IA responde só a ele; qualquer outro contato fica salvo no Kanban, sem resposta. Vazio desliga. Aceita com ou sem 55 e 9º dígito. Follow-ups automáticos não passam por essa trava (desligue o follow-up do cliente se for testar com leads reais).',
@@ -344,6 +348,18 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Mídias dos clientes no R2: definir por quanto tempo ficam guardadas',
+    detail: 'Fotos, vídeos e documentos que o cliente manda ficam em links públicos do R2, sem prazo de expiração. Definir tempo de retenção (ex.: apagar após X dias) e se os links passam a ser assinados/privados.',
+  },
+  {
+    title: 'Backend fora do Railway: subir no Render, trocar o DNS e rotacionar as chaves',
+    detail: 'O Railway pausou os deploys (incidente de segurança). Plano: serviço Starter no Render (Virginia, Docker, pasta fisio-secretary/backend, QUEUE_ENGINE=legacy-cron), testar com o modo teste da IA, trocar o DNS do api.converthair.com.br e desligar o Railway. Depois, trocar as chaves que o Railway pode ter exposto: senha do banco, Stripe, Efí, UAZAPI_ADMIN_TOKEN, chaves de IA, R2 e JWT_SECRET. INTERNAL_API_TOKEN e FORM_WEBHOOK_SECRET precisam ser trocados também no convertHairCRM. Enquanto isso, DALU (35s/2 bolhas/foto), modo teste e mídia no CRM seguem sem deploy.',
+  },
+  {
+    title: 'CRM: mídia enviada do celular da DALU (fora do sistema) não aparece no card',
+    detail: 'Hoje só o texto que a recepção manda pelo próprio WhatsApp é salvo no card. Foto, vídeo e documento enviados do celular ainda não são guardados.',
+  },
   { title: 'DALU: falta a tabela de cabelos e as fotos', detail: 'Sem isso a IA não consegue fechar a venda online, que é o que a Luísa quer: só tem a referência "até o ombro R$1.200 a R$1.500". Pedir pra ela: linhas (brasileiro/importado), comprimentos, valor por 100g ou por peça, e fotos dos cabelos com o valor na legenda. Dá pra usar a Tabela de preços por tamanho, como na Simone.' },
   { title: 'Formulário de onboarding: botão "Enviar para Mídia" nos anexos', detail: 'No Admin → Onboarding, ao lado de cada anexo da pergunta de fotos/vídeos, um botão que pede o nome, converte vídeo (.mov) para MP4 H.264 leve, reduz foto e cadastra na Mídia do cliente. Precisa de ffmpeg no servidor (hoje o backend não tem) e conversão em segundo plano para vídeo grande. Não colocar no formulário público nem automatizar no envio. Decidido adiar (20/10/2026); a Mult Festa foi importada na mão.' },
   { title: 'Fabiana: reconectar o WhatsApp e acompanhar as primeiras conversas', detail: 'O número está desconectado desde 10/10 (09:36). Ela precisa ler o QR code de novo. Depois, conferir nas primeiras conversas se a IA só manda a tabela e passa pra ela o que não sabe, e se a Fabiana aprova o novo jeito.' },

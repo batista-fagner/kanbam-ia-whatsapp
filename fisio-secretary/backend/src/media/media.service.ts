@@ -157,6 +157,21 @@ export class MediaService {
     return `${this.publicUrl}/${storagePath}`;
   }
 
+  // Vídeo/documento RECEBIDO do lead — mesmo prefixo `inbound/` das fotos, com sufixo
+  // aleatório porque vários arquivos podem chegar no mesmo milissegundo.
+  async uploadInboundFile(buffer: Buffer, tenantId: string, leadId: string, mimeType: string, fileName?: string): Promise<string> {
+    const fromName = fileName?.includes('.') ? fileName.split('.').pop()!.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : '';
+    const ext = fromName || this.extFromMimeType(mimeType, 'bin');
+    const storagePath = `inbound/${tenantId}/${leadId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    await this.s3.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+      Body: buffer,
+      ContentType: mimeType.split(';')[0].trim() || 'application/octet-stream',
+    }));
+    return `${this.publicUrl}/${storagePath}`;
+  }
+
   // Extensão a partir do mime type, sanitizando parâmetros tipo
   // "audio/webm;codecs=opus" → "webm" (mimeType.split('/').pop() sozinho
   // devolveria "webm;codecs=opus", que quebraria a key do R2).
