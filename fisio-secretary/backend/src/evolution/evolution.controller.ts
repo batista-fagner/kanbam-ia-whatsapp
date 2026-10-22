@@ -91,6 +91,7 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
   'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (produção, 2026-08-27)
   '6fac64ce-9189-414a-9ad9-fd2fc102e599', // Tiago Adan (conta de teste p/ demonstração a clientes, 2026-10-09)
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline / HE Cabelos (2026-10-14) — cliente manda foto do próprio cabelo pra pedir indicação de cor
+  '83a5e1bb-e33a-491c-a2d8-ccf126830ac3', // Studio Simone Trindade (2026-10-22) — a cliente manda foto do cabelo pra IA indicar textura/volume; pedido da Simone
 ];
 
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.

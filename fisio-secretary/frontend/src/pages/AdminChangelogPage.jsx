@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Studio Simone: IA passa a ler foto do cabelo + pagamento antes do valor + transferir na dúvida',
+    date: '22/10/2026',
+    detail: 'A Simone entrou na lista de clientes com reconhecimento de foto (depois do deploy): quando a cliente manda foto do cabelo, a IA comenta textura, cor e volume e indica a linha da tabela — sem dizer cm nem gramas pela foto. As fotos, vídeos e documentos que as clientes mandam também passam a aparecer no card. Prompt: a IA pergunta se é à vista (Pix/dinheiro) ou cartão antes de dar o valor e cota só a forma escolhida; na dúvida real transfere para a equipe em vez de responder de cabeça.',
+  },
+  {
     title: 'Studio Simone: tabela por tamanho agora calcula pelos gramas (valores a cada 100 g)',
     date: '22/10/2026',
     detail: 'Na tela Tabela de preços → Por tamanho, cada cabelo ganhou o campo "Os valores abaixo são para __ g de cabelo" (padrão 100). A IA passa a informar "R$ 550 à vista a cada 100g" e, quando a cliente diz os gramas (de 50 em 50), o sistema calcula o total (200g = dobro; cartão também) e mostra a conta — a IA nunca faz a conta, como no S&A. Gramas fora do passo viram pergunta, nunca preço quebrado. Antes a IA ora calculava de cabeça, ora não (o prompt dela se contradizia) e o "a cada 100g" não aparecia. O prompt novo da Simone está pronto (sem a contradição) e só deve ser aplicado depois do deploy do backend.',
