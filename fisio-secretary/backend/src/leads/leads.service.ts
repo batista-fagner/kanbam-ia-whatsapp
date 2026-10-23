@@ -332,6 +332,16 @@ export class LeadsService implements OnApplicationBootstrap {
     return msgs.map((m) => m.content);
   }
 
+  // Quando a IA respondeu pela última vez nesta conversa (null se nunca) — usado pela trava
+  // de saudação repetida.
+  async getLastAiReplyAt(conversationId: string): Promise<Date | null> {
+    const msg = await this.messagesRepo.findOne({
+      where: { conversationId, direction: 'outbound', sender: 'ai' },
+      order: { createdAt: 'DESC' },
+    });
+    return msg?.createdAt ?? null;
+  }
+
   async toggleAi(leadId: string, enabled: boolean, tenantId?: string): Promise<void> {
     await this.assertLeadTenant(leadId, tenantId);
     const conversation = await this.conversationsRepo.findOne({ where: { leadId } });

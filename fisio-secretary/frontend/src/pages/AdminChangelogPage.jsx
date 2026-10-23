@@ -7,6 +7,21 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'DALU: trava no código contra saudação repetida ("Oooi" / "Eu sou a Lu")',
+    date: '22/10/2026',
+    detail: 'Mesmo com a regra no prompt, a IA abriu a 2ª mensagem com "Oooi!" de novo. Agora o sistema corta "Oooi", "Oi", "Olá", "Seja bem-vinda", "bom dia/tarde/noite" e "Eu sou a Lu / me chamo Lu" do começo de qualquer resposta quando a IA já falou com a cliente nas últimas 24h — não depende mais da IA obedecer. Cliente que volta depois de 24h recebe saudação normal. Só na DALU. Vale depois do deploy.',
+  },
+  {
+    title: 'DALU: prompt novo reorganizado (fluxo de venda, métodos, tabelas e objeções)',
+    date: '22/10/2026',
+    detail: 'Entrou o prompt reescrito (identidade, regras, fluxo de compra com primeira vez/já usa, base dos métodos, tabelas de cabelo, orçamentos sem duplicidade, manutenção, objeções, pagamento, agenda, encaminhamento). Ajustes feitos ao adaptar: regra do vídeo antes do preço agora só vale quando há vídeo cadastrado e a IA não avisa "não tenho vídeo" a cada preço; no máximo 1 emoji por resposta inteira e exemplos sem emoji; apresentação só na 1ª mensagem e "sim"/"ok" solto não reinicia o roteiro; a lista de pendências saiu do prompt e foi para as Pendências. Itens "confirmar" ficaram como estavam. Vale já, sem deploy.',
+  },
+  {
+    title: 'DALU: IA parou de se apresentar duas vezes ("Eu sou a Lu" e depois "me chamo Lu")',
+    date: '22/10/2026',
+    detail: 'O prompt mandava se apresentar na 1ª mensagem (exemplo "Eu sou a Lu") e de novo na 2ª ("eu me chamo Lu"), e também recomeçava o roteiro quando a cliente respondia só "sim". Agora a apresentação é só na 1ª mensagem, a 2ª usa o nome e vai direto na pergunta, e uma resposta solta ("sim", "ok") não reinicia a conversa. Também menos emoji: no máximo 1 por resposta inteira (antes valia por bolha) e só em 1 de cada 3 respostas; os emojis dos exemplos do prompt foram retirados porque a IA copiava. Vale já, sem deploy.',
+  },
+  {
     title: 'Studio Simone: IA passa a ler foto do cabelo + pagamento antes do valor + transferir na dúvida',
     date: '22/10/2026',
     detail: 'A Simone entrou na lista de clientes com reconhecimento de foto (depois do deploy): quando a cliente manda foto do cabelo, a IA comenta textura, cor e volume e indica a linha da tabela — sem dizer cm nem gramas pela foto. As fotos, vídeos e documentos que as clientes mandam também passam a aparecer no card. Prompt: a IA pergunta se é à vista (Pix/dinheiro) ou cartão antes de dar o valor e cota só a forma escolhida; na dúvida real transfere para a equipe em vez de responder de cabeça.',
@@ -358,6 +373,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'DALU: dados para o cliente confirmar (retirados do prompt em 22/10/2026)',
+    detail: 'O prompt novo foi aplicado sem mexer nos itens "confirmar". Enviar à DALU: (1) a tabela de "revenda" do brasileiro do Sul vale para a cliente final? Se for diferente, qual o varejo; (2) R$ 420 para manutenção de 4 telas e R$ 450 em mechas topo/contorno estão certos?; (3) vídeos reais de cada técnica, cabelo e serviço (hoje 0 mídias); (4) fichas técnicas de nanopele, ponto americano e nó italiano (funcionamento, indicação, cuidados, intervalo de manutenção); (5) fita R$ 900: até quantas gramas vale e como se relaciona com os avulsos (R$ 6/g + R$ 350); (6) preço de aplicação isolada de tela, se vende; (7) preparo inicial de queratina, nó italiano, Mermaid, nanopele e ponto americano; (8) nó italiano: aplicação nova acima de 200 g; (9) progressiva no cabelo todo, luzes no mega e demais valores ausentes (tic-tac, maquiagem); (10) Pix/link oficial, taxas de parcelamento, como validar pagamento e política do sinal de R$ 50; (11) entrega/frete, estoque consultável, quem da equipe assume a transferência e o ponto de referência; (12) a agenda e a tabela de datas reais. Além disso: passar os preços dos cabelos para a Tabela de preços (hoje a IA calcula de cabeça, direto do prompt).',
+  },
   {
     title: 'Simone: aplicar o prompt novo (gramas) logo depois do deploy e conversar com ela',
     detail: 'O prompt ajustado está pronto (com backup do atual) e só deve ser aplicado depois que o backend novo estiver no ar — com o backend antigo a IA diria "200g fica R$ 550". Na reunião confirmar: valores são a cada 100 g em todos os cabelos? A IA dá o total ou só o valor de 100 g? Faltam preços: Indiano cacho permanentado 60 cm, loiros, Vietnamita loiro, peruano. Confecção/colocação ainda são texto do prompt (a IA não multiplica nem soma, a equipe fecha o total).',

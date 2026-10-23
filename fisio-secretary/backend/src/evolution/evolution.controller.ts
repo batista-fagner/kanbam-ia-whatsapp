@@ -1,4 +1,5 @@
 import { bubbleRuleBlockFor, limitReplyBubblesAfterMedia, trimMediaReplyToQuestion } from '../ai/bubble-rule';
+import { stripRepeatedGreeting } from './repeated-greeting.util';
 import { isAllowedInTestMode } from './test-phone.util';
 import { removeQueuedLines } from './inbound-media.util';
 import { Controller, Post, Get, Body, Query, Param, Res, Logger, UseGuards } from '@nestjs/common';
@@ -112,6 +113,13 @@ const MAX_INBOUND_FILE_BYTES = 25 * 1024 * 1024;
 // Tenants com respostas mais enxutas (ver limitReplyBubblesAfterMedia): no máximo
 // 1 bolha depois de mídia e 2 nas demais respostas. HE Cabelos / Heline — pedido do
 // Fagner em 13/10/2026; apertado em 14/10 depois do teste dela ("manda mensagem demais").
+// Tenants com trava de saudação repetida (ver repeated-greeting.util): depois da 1ª resposta
+// a IA não pode voltar a abrir com "Oooi"/"Eu sou a Lu". DALU — reclamação de 22/10/2026.
+const REPEATED_GREETING_GUARD_TENANT_IDS = [
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', // DALU
+];
+const REPEATED_GREETING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const COMPACT_REPLY_TENANT_IDS = [
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline Carvalho / HE Cabelos
 ];
@@ -876,6 +884,19 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       aiResponse = await this.runAgendaSecondPass(tenantId, lead, aiResponse, agendaParts, { instanceConfig, combinedText, imageDataUri, allMedia, extraSystemContext });
     }
     this.logger.log(`IA respondeu [stage=${aiResponse.stage}] [action=${aiResponse.action}] [tags=${JSON.stringify(aiResponse.tags ?? [])}]: ${aiResponse.reply}`);
+    // Trava de saudação repetida: se a IA já falou com a cliente nas últimas 24h, corta
+    // "Oooi"/"Seja bem-vinda"/"Eu sou a Lu" do começo da resposta antes de enviar.
+    if (REPEATED_GREETING_GUARD_TENANT_IDS.includes(tenantId) && aiResponse.reply) {
+      const lastAiAt = await this.leadsService.getLastAiReplyAt(conversation.id);
+      if (lastAiAt && Date.now() - new Date(lastAiAt).getTime() < REPEATED_GREETING_WINDOW_MS) {
+        const cleaned = stripRepeatedGreeting(aiResponse.reply);
+        if (cleaned !== aiResponse.reply) {
+          this.logger.log(`✂️ [SAUDAÇÃO] Saudação repetida cortada para ${phone}: "${aiResponse.reply.substring(0, 50)}" → "${cleaned.substring(0, 50)}"`);
+          aiResponse.reply = cleaned;
+        }
+      }
+    }
+
 
     // CAMADA DE SEGURANÇA: resposta idêntica às 2 últimas (loop) → bloqueia envio e desativa a IA
     if (await this.detectAndBlockLoop(conversation.id, lead.id, tenantId, phone, aiResponse.reply)) {
