@@ -7,6 +7,21 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Importar clientes antigos no Kanban (etiqueta "cliente" + IA desligada)',
+    date: '23/10/2026',
+    detail: 'Botão "Importar clientes" no Kanban: cola a lista (nome e telefone, um por linha) ou envia um CSV (aceita o export de clientes da Trinks: usa só Nome e Telefone 1/2, ignora CPF, endereço e observações, e lê os acentos do arquivo em Latin-1), escolhe a raia (padrão Vendas). Todos entram com a etiqueta "cliente" e a IA desligada; quem já existe não duplica, só ganha a etiqueta e tem a IA desligada. O telefone é gravado no formato do WhatsApp (DDD 31+ sem o 9), senão a cliente escrevia e virava outro lead com a IA ligada. Importados não contam no dashboard.',
+  },
+  {
+    title: 'Mult Festa: 3 combos novos entram no envio + nomes de 15 anos corrigidos',
+    date: '23/10/2026',
+    detail: 'Os 3 combos novos (cenário + lembrancinha + pipoqueira e algodão doce, 12x no carnê) agora vão junto quando pedem "combo festa". O prompt também citava 3 artes com nomes antigos (15 anos e "Cenário 3 Metros") que não existiam mais no catálogo, então não eram enviadas — trocadas pelos nomes atuais.',
+  },
+  {
+    title: 'Mult Festa: IA envia as artes de Festa na mesa (5) e Pegue e monte (4) quando pedem',
+    date: '23/10/2026',
+    detail: 'A cliente cadastrou 5 artes de Festa na mesa e 4 de Pegue e monte, mas o prompt não citava nenhuma pelo nome (Festa na mesa nem tinha regra de envio, e "PEGUE MONTE 03" escapava da busca por "pegue e monte"). Agora, como no combo festa, pediu "festa na mesa" sai o conjunto das 5 de uma vez e pediu "pegue e monte" saem as 4 junto da mensagem automática. Essas artes não têm preço na legenda: a IA não inventa valor e diz que a equipe passa o orçamento.',
+  },
+  {
     title: 'DALU: trava no código contra saudação repetida ("Oooi" / "Eu sou a Lu")',
     date: '22/10/2026',
     detail: 'Mesmo com a regra no prompt, a IA abriu a 2ª mensagem com "Oooi!" de novo. Agora o sistema corta "Oooi", "Oi", "Olá", "Seja bem-vinda", "bom dia/tarde/noite" e "Eu sou a Lu / me chamo Lu" do começo de qualquer resposta quando a IA já falou com a cliente nas últimas 24h — não depende mais da IA obedecer. Cliente que volta depois de 24h recebe saudação normal. Só na DALU. Vale depois do deploy.',
@@ -373,6 +388,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Botão "Novo lead" grava o telefone sem o 55',
+    detail: 'Hoje 142 leads cadastrados à mão estão sem o 55 (ex.: 84999998888) e não batem com o número que o WhatsApp manda — quando a pessoa escreve, vira outro lead com a IA ligada. Corrigir usando o mesmo formato da importação de clientes.',
+  },
   {
     title: 'DALU: dados para o cliente confirmar (retirados do prompt em 22/10/2026)',
     detail: 'O prompt novo foi aplicado sem mexer nos itens "confirmar". Enviar à DALU: (1) a tabela de "revenda" do brasileiro do Sul vale para a cliente final? Se for diferente, qual o varejo; (2) R$ 420 para manutenção de 4 telas e R$ 450 em mechas topo/contorno estão certos?; (3) vídeos reais de cada técnica, cabelo e serviço (hoje 0 mídias); (4) fichas técnicas de nanopele, ponto americano e nó italiano (funcionamento, indicação, cuidados, intervalo de manutenção); (5) fita R$ 900: até quantas gramas vale e como se relaciona com os avulsos (R$ 6/g + R$ 350); (6) preço de aplicação isolada de tela, se vende; (7) preparo inicial de queratina, nó italiano, Mermaid, nanopele e ponto americano; (8) nó italiano: aplicação nova acima de 200 g; (9) progressiva no cabelo todo, luzes no mega e demais valores ausentes (tic-tac, maquiagem); (10) Pix/link oficial, taxas de parcelamento, como validar pagamento e política do sinal de R$ 50; (11) entrega/frete, estoque consultável, quem da equipe assume a transferência e o ponto de referência; (12) a agenda e a tabela de datas reais. Além disso: passar os preços dos cabelos para a Tabela de preços (hoje a IA calcula de cabeça, direto do prompt).',

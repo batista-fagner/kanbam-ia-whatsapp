@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, Repository } from 'typeorm';
+import { Between, In, Repository } from 'typeorm';
 import { Lead, LeadStage } from '../common/entities/lead.entity';
 import { Conversation } from '../common/entities/conversation.entity';
 import { Message } from '../common/entities/message.entity';
@@ -8,6 +8,7 @@ import { LeadStageHistory } from '../common/entities/lead-stage-history.entity';
 import { DeletedLead } from '../common/entities/deleted-lead.entity';
 import { Appointment } from '../common/entities/appointment.entity';
 import { MediaService } from '../media/media.service';
+import { normalizeWhatsAppPhone, phoneAlternates } from './phone-normalize.util';
 
 @Injectable()
 export class LeadsService implements OnApplicationBootstrap {
@@ -209,7 +210,62 @@ export class LeadsService implements OnApplicationBootstrap {
   }
 
   async findAll(tenantId: string): Promise<Lead[]> {
-    return this.leadsRepo.find({ where: { tenantId }, order: { lastMessageAt: 'DESC' } });
+    // NULLS LAST: lead sem conversa (importado/cadastrado à mão) não fica no topo das raias.
+    return this.leadsRepo.find({ where: { tenantId }, order: { lastMessageAt: { direction: 'DESC', nulls: 'LAST' } } });
+  }
+
+  // Importação de clientes antigos: todos entram com a etiqueta "cliente" e a IA desligada.
+  // Quem já existe (inclusive salvo na outra grafia do número) só ganha a etiqueta e tem a IA
+  // desligada — nunca duplica. O histórico marca changedBy='importacao' (o dashboard ignora).
+  async importClients(
+    tenantId: string,
+    contacts: Array<{ name?: string | null; phone: string }>,
+    stage: LeadStage,
+  ): Promise<{ created: number; updated: number; invalid: string[]; repeated: number; leads: Lead[] }> {
+    const invalid: string[] = [];
+    const byPhone = new Map<string, string | null>();
+    let repeated = 0;
+    for (const c of contacts) {
+      const phone = normalizeWhatsAppPhone(c.phone);
+      if (!phone) { invalid.push(String(c.phone ?? '')); continue; }
+      if (byPhone.has(phone)) { repeated++; continue; }
+      byPhone.set(phone, c.name?.trim().slice(0, 120) || null);
+    }
+
+    const phones = [...byPhone.keys()];
+    const allVariants = phones.flatMap((p) => [p, ...phoneAlternates(p)]);
+    const existing = allVariants.length
+      ? await this.leadsRepo.find({ where: { tenantId, phone: In(allVariants) } })
+      : [];
+    const existingByPhone = new Map(existing.map((l) => [l.phone, l]));
+
+    let created = 0;
+    let updated = 0;
+    const touched: Lead[] = [];
+    for (const phone of phones) {
+      const name = byPhone.get(phone) ?? null;
+      const found = [phone, ...phoneAlternates(phone)].map((p) => existingByPhone.get(p)).find(Boolean);
+      if (found) {
+        const labels = found.labels ?? [];
+        if (!labels.includes('cliente')) found.labels = [...labels, 'cliente'];
+        if (!found.name && name) found.name = name;
+        await this.leadsRepo.save(found);
+        await this.conversationsRepo
+          .createQueryBuilder().insert().into(Conversation)
+          .values({ leadId: found.id, aiEnabled: false }).orIgnore().execute();
+        await this.conversationsRepo.update({ leadId: found.id }, { aiEnabled: false });
+        updated++;
+        touched.push(found);
+        continue;
+      }
+      const lead = await this.leadsRepo.save(this.leadsRepo.create({ tenantId, phone, name, stage, labels: ['cliente'] }));
+      await this.historyRepo.save({ leadId: lead.id, fromStage: null, toStage: stage, changedBy: 'importacao' });
+      await this.conversationsRepo.save(this.conversationsRepo.create({ leadId: lead.id, aiEnabled: false }));
+      existingByPhone.set(phone, lead);
+      created++;
+      touched.push(lead);
+    }
+    return { created, updated, invalid, repeated, leads: touched };
   }
 
   countByTenant(tenantId: string): Promise<number> {
@@ -447,6 +503,8 @@ export class LeadsService implements OnApplicationBootstrap {
       .select(['lead.id', 'lead.stage', 'lead.labels', 'lead.createdAt']);
     if (tenantId) leadsQb.andWhere('lead.tenantId = :tenantId', { tenantId });
     if (since) leadsQb.andWhere('lead.createdAt >= :since', { since });
+    // Clientes antigos importados não são leads do período — inflariam funil e conversão.
+    leadsQb.andWhere(`NOT EXISTS (SELECT 1 FROM lead_stage_history h WHERE h.lead_id = lead.id AND h.changed_by = 'importacao')`);
     const leads = await leadsQb.getMany();
 
     // 2. Funil — contagem por stage

@@ -35,6 +35,13 @@ export const createLead = (phone, name) =>
     body: JSON.stringify({ phone, ...(name ? { name } : {}) }),
   }).then(json)
 
+export const importClients = (contacts, stage) =>
+  authFetch(`${BASE}/leads/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contacts, stage }),
+  }).then(json)
+
 export const getConversation = (id) =>
   authFetch(`${BASE}/leads/${id}/conversation`).then(json)
 

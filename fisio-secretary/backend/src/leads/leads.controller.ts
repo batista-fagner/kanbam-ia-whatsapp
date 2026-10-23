@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, Patch, Delete, Body, Query, Inject, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Patch, Delete, Body, Query, Inject, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { LeadsService } from './leads.service';
+import { LeadStage } from '../common/entities/lead.entity';
 import { LeadsGateway } from './leads.gateway';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -23,6 +24,22 @@ export class LeadsController {
     const { lead, isNew } = await this.leadsService.findOrCreate(body.phone, tenantId, body.name);
     this.leadsGateway.emitLeadUpdated(lead);
     return { ...lead, isNew };
+  }
+
+  @Post('import')
+  async importClients(
+    @Body() body: { contacts?: Array<{ name?: string; phone: string }>; stage?: string },
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    const contacts = Array.isArray(body?.contacts) ? body.contacts : [];
+    if (contacts.length === 0) throw new BadRequestException('Nenhum contato enviado.');
+    if (contacts.length > 5000) throw new BadRequestException('Máximo de 5.000 contatos por importação.');
+    const allowed: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente', 'agendado', 'vendas', 'desliza_hair', 'perdido'];
+    const stage = (allowed as string[]).includes(body.stage ?? '') ? (body.stage as LeadStage) : 'vendas';
+    const { leads, ...summary } = await this.leadsService.importClients(tenantId, contacts, stage);
+    // Lista grande: a tela que importou recarrega sozinha; não inunda o socket.
+    if (leads.length <= 300) for (const lead of leads) this.leadsGateway.emitLeadUpdated(lead);
+    return summary;
   }
 
   @Get()

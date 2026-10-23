@@ -7,7 +7,7 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core'
-import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X, UserPlus, Eye, EyeOff } from 'lucide-react'
+import { Wifi, Users, Flame, CalendarCheck, ShoppingBag, Search, X, UserPlus, Eye, EyeOff, Upload } from 'lucide-react'
 
 import { getColumns } from '../data/mockData'
 import { useAuth } from '../context/AuthContext'
@@ -19,16 +19,18 @@ import LeadCard from '../components/LeadCard'
 import LeadModal from '../components/LeadModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import AddLeadModal from '../components/AddLeadModal'
+import ImportClientsModal from '../components/ImportClientsModal'
 
 export default function KanbanPage() {
   const { user } = useAuth()
   const COLUMNS = getColumns(user?.tenantId)
-  const { leads, setLeads, loading } = useLeads()
+  const { leads, setLeads, loading, refetch } = useLeads()
   const [activeId, setActiveId] = useState(null)
   const [selectedLead, setSelectedLead] = useState(null)
   const [leadToDelete, setLeadToDelete] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [addingLead, setAddingLead] = useState(false)
+  const [importing, setImporting] = useState(false)
   const searchRef = useRef(null)
   const demoMode = useDemoMode()
 
@@ -158,6 +160,14 @@ export default function KanbanPage() {
               {demoMode ? 'Números ocultos' : 'Ocultar números'}
             </button>
             <button
+              onClick={() => setImporting(true)}
+              title="Importar clientes antigos (entram com a etiqueta cliente e a IA desligada)"
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar clientes
+            </button>
+            <button
               onClick={() => setAddingLead(true)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium"
             >
@@ -214,6 +224,14 @@ export default function KanbanPage() {
           lead={leadToDelete}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setLeadToDelete(null)}
+        />
+      )}
+
+      {importing && (
+        <ImportClientsModal
+          columns={COLUMNS}
+          onClose={() => setImporting(false)}
+          onImported={refetch}
         />
       )}
 
