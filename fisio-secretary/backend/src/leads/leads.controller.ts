@@ -42,6 +42,18 @@ export class LeadsController {
     return summary;
   }
 
+  @Get('import/summary')
+  importedSummary(@CurrentUser('tenantId') tenantId: string) {
+    return this.leadsService.importedSummary(tenantId);
+  }
+
+  @Delete('import')
+  async deleteImported(@CurrentUser('tenantId') tenantId: string) {
+    const { ids, ...summary } = await this.leadsService.deleteImported(tenantId);
+    if (ids.length <= 300) for (const id of ids) this.leadsGateway.emitLeadDeleted(id, tenantId);
+    return summary;
+  }
+
   @Get()
   findAll(@CurrentUser('tenantId') tenantId: string) {
     return this.leadsService.findAll(tenantId);

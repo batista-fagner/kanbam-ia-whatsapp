@@ -217,6 +217,8 @@ export class LeadsService implements OnApplicationBootstrap {
   // Importação de clientes antigos: todos entram com a etiqueta "cliente" e a IA desligada.
   // Quem já existe (inclusive salvo na outra grafia do número) só ganha a etiqueta e tem a IA
   // desligada — nunca duplica. O histórico marca changedBy='importacao' (o dashboard ignora).
+  // Tudo em lote: um por um levava ~14 min para 1.357 clientes (Tiago Adan, 23/10/2026) e a
+  // tela dava erro de tempo esgotado no meio.
   async importClients(
     tenantId: string,
     contacts: Array<{ name?: string | null; phone: string }>,
@@ -232,40 +234,112 @@ export class LeadsService implements OnApplicationBootstrap {
       byPhone.set(phone, c.name?.trim().slice(0, 120) || null);
     }
 
+    const chunk = <T>(arr: T[], size = 500): T[][] =>
+      Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, (i + 1) * size));
+
     const phones = [...byPhone.keys()];
-    const allVariants = phones.flatMap((p) => [p, ...phoneAlternates(p)]);
-    const existing = allVariants.length
-      ? await this.leadsRepo.find({ where: { tenantId, phone: In(allVariants) } })
-      : [];
+    const existing: Lead[] = [];
+    for (const part of chunk(phones.flatMap((p) => [p, ...phoneAlternates(p)]), 1000)) {
+      existing.push(...(await this.leadsRepo.find({ where: { tenantId, phone: In(part) } })));
+    }
     const existingByPhone = new Map(existing.map((l) => [l.phone, l]));
 
-    let created = 0;
-    let updated = 0;
-    const touched: Lead[] = [];
+    const updatedIds = new Set<string>();
+    const toCreate: string[] = [];
     for (const phone of phones) {
-      const name = byPhone.get(phone) ?? null;
       const found = [phone, ...phoneAlternates(phone)].map((p) => existingByPhone.get(p)).find(Boolean);
-      if (found) {
-        const labels = found.labels ?? [];
-        if (!labels.includes('cliente')) found.labels = [...labels, 'cliente'];
-        if (!found.name && name) found.name = name;
-        await this.leadsRepo.save(found);
-        await this.conversationsRepo
-          .createQueryBuilder().insert().into(Conversation)
-          .values({ leadId: found.id, aiEnabled: false }).orIgnore().execute();
-        await this.conversationsRepo.update({ leadId: found.id }, { aiEnabled: false });
-        updated++;
-        touched.push(found);
-        continue;
-      }
-      const lead = await this.leadsRepo.save(this.leadsRepo.create({ tenantId, phone, name, stage, labels: ['cliente'] }));
-      await this.historyRepo.save({ leadId: lead.id, fromStage: null, toStage: stage, changedBy: 'importacao' });
-      await this.conversationsRepo.save(this.conversationsRepo.create({ leadId: lead.id, aiEnabled: false }));
-      existingByPhone.set(phone, lead);
-      created++;
-      touched.push(lead);
+      if (!found) { toCreate.push(phone); continue; }
+      if (updatedIds.has(found.id)) continue;
+      updatedIds.add(found.id);
+      const name = byPhone.get(phone);
+      if (!found.name && name) await this.leadsRepo.update(found.id, { name });
     }
-    return { created, updated, invalid, repeated, leads: touched };
+
+    const ids = [...updatedIds];
+    for (const part of chunk(ids)) {
+      await this.leadsRepo.query(
+        `UPDATE leads SET labels = COALESCE(labels, '[]'::jsonb) || '["cliente"]'::jsonb
+         WHERE id = ANY($1::uuid[]) AND NOT (COALESCE(labels, '[]'::jsonb) ? 'cliente')`,
+        [part],
+      );
+      await this.conversationsRepo.createQueryBuilder().insert().into(Conversation)
+        .values(part.map((leadId) => ({ leadId, aiEnabled: false }))).orIgnore().execute();
+      await this.conversationsRepo.update({ leadId: In(part) }, { aiEnabled: false });
+    }
+
+    let created = 0;
+    const createdIds: string[] = [];
+    for (const part of chunk(toCreate)) {
+      await this.leadsRepo.createQueryBuilder().insert().into(Lead)
+        .values(part.map((phone) => ({ tenantId, phone, name: byPhone.get(phone) ?? null, stage, labels: ['cliente'] })))
+        .orIgnore()
+        .execute();
+      // orIgnore: se outra importação/mensagem criou o mesmo número no meio, não quebra —
+      // relê pelo telefone e só conta como "criado" quem ainda não tem histórico.
+      const rows = await this.leadsRepo.find({ where: { tenantId, phone: In(part) }, select: ['id'] });
+      const partIds = rows.map((r) => r.id);
+      const fresh: string[] = (await this.leadsRepo.query(
+        `SELECT id FROM leads l WHERE l.id = ANY($1::uuid[]) AND NOT EXISTS (SELECT 1 FROM lead_stage_history h WHERE h.lead_id = l.id)`,
+        [partIds],
+      )).map((r: { id: string }) => r.id);
+      if (fresh.length) {
+        await this.historyRepo.createQueryBuilder().insert().into(LeadStageHistory)
+          .values(fresh.map((leadId) => ({ leadId, fromStage: null, toStage: stage, changedBy: 'importacao' }))).execute();
+      }
+      await this.conversationsRepo.createQueryBuilder().insert().into(Conversation)
+        .values(partIds.map((leadId) => ({ leadId, aiEnabled: false }))).orIgnore().execute();
+      await this.conversationsRepo.update({ leadId: In(partIds) }, { aiEnabled: false });
+      created += fresh.length;
+      createdIds.push(...partIds);
+    }
+
+    const touchedIds = [...ids, ...createdIds];
+    const leads = touchedIds.length <= 300 && touchedIds.length > 0
+      ? await this.leadsRepo.find({ where: { id: In(touchedIds) } })
+      : [];
+    return { created, updated: touchedIds.length - created, invalid, repeated, leads };
+  }
+
+  // Quantos importados a conta tem e quantos já conversaram (esses não são excluídos).
+  async importedSummary(tenantId: string): Promise<{ imported: number; withMessages: number }> {
+    const [row] = await this.leadsRepo.query(
+      `SELECT COUNT(*)::int AS imported,
+              COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM conversations c JOIN messages m ON m.conversation_id = c.id WHERE c.lead_id = l.id
+              ))::int AS "withMessages"
+       FROM leads l
+       WHERE l.tenant_id = $1
+         AND EXISTS (SELECT 1 FROM lead_stage_history h WHERE h.lead_id = l.id AND h.changed_by = 'importacao')`,
+      [tenantId],
+    );
+    return row ?? { imported: 0, withMessages: 0 };
+  }
+
+  // Desfaz a importação: apaga de vez os leads criados pela importação que nunca conversaram
+  // (só tinham nome e telefone, que continuam na planilha da cliente). Quem já mandou mensagem
+  // fica. Leads que já existiam e só ganharam a etiqueta não são tocados.
+  async deleteImported(tenantId: string): Promise<{ deleted: number; kept: number; ids: string[] }> {
+    return this.leadsRepo.manager.transaction(async (m) => {
+      const ids: string[] = (await m.query(
+        `SELECT l.id FROM leads l
+         WHERE l.tenant_id = $1
+           AND EXISTS (SELECT 1 FROM lead_stage_history h WHERE h.lead_id = l.id AND h.changed_by = 'importacao')
+           AND NOT EXISTS (SELECT 1 FROM conversations c JOIN messages m ON m.conversation_id = c.id WHERE c.lead_id = l.id)`,
+        [tenantId],
+      )).map((r: { id: string }) => r.id);
+      if (ids.length) {
+        await m.query(`DELETE FROM followups WHERE lead_id = ANY($1::uuid[]) AND status = 'pending'`, [ids]);
+        await m.query(`DELETE FROM conversations WHERE lead_id = ANY($1::uuid[])`, [ids]);
+        await m.query(`DELETE FROM lead_stage_history WHERE lead_id = ANY($1::uuid[])`, [ids]);
+        await m.query(`DELETE FROM leads WHERE id = ANY($1::uuid[]) AND tenant_id = $2`, [ids, tenantId]);
+      }
+      const [{ kept }] = await m.query(
+        `SELECT COUNT(*)::int AS kept FROM leads l WHERE l.tenant_id = $1
+           AND EXISTS (SELECT 1 FROM lead_stage_history h WHERE h.lead_id = l.id AND h.changed_by = 'importacao')`,
+        [tenantId],
+      );
+      return { deleted: ids.length, kept, ids };
+    });
   }
 
   countByTenant(tenantId: string): Promise<number> {

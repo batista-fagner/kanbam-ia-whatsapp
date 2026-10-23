@@ -42,6 +42,12 @@ export const importClients = (contacts, stage) =>
     body: JSON.stringify({ contacts, stage }),
   }).then(json)
 
+export const getImportedSummary = () =>
+  authFetch(`${BASE}/leads/import/summary`).then(json)
+
+export const deleteImported = () =>
+  authFetch(`${BASE}/leads/import`, { method: 'DELETE' }).then(json)
+
 export const getConversation = (id) =>
   authFetch(`${BASE}/leads/${id}/conversation`).then(json)
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Upload, X, Loader2, CheckCircle2 } from 'lucide-react'
-import { importClients } from '../services/api'
+import { Upload, X, Loader2, CheckCircle2, Trash2 } from 'lucide-react'
+import { importClients, getImportedSummary, deleteImported } from '../services/api'
 import { parseContacts, readTextFile } from '../utils/parseContacts'
 
 export default function ImportClientsModal({ columns, onClose, onImported }) {
@@ -10,6 +10,30 @@ export default function ImportClientsModal({ columns, onClose, onImported }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const [summary, setSummary] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteResult, setDeleteResult] = useState(null)
+
+  useEffect(() => {
+    getImportedSummary().then(setSummary).catch(() => {})
+  }, [])
+
+  async function handleDeleteImported() {
+    setError('')
+    setDeleting(true)
+    try {
+      const res = await deleteImported()
+      setDeleteResult(res)
+      setConfirmDelete(false)
+      setSummary({ imported: res.kept, withMessages: res.kept })
+      onImported()
+    } catch (err) {
+      setError(err.message || 'Erro ao excluir.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -134,6 +158,45 @@ export default function ImportClientsModal({ columns, onClose, onImported }) {
             )}
 
             {error && <p className="text-xs text-red-500">{error}</p>}
+
+            {deleteResult && (
+              <p className="text-xs text-teal-700">
+                {deleteResult.deleted} importado(s) excluído(s).{deleteResult.kept > 0 && <> {deleteResult.kept} já conversaram e foram mantidos.</>}
+              </p>
+            )}
+
+            {summary?.imported > 0 && !confirmDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="self-start flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Excluir clientes importados ({summary.imported})
+              </button>
+            )}
+
+            {confirmDelete && summary && (
+              <div className="border border-red-200 bg-red-50 rounded-lg p-3 flex flex-col gap-2">
+                <p className="text-xs text-red-700 leading-relaxed">
+                  Excluir <b>{summary.imported - summary.withMessages}</b> cliente(s) importado(s)? Isso não pode ser desfeito
+                  (dá para importar a planilha de novo depois).
+                  {summary.withMessages > 0 && <> <b>{summary.withMessages}</b> já mandaram mensagem e serão mantidos.</>}
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setConfirmDelete(false)} disabled={deleting} className="flex-1 py-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50">
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteImported}
+                    disabled={deleting || summary.imported - summary.withMessages === 0}
+                    className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+                  >
+                    {deleting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Excluindo...</> : <><Trash2 className="w-3.5 h-3.5" /> Sim, excluir</>}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
