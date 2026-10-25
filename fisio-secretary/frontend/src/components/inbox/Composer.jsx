@@ -102,9 +102,15 @@ export default function Composer({ aiEnabled, onTakeOver, onSendText, onSendCata
                 title={media.name}
               >
                 <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                  {media.mimeType?.startsWith('video/')
-                    ? <Play className="w-6 h-6 text-gray-400" />
-                    : <img src={media.url} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                  {media.mimeType?.startsWith('video/') ? (
+                    // #t=0.1 faz o navegador mostrar o primeiro quadro como miniatura.
+                    <div className="relative w-full h-full">
+                      <video src={`${media.url}#t=0.1`} preload="metadata" muted playsInline className="w-full h-full object-cover pointer-events-none" />
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center"><Play className="w-4 h-4 text-white fill-white" /></span>
+                      </span>
+                    </div>
+                  ) : <img src={media.url} alt="" loading="lazy" className="w-full h-full object-cover" />}
                 </div>
                 <p className="text-[11px] text-gray-600 truncate px-1.5 py-1">{media.name}</p>
               </button>
