@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Inbox de conversas estilo WhatsApp (todos os clientes)',
+    date: '25/10/2026',
+    detail: 'Nova página "Inbox" no menu (abaixo do Kanban): lista de conversas com busca por nome/telefone, filtros (Aguardando resposta, IA desligada, IA atendendo) e por raia; conversa aberta com texto, áudio gravado, mídia do catálogo e agora também arquivo do computador (foto, vídeo, PDF — arrastar, colar ou anexar, até 7 MB); painel do contato com raia, IA liga/desliga, etiquetas, observações e "Ficha completa". Mensagens chegam ao vivo sem recarregar. O Kanban continua igual. Com a IA atendendo, a caixa de texto vira o botão "Assumir conversa" (desliga a IA), igual à regra do card.',
+  },
+  {
     title: 'Menu lateral reorganizado em seções (Operação / Gestão / Sistema)',
     date: '24/10/2026',
     detail: 'O menu estava com itens demais, principalmente no admin. Agora tem seções: Operação (Kanban, Calendário, Envio em Massa, Mídias), Gestão (Dashboard, Tabela de preços) e Sistema, com "Configurações" (Geral, Regras de Alertas, Leads Excluídos, Agentes, Módulos) e "Administração" (só admin: Clientes, Prompts, Onboarding, Status do projeto, Monitoramento, Relatórios de Grupos, Financeiro WhatsApp) que abrem e fecham. O grupo abre sozinho quando você está numa página dele.',

@@ -273,12 +273,12 @@ export class UazapiProvider implements IWhatsAppProvider {
   // Retorna { ok: false } (em vez de lançar) numa falha — o chamador decide o que
   // fazer com isso (ex: registrar em media_send_errors pra aparecer no Monitoramento).
   // Nunca derruba o fluxo de resposta ao lead por causa de falha no envio de mídia.
-  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video' | 'ptt', caption?: string, token?: string): Promise<{ ok: boolean; error?: string }> {
+  async sendMediaByUrl(phone: string, url: string, type: 'image' | 'video' | 'ptt' | 'document', caption?: string, token?: string, docName?: string): Promise<{ ok: boolean; error?: string }> {
     const useToken = await this.resolveToken(token);
     try {
       await this.postWithRetry(
         `${this.baseUrl}/send/media`,
-        { number: phone, file: url, type, text: caption ?? '', delay: 1000 },
+        { number: phone, file: url, type, text: caption ?? '', delay: 1000, ...(docName ? { docName } : {}) },
         useToken,
       );
       return { ok: true };

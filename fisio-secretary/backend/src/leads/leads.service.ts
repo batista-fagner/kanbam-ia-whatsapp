@@ -9,6 +9,7 @@ import { DeletedLead } from '../common/entities/deleted-lead.entity';
 import { Appointment } from '../common/entities/appointment.entity';
 import { MediaService } from '../media/media.service';
 import { normalizeWhatsAppPhone, phoneAlternates } from './phone-normalize.util';
+import { LeadsGateway } from './leads.gateway';
 
 @Injectable()
 export class LeadsService implements OnApplicationBootstrap {
@@ -26,6 +27,7 @@ export class LeadsService implements OnApplicationBootstrap {
     @InjectRepository(Appointment)
     private appointmentsRepo: Repository<Appointment>,
     private readonly mediaService: MediaService,
+    private readonly leadsGateway: LeadsGateway,
   ) {}
 
   async onApplicationBootstrap() {
@@ -177,11 +179,21 @@ export class LeadsService implements OnApplicationBootstrap {
     });
     const saved = await this.messagesRepo.save(msg);
 
-    await this.leadsRepo.createQueryBuilder()
+    const res = await this.leadsRepo.createQueryBuilder()
       .update()
       .set({ lastMessageAt: new Date(), lastMessageDirection: direction })
       .where('id = (SELECT lead_id FROM conversations WHERE id = :cId)', { cId: conversationId })
+      .returning(['id', 'tenantId'])
       .execute();
+
+    const row = res.raw?.[0];
+    if (row) {
+      try {
+        this.leadsGateway.emitMessageNew(row.tenant_id ?? row.tenantId ?? null, row.id, saved);
+      } catch {
+        // tempo real é só conveniência da Inbox — nunca derruba o salvamento
+      }
+    }
 
     return saved;
   }
@@ -207,6 +219,56 @@ export class LeadsService implements OnApplicationBootstrap {
     const criteria: any = tenantId ? { id: leadId, tenantId } : { id: leadId };
     await this.leadsRepo.update(criteria, data);
     return this.leadsRepo.findOneOrFail({ where: criteria });
+  }
+
+  // Inbox: contatos que já conversaram, mais recente primeiro, com a última mensagem
+  // (prévia na lista). Paginado — tem conta com 15 mil leads.
+  async getInbox(
+    tenantId: string,
+    opts: { search?: string; filter?: string; stage?: string; offset?: number; limit?: number },
+  ) {
+    const limit = Math.min(Math.max(Number(opts.limit) || 40, 1), 100);
+    const offset = Math.max(Number(opts.offset) || 0, 0);
+    const params: any[] = [tenantId];
+    const where: string[] = ['l.tenant_id = $1', 'l.last_message_at IS NOT NULL'];
+    const search = opts.search?.trim();
+    if (search) {
+      params.push(`%${search}%`);
+      const nameIdx = params.length;
+      const digits = search.replace(/\D/g, '');
+      if (digits.length >= 3) {
+        params.push(`%${digits}%`);
+        where.push(`(l.name ILIKE $${nameIdx} OR l.phone LIKE $${params.length})`);
+      } else {
+        where.push(`l.name ILIKE $${nameIdx}`);
+      }
+    }
+    if (opts.filter === 'awaiting') where.push(`l.last_message_direction = 'inbound'`);
+    if (opts.filter === 'ai_off') where.push('c.ai_enabled = false');
+    if (opts.filter === 'ai_on') where.push('c.ai_enabled = true');
+    if (opts.stage) {
+      params.push(opts.stage);
+      where.push(`l.stage = $${params.length}`);
+    }
+    params.push(limit + 1, offset);
+    const rows = await this.leadsRepo.query(
+      `SELECT l.id, l.name, l.phone, l.avatar_url AS "avatarUrl", l.stage, l.labels,
+              l.last_message_at AS "lastMessageAt", l.last_message_direction AS "lastMessageDirection",
+              c.ai_enabled AS "aiEnabled",
+              m.content AS "lastContent", m.message_type AS "lastType", m.sender AS "lastSender"
+         FROM leads l
+         LEFT JOIN conversations c ON c.lead_id = l.id
+         LEFT JOIN LATERAL (
+           SELECT content, message_type, sender FROM messages
+            WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
+         ) m ON true
+        WHERE ${where.join(' AND ')}
+        ORDER BY l.last_message_at DESC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    const hasMore = rows.length > limit;
+    return { data: rows.slice(0, limit).map((r: any) => ({ ...r, lastContent: r.lastContent?.slice(0, 200) ?? null })), hasMore };
   }
 
   async findAll(tenantId: string): Promise<Lead[]> {

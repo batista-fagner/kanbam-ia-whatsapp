@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInstanceConfig, getPriceConfig } from '../services/api'
 import iconOnly from '../assets/convertHair_icon_only.png'
@@ -64,6 +64,7 @@ export default function Layout({ onLogout }) {
       label: 'Operação',
       items: [
         { icon: LayoutDashboard, label: 'Kanban', path: '/' },
+        { icon: MessageCircle, label: 'Inbox', path: '/inbox' },
         { icon: Calendar, label: 'Calendário', path: '/calendar' },
         { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
         { icon: Image, label: 'Mídias', path: '/media' },

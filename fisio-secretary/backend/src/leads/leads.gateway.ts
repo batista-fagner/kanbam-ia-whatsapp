@@ -43,6 +43,13 @@ export class LeadsGateway implements OnGatewayConnection {
     this.server.to(room).emit('lead:updated', lead);
   }
 
+  // Mensagem nova (lead, IA ou operador) — a Inbox anexa na conversa aberta e sobe o
+  // contato na lista sem precisar recarregar.
+  emitMessageNew(tenantId: string | null, leadId: string, message: any) {
+    const room = tenantId ? `tenant:${tenantId}` : 'tenant:__all__';
+    this.server.to(room).emit('message:new', { leadId, message });
+  }
+
   emitLeadDeleted(leadId: string, tenantId?: string | null) {
     const room = tenantId ? `tenant:${tenantId}` : 'tenant:__all__';
     this.server.to(room).emit('lead:deleted', leadId);

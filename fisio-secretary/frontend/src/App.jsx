@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import KanbanPage from './pages/KanbanPage'
+import InboxPage from './pages/InboxPage'
 import BulkMessagePage from './pages/BulkMessagePage'
 import SettingsPage from './pages/SettingsPage'
 import MediaPage from './pages/MediaPage'
@@ -54,6 +55,7 @@ function Routing() {
         element={isAuthenticated ? <Layout onLogout={logout} /> : <Navigate to="/login" replace />}
       >
         <Route path="/" element={<KanbanPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/calendar" element={<AgendaEntry />} />
         <Route path="/deleted-leads" element={<DeletedLeadsPage />} />

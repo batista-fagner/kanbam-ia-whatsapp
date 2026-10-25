@@ -6,6 +6,7 @@ import { EvolutionController } from './evolution.controller';
 import { InstanceController } from './instance.controller';
 import { AdminController } from './admin.controller';
 import { MonolithTestController } from './monolith-test.controller';
+import { InboxController } from './inbox.controller';
 import { EvolutionService } from './evolution.service';
 import { MessageQueueService } from './message-queue.service';
 import { WhatsappConfigService } from './whatsapp-config.service';
@@ -58,7 +59,7 @@ import { AgendaModule } from '../agenda/agenda.module';
     TenantScheduleModule,
     AgendaModule,
   ],
-  controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController],
+  controllers: [EvolutionController, InstanceController, AdminController, MonolithTestController, InboxController],
   providers: [
     UazapiProvider,
     MetaProvider,

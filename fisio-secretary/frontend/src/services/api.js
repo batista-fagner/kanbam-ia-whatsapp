@@ -51,6 +51,26 @@ export const deleteImported = () =>
 export const getConversation = (id) =>
   authFetch(`${BASE}/leads/${id}/conversation`).then(json)
 
+// Inbox: contatos que já conversaram, mais recente primeiro (paginado).
+export const getInbox = ({ search = '', filter = 'all', stage = '', offset = 0, limit = 40 } = {}) => {
+  const q = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+  if (search) q.set('search', search)
+  if (filter && filter !== 'all') q.set('filter', filter)
+  if (stage) q.set('stage', stage)
+  return authFetch(`${BASE}/leads/inbox?${q}`).then(json)
+}
+
+export const getLead = (id) =>
+  authFetch(`${BASE}/leads/${id}`).then(json)
+
+// Arquivo do computador (foto, vídeo, PDF…) enviado pela Inbox.
+export const sendInboxFile = (leadId, base64, mimeType, fileName, caption) =>
+  authFetch(`${BASE}/inbox/send-file`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ leadId, base64, mimeType, fileName, caption }),
+  }).then(json)
+
 export const getHistory = (id) =>
   authFetch(`${BASE}/leads/${id}/history`).then(json)
 

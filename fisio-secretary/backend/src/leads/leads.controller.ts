@@ -54,6 +54,18 @@ export class LeadsController {
     return summary;
   }
 
+  @Get('inbox')
+  getInbox(
+    @CurrentUser('tenantId') tenantId: string,
+    @Query('search') search?: string,
+    @Query('filter') filter?: string,
+    @Query('stage') stage?: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.leadsService.getInbox(tenantId, { search, filter, stage, offset: Number(offset), limit: Number(limit) });
+  }
+
   @Get()
   findAll(@CurrentUser('tenantId') tenantId: string) {
     return this.leadsService.findAll(tenantId);
