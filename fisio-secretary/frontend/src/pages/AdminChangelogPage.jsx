@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Menu lateral reorganizado em seções (Operação / Gestão / Sistema)',
+    date: '24/10/2026',
+    detail: 'O menu estava com itens demais, principalmente no admin. Agora tem seções: Operação (Kanban, Calendário, Envio em Massa, Mídias), Gestão (Dashboard, Tabela de preços) e Sistema, com "Configurações" (Geral, Regras de Alertas, Leads Excluídos, Agentes, Módulos) e "Administração" (só admin: Clientes, Prompts, Onboarding, Status do projeto, Monitoramento, Relatórios de Grupos, Financeiro WhatsApp) que abrem e fecham. O grupo abre sozinho quando você está numa página dele.',
+  },
+  {
     title: 'Importação de clientes 100x mais rápida + botão "Excluir clientes importados"',
     date: '23/10/2026',
     detail: 'A importação gravava um cliente por vez: a lista de 1.357 clientes do Tiago Adan levaria ~14 min e a tela dava erro no meio (o servidor continuava gravando). Agora grava em lote: ~9 segundos. Na tela de importação há "Excluir clientes importados", com confirmação: apaga só os importados que nunca mandaram mensagem (quem já conversou fica). Também criados índices no banco (mensagens por conversa, histórico por lead), que faltavam e deixavam a exclusão levando minutos.',

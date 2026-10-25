@@ -1,9 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInstanceConfig, getPriceConfig } from '../services/api'
 import iconOnly from '../assets/convertHair_icon_only.png'
+
+function NavLink({ item, collapsed, active, small }) {
+  const Icon = item.icon
+  return (
+    <Link
+      to={item.path}
+      className={`flex items-center gap-3 px-3 ${small ? 'py-1.5' : 'py-2'} rounded transition ${
+        active ? 'bg-teal-700 text-white' : 'text-gray-600 hover:bg-gray-100'
+      }`}
+      title={collapsed ? item.label : ''}
+    >
+      <Icon className={`${small ? 'w-4 h-4' : 'w-5 h-5'} flex-shrink-0`} />
+      {!collapsed && <span className={`${small ? 'text-[13px]' : 'text-sm'} font-medium`}>{item.label}</span>}
+    </Link>
+  )
+}
 
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -40,30 +56,63 @@ export default function Layout({ onLogout }) {
   const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
   const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email) || promptEngine === 'dynamic_modules'
 
-  const navItems = [
-    { icon: LayoutDashboard, label: 'Kanban', path: '/' },
-    { icon: BarChart2, label: 'Dashboard', path: '/dashboard' },
-    { icon: Calendar, label: 'Calendário', path: '/calendar' },
-    { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
-    { icon: Image, label: 'Mídias', path: '/media' },
-    ...(hasPriceConfig || user?.role === 'admin' ? [{ icon: Tag, label: 'Tabela de preços', path: '/prices' }] : []),
-    { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
-    { icon: Settings, label: 'Configurações', path: '/settings' },
-    // Multi-agente em rollout controlado — localhost + conta beta
-    ...(canSeeMultiAgent ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
-    ...(canSeeModulesTest ? [{ icon: Boxes, label: 'Módulos (beta)', path: '/modules-test' }] : []),
-    // { icon: BookOpen, label: 'Templates', path: '/templates' }, // TODO: ativar depois
-    // Painel admin — só para o admin da plataforma
-    ...(user?.role === 'admin' ? [
-      { icon: Users, label: 'Clientes', path: '/admin' },
-      { icon: FileText, label: 'Prompts', path: '/admin/prompts' },
-      { icon: ClipboardList, label: 'Onboarding', path: '/admin/onboarding' },
-      { icon: ListChecks, label: 'Status do projeto', path: '/admin/changelog' },
-      { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
-      { icon: MessageSquare, label: 'Relatórios de Grupos', path: '/admin/group-reports' },
-      { icon: Wallet, label: 'Financeiro WhatsApp', path: '/financeiro-whatsapp' },
-    ] : []),
+  // Menu em seções (Operação / Gestão / Sistema). "group" vira um item que expande —
+  // Configurações e Administração guardam o que não se usa o dia todo.
+  const isAdmin = user?.role === 'admin'
+  const navSections = [
+    {
+      label: 'Operação',
+      items: [
+        { icon: LayoutDashboard, label: 'Kanban', path: '/' },
+        { icon: Calendar, label: 'Calendário', path: '/calendar' },
+        { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
+        { icon: Image, label: 'Mídias', path: '/media' },
+      ],
+    },
+    {
+      label: 'Gestão',
+      items: [
+        { icon: BarChart2, label: 'Dashboard', path: '/dashboard' },
+        // Tabela de preços só aparece pra quem vende por gramatura (já tem linha em
+        // price_configs, ex: S&A) — pros outros o menu ficaria sem sentido.
+        ...(hasPriceConfig || isAdmin ? [{ icon: Tag, label: 'Tabela de preços', path: '/prices' }] : []),
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        {
+          icon: Settings, label: 'Configurações', key: 'config',
+          children: [
+            { icon: Settings, label: 'Geral', path: '/settings' },
+            { icon: Bell, label: 'Regras de Alertas', path: '/alert-rules' },
+            { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
+            // Multi-agente em rollout controlado — localhost + conta beta
+            ...(canSeeMultiAgent ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),
+            ...(canSeeModulesTest ? [{ icon: Boxes, label: 'Módulos (beta)', path: '/modules-test' }] : []),
+          ],
+        },
+        // Painel admin — só para o admin da plataforma
+        ...(isAdmin ? [{
+          icon: ShieldCheck, label: 'Administração', key: 'admin',
+          children: [
+            { icon: Users, label: 'Clientes', path: '/admin' },
+            { icon: FileText, label: 'Prompts', path: '/admin/prompts' },
+            { icon: ClipboardList, label: 'Onboarding', path: '/admin/onboarding' },
+            { icon: ListChecks, label: 'Status do projeto', path: '/admin/changelog' },
+            { icon: Activity, label: 'Monitoramento', path: '/monitoring' },
+            { icon: MessageSquare, label: 'Relatórios de Grupos', path: '/admin/group-reports' },
+            { icon: Wallet, label: 'Financeiro WhatsApp', path: '/financeiro-whatsapp' },
+          ],
+        }] : []),
+      ],
+    },
   ]
+
+  // Grupo abre sozinho quando a página atual está dentro dele; o clique do usuário vale depois disso.
+  const [openGroups, setOpenGroups] = useState({})
+  const groupIsOpen = (item) => openGroups[item.key] ?? item.children.some(c => location.pathname === c.path)
+  const toggleGroup = (item) => setOpenGroups(prev => ({ ...prev, [item.key]: !groupIsOpen(item) }))
 
   const isActive = (path) => location.pathname === path
 
@@ -99,7 +148,7 @@ export default function Layout({ onLogout }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-2">
+        <nav className="flex-1 p-3 space-y-2 overflow-y-auto">
           <Link
             to="/profile"
             className={`flex items-center gap-3 px-3 py-2 rounded transition min-w-0 ${
@@ -113,40 +162,45 @@ export default function Layout({ onLogout }) {
             {!collapsed && <span className="text-sm font-medium truncate min-w-0">{user?.name || 'Meu perfil'}</span>}
           </Link>
 
-          {navItems.map(item => {
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded transition ${
-                  isActive(item.path)
-                    ? 'bg-teal-700 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title={collapsed ? item.label : ''}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-              </Link>
-            )
-          })}
+          {navSections.filter(sec => sec.items.length > 0).map((section, idx) => (
+            <div key={section.label} className={idx > 0 ? 'pt-2 border-t border-gray-100' : ''}>
+              {!collapsed && (
+                <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">{section.label}</div>
+              )}
+              <div className="space-y-0.5">
+                {section.items.map(item => {
+                  if (!item.children) return <NavLink key={item.path} item={item} collapsed={collapsed} active={isActive(item.path)} />
+                  const Icon = item.icon
+                  // Recolhido: sem espaço pra expandir, então os filhos aparecem só como ícones.
+                  if (collapsed) {
+                    return item.children.map(child => <NavLink key={child.path} item={child} collapsed active={isActive(child.path)} />)
+                  }
+                  const open = groupIsOpen(item)
+                  return (
+                    <div key={item.key}>
+                      <button
+                        onClick={() => toggleGroup(item)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded transition text-gray-600 hover:bg-gray-100"
+                      >
+                        <Icon className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </button>
+                      {open && (
+                        <div className="ml-4 pl-2 border-l border-gray-100 space-y-0.5 mt-0.5">
+                          {item.children.map(child => <NavLink key={child.path} item={child} collapsed={false} active={isActive(child.path)} small />)}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* Footer */}
         <div className="p-3 border-t border-gray-100 space-y-1">
-          <Link
-            to="/alert-rules"
-            className={`flex items-center gap-3 px-3 py-2 rounded transition ${
-              location.pathname === '/alert-rules'
-                ? 'bg-teal-700 text-white'
-                : 'text-gray-500 hover:bg-gray-100'
-            }`}
-            title={collapsed ? 'Regras de Alertas' : ''}
-          >
-            <Bell className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span className="text-sm font-medium">Regras de Alertas</span>}
-          </Link>
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded transition text-sm font-medium"
