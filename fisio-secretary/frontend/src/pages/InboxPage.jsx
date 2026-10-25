@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { io } from 'socket.io-client'
-import { MessageCircle, Wifi, WifiOff, X, ExternalLink } from 'lucide-react'
+import { MessageCircle, Wifi, WifiOff, X, ExternalLink, Bell, BellOff, Check } from 'lucide-react'
 import ConversationList from '../components/inbox/ConversationList'
 import ChatThread from '../components/inbox/ChatThread'
 import ContactPanel from '../components/inbox/ContactPanel'
 import LeadModal from '../components/LeadModal'
 import {
   getInbox, getLead, getConversation, toggleAi, updateStage, getInstanceConfig, getMediaList,
-  sendManualMessage, sendManualMedia, sendManualAudio, sendInboxFile,
+  sendManualMessage, sendManualMedia, sendManualAudio, sendInboxFile, markConversationRead,
 } from '../services/api'
-import { getStoredToken, useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext'
+import { getSocket, setOpenInboxLead } from '../utils/realtime'
+import { SOUND_OPTIONS, getSoundPref, setSoundPref, playNotify } from '../utils/notifySound'
 import { useDemoMode } from '../hooks/useDemoMode'
 import { getColumns } from '../data/mockData'
 import { mapMessage, blobToBase64 } from '../utils/chatMessages'
@@ -45,10 +46,14 @@ export default function InboxPage() {
   const [bubbleMode, setBubbleMode] = useState(false)
   const [mediaList, setMediaList] = useState([])
   const [preview, setPreview] = useState(null)
-  const [connected, setConnected] = useState(false)
+  const [connected, setConnected] = useState(() => getSocket().connected)
+  const [soundPref, setSoundPrefState] = useState(getSoundPref)
+  const [soundMenuOpen, setSoundMenuOpen] = useState(false)
 
   const selectedRef = useRef(null)
   selectedRef.current = selected
+  const rowsRef = useRef([])
+  rowsRef.current = rows
   const listQueryRef = useRef({ search: '', filter: 'all', stage: '' })
   listQueryRef.current = { search: debouncedSearch, filter, stage }
 
@@ -96,6 +101,7 @@ export default function InboxPage() {
     setComposerError('')
     setLoadingThread(true)
     setAiEnabled(row.aiEnabled ?? true)
+    if (row.unread) markRead(row.id)
     try {
       const [conv, lead] = await Promise.all([getConversation(row.id), getLead(row.id).catch(() => null)])
       if (selectedRef.current?.id !== row.id) return
@@ -108,11 +114,34 @@ export default function InboxPage() {
     }
   }
 
+  function markRead(id) {
+    patchRow(id, { unread: false, unreadCount: 0 })
+    markConversationRead(id).catch(() => {})
+  }
+
+  // Conversa aberta com a aba visível não fica "não lida"; ao voltar pra aba, marca como lida.
+  useEffect(() => {
+    const id = selected?.id ?? null
+    setOpenInboxLead(id)
+    if (!id) return
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const row = rowsRef.current.find(r => r.id === id)
+      if (row?.unread) markRead(id)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      setOpenInboxLead(null)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [selected?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function rowFitsList(row) {
     const q = listQueryRef.current
     if (q.search) return false
     if (q.stage && row.stage !== q.stage) return false
     if (q.filter === 'awaiting') return row.lastMessageDirection === 'inbound'
+    if (q.filter === 'unread') return !!row.unread
     if (q.filter === 'ai_off') return row.aiEnabled === false
     if (q.filter === 'ai_on') return row.aiEnabled !== false
     return true
@@ -120,12 +149,17 @@ export default function InboxPage() {
 
   // --- Tempo real ---
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL ?? 'http://localhost:3000', { auth: { token: getStoredToken() } })
-    socket.on('connect', () => setConnected(true))
-    socket.on('disconnect', () => setConnected(false))
+    const socket = getSocket()
+    const onConnect = () => setConnected(true)
+    const onDisconnect = () => setConnected(false)
+    socket.on('connect', onConnect)
+    socket.on('disconnect', onDisconnect)
 
-    socket.on('message:new', ({ leadId, message }) => {
+    const onMessage = ({ leadId, message, aiEnabled: convAi }) => {
       const m = mapMessage(message)
+      const inbound = message.direction === 'inbound'
+      const openHere = selectedRef.current?.id === leadId && document.visibilityState === 'visible'
+      if (inbound && openHere) markConversationRead(leadId).catch(() => {})
       if (selectedRef.current?.id === leadId) {
         setMessages(prev => {
           if (prev.some(x => x.id === m.id)) return prev
@@ -138,39 +172,68 @@ export default function InboxPage() {
       const summary = {
         lastContent: m.content?.slice(0, 200), lastType: m.mediaType, lastSender: message.sender,
         lastMessageAt: message.createdAt, lastMessageDirection: message.direction,
+        ...(typeof convAi === 'boolean' ? { aiEnabled: convAi } : {}),
       }
       setRows(prev => {
         const existing = prev.find(r => r.id === leadId)
         if (!existing) {
           getLead(leadId).then(lead => {
-            const row = { id: lead.id, name: lead.name, phone: lead.phone, avatarUrl: lead.avatarUrl, stage: lead.stage, labels: lead.labels, ...summary }
+            const row = {
+              id: lead.id, name: lead.name, phone: lead.phone, avatarUrl: lead.avatarUrl, stage: lead.stage, labels: lead.labels,
+              ...summary, unread: inbound, unreadCount: inbound ? 1 : 0,
+            }
             if (!rowFitsList(row)) return
             setRows(p => (p.some(r => r.id === leadId) ? p : [row, ...p]))
           }).catch(() => {})
           return prev
         }
-        const updated = { ...existing, ...summary }
+        // Mensagem do cliente soma no "não lida" (a não ser que a conversa esteja aberta na tela);
+        // resposta da IA/operador zera.
+        const unreadPatch = inbound
+          ? (openHere ? { unread: false, unreadCount: 0 } : { unread: true, unreadCount: (existing.unreadCount || 0) + 1 })
+          : { unread: false, unreadCount: 0 }
+        const updated = { ...existing, ...summary, ...unreadPatch }
         const rest = prev.filter(r => r.id !== leadId)
         // Respondeu uma conversa no filtro "Aguardando": ela sai da lista.
         const q = listQueryRef.current
         if (q.filter === 'awaiting' && updated.lastMessageDirection !== 'inbound' && selectedRef.current?.id !== leadId) return rest
         return [updated, ...rest]
       })
-    })
+    }
+    socket.on('message:new', onMessage)
 
-    socket.on('lead:updated', (lead) => {
+    const onRead = ({ leadId }) => patchRow(leadId, { unread: false, unreadCount: 0 })
+    socket.on('conversation:read', onRead)
+
+    const onLeadUpdated = (lead) => {
       const patch = { name: lead.name, avatarUrl: lead.avatarUrl, stage: lead.stage, labels: lead.labels }
       setRows(prev => prev.map(r => (r.id === lead.id ? { ...r, ...patch } : r)))
       if (selectedRef.current?.id === lead.id) setSelected(s => ({ ...s, ...lead }))
-    })
+    }
+    socket.on('lead:updated', onLeadUpdated)
 
-    socket.on('lead:deleted', (leadId) => {
+    const onLeadDeleted = (leadId) => {
       setRows(prev => prev.filter(r => r.id !== leadId))
       if (selectedRef.current?.id === leadId) setSelected(null)
-    })
+    }
+    socket.on('lead:deleted', onLeadDeleted)
 
-    return () => socket.disconnect()
+    return () => {
+      socket.off('connect', onConnect)
+      socket.off('disconnect', onDisconnect)
+      socket.off('message:new', onMessage)
+      socket.off('conversation:read', onRead)
+      socket.off('lead:updated', onLeadUpdated)
+      socket.off('lead:deleted', onLeadDeleted)
+    }
   }, [])
+
+  function chooseSound(key) {
+    setSoundPref(key)
+    setSoundPrefState(key)
+    setSoundMenuOpen(false)
+    if (key !== 'off') playNotify() // toca uma vez pra pessoa ouvir como fica
+  }
 
   // --- Ações ---
   async function handleToggleAi(next) {
@@ -273,9 +336,33 @@ export default function InboxPage() {
       <div className="h-12 shrink-0 px-4 border-b border-gray-200 flex items-center gap-2">
         <MessageCircle className="w-5 h-5 text-teal-600" />
         <span className="text-sm font-semibold text-gray-800">Inbox</span>
+        <div className="ml-auto relative">
+          <button
+            onClick={() => setSoundMenuOpen(v => !v)}
+            title="Som de mensagem nova"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
+              soundPref === 'off' ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+            }`}
+          >
+            {soundPref === 'off' ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{soundPref === 'off' ? 'Som desligado' : soundPref === 'ai_off' ? 'Som: IA desligada' : 'Som ligado'}</span>
+          </button>
+          {soundMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-64 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 z-30">
+              <p className="px-3 pt-1 pb-1.5 text-[11px] text-gray-400">Tocar som quando chegar mensagem de cliente:</p>
+              {SOUND_OPTIONS.map(o => (
+                <button key={o.key} onClick={() => chooseSound(o.key)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                  <span className="w-4">{soundPref === o.key && <Check className="w-4 h-4 text-teal-600" />}</span>
+                  {o.label}
+                </button>
+              ))}
+              <p className="px-3 pt-1.5 pb-1 text-[11px] text-gray-400 border-t border-gray-100 mt-1">Vale para este navegador e toca em qualquer tela do sistema.</p>
+            </div>
+          )}
+        </div>
         <span
           title={connected ? 'Mensagens chegando ao vivo' : 'Reconectando…'}
-          className={`ml-auto flex items-center gap-1 text-[11px] font-medium ${connected ? 'text-emerald-600' : 'text-gray-400'}`}
+          className={`flex items-center gap-1 text-[11px] font-medium ${connected ? 'text-emerald-600' : 'text-gray-400'}`}
         >
           {connected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
           {connected ? 'Ao vivo' : 'Offline'}

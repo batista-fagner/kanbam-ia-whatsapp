@@ -11,6 +11,10 @@ import { MediaService } from '../media/media.service';
 import { normalizeWhatsAppPhone, phoneAlternates } from './phone-normalize.util';
 import { LeadsGateway } from './leads.gateway';
 
+// Não lida = a última mensagem é do cliente e chegou depois da última vez que alguém abriu a
+// conversa. Resposta da IA ou do operador também tira do "não lida" (já foi atendida).
+const UNREAD_SQL = `(l.last_message_direction = 'inbound' AND l.last_message_at > COALESCE(c.last_read_at, 'epoch'::timestamp))`;
+
 @Injectable()
 export class LeadsService implements OnApplicationBootstrap {
   constructor(
@@ -189,7 +193,8 @@ export class LeadsService implements OnApplicationBootstrap {
     const row = res.raw?.[0];
     if (row) {
       try {
-        this.leadsGateway.emitMessageNew(row.tenant_id ?? row.tenantId ?? null, row.id, saved);
+        const conv = await this.conversationsRepo.findOne({ where: { id: conversationId }, select: ['id', 'aiEnabled'] });
+        this.leadsGateway.emitMessageNew(row.tenant_id ?? row.tenantId ?? null, row.id, saved, conv?.aiEnabled);
       } catch {
         // tempo real é só conveniência da Inbox — nunca derruba o salvamento
       }
@@ -244,6 +249,7 @@ export class LeadsService implements OnApplicationBootstrap {
       }
     }
     if (opts.filter === 'awaiting') where.push(`l.last_message_direction = 'inbound'`);
+    if (opts.filter === 'unread') where.push(UNREAD_SQL);
     if (opts.filter === 'ai_off') where.push('c.ai_enabled = false');
     if (opts.filter === 'ai_on') where.push('c.ai_enabled = true');
     if (opts.stage) {
@@ -255,13 +261,22 @@ export class LeadsService implements OnApplicationBootstrap {
       `SELECT l.id, l.name, l.phone, l.avatar_url AS "avatarUrl", l.stage, l.labels,
               l.last_message_at AS "lastMessageAt", l.last_message_direction AS "lastMessageDirection",
               c.ai_enabled AS "aiEnabled",
-              m.content AS "lastContent", m.message_type AS "lastType", m.sender AS "lastSender"
+              m.content AS "lastContent", m.message_type AS "lastType", m.sender AS "lastSender",
+              (${UNREAD_SQL}) AS "unread", COALESCE(u.n, 0) AS "unreadCount"
          FROM leads l
          LEFT JOIN conversations c ON c.lead_id = l.id
          LEFT JOIN LATERAL (
            SELECT content, message_type, sender FROM messages
             WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
          ) m ON true
+         LEFT JOIN LATERAL (
+           -- quantas mensagens do cliente chegaram depois da última leitura/resposta
+           SELECT count(*)::int AS n FROM messages mi
+            WHERE mi.conversation_id = c.id AND mi.direction = 'inbound'
+              AND mi.created_at > GREATEST(
+                COALESCE(c.last_read_at, 'epoch'::timestamp),
+                COALESCE((SELECT max(mo.created_at) FROM messages mo WHERE mo.conversation_id = c.id AND mo.direction = 'outbound'), 'epoch'::timestamp))
+         ) u ON ${UNREAD_SQL}
         WHERE ${where.join(' AND ')}
         ORDER BY l.last_message_at DESC
         LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -269,6 +284,22 @@ export class LeadsService implements OnApplicationBootstrap {
     );
     const hasMore = rows.length > limit;
     return { data: rows.slice(0, limit).map((r: any) => ({ ...r, lastContent: r.lastContent?.slice(0, 200) ?? null })), hasMore };
+  }
+
+  // Quantas conversas estão não lidas (número ao lado de "Inbox" no menu e no título da aba).
+  async inboxUnreadCount(tenantId: string): Promise<number> {
+    const [row] = await this.leadsRepo.query(
+      `SELECT count(*)::int AS n FROM leads l JOIN conversations c ON c.lead_id = l.id
+        WHERE l.tenant_id = $1 AND ${UNREAD_SQL}`,
+      [tenantId],
+    );
+    return row?.n ?? 0;
+  }
+
+  async markRead(leadId: string, tenantId: string): Promise<void> {
+    await this.assertLeadTenant(leadId, tenantId);
+    await this.conversationsRepo.query(`UPDATE conversations SET last_read_at = NOW() WHERE lead_id = $1`, [leadId]);
+    this.leadsGateway.emitConversationRead(tenantId ?? null, leadId);
   }
 
   async findAll(tenantId: string): Promise<Lead[]> {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Bot, User, Phone, AlertCircle, Calendar, DollarSign, Clock, ChevronRight, Send, ExternalLink, Tag, FileText, Check, Paperclip, Play, Sparkles, Trash2, Loader2, Pencil, Mic, Square } from 'lucide-react'
-import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName, getInstanceConfig } from '../services/api'
+import { getConversation, getHistory, toggleAi, sendManualMessage, sendManualMedia, sendManualAudio, fetchAvatar, getMediaList, removeLabel, updateObservations, generateFollowup, scheduleFollowup, getFollowups, cancelFollowup, updateName, getInstanceConfig, markConversationRead } from '../services/api'
 import { useDemoMode, displayPhone } from '../hooks/useDemoMode'
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -147,6 +147,8 @@ export default function LeadModal({ lead, onClose }) {
       setAiEnabled(conv?.aiEnabled ?? true)
     })
     getHistory(lead.id).then(h => setHistory(mapHistory(h)))
+    // Abriu o card = leu a conversa (tira o "não lida" da Inbox).
+    markConversationRead(lead.id).catch(() => {})
     getFollowups(lead.id).then(setFollowups).catch(() => setFollowups([]))
 
     // Busca a foto de perfil do WhatsApp só na primeira vez (URL persistida

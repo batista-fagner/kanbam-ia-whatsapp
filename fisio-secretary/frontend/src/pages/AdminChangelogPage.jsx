@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Inbox: "não lidas" + som de mensagem nova',
+    date: '25/10/2026',
+    detail: 'Conversa em que o cliente escreveu e ninguém abriu nem respondeu fica em destaque com o número de mensagens novas; número total aparece ao lado de "Inbox" no menu e no título da aba ("(3) ..."), em qualquer tela. Abrir a conversa (na Inbox ou no card do Kanban) tira o "não lida" para todos os atendentes; resposta da IA também tira. Novo filtro "Não lidas". Som curto de aviso com 3 opções no topo da Inbox: todas as mensagens, só conversas com a IA desligada, ou desligado (fica salvo no navegador). Conversas antigas começaram como lidas.',
+  },
+  {
     title: 'Inbox de conversas estilo WhatsApp (todos os clientes)',
     date: '25/10/2026',
     detail: 'Nova página "Inbox" no menu (abaixo do Kanban): lista de conversas com busca por nome/telefone, filtros (Aguardando resposta, IA desligada, IA atendendo) e por raia; conversa aberta com texto, áudio gravado, mídia do catálogo e agora também arquivo do computador (foto, vídeo, PDF — arrastar, colar ou anexar, até 7 MB); painel do contato com raia, IA liga/desliga, etiquetas, observações e "Ficha completa". Mensagens chegam ao vivo sem recarregar. O Kanban continua igual. Com a IA atendendo, a caixa de texto vira o botão "Assumir conversa" (desliga a IA), igual à regra do card.',

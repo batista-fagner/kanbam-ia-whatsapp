@@ -4,6 +4,7 @@ import { displayPhone } from '../../hooks/useDemoMode'
 
 const FILTERS = [
   { key: 'all', label: 'Todas' },
+  { key: 'unread', label: 'Não lidas' },
   { key: 'awaiting', label: 'Aguardando resposta' },
   { key: 'ai_off', label: 'IA desligada' },
   { key: 'ai_on', label: 'IA atendendo' },
@@ -19,8 +20,8 @@ export function Avatar({ name, phone, url, size = 'w-11 h-11', text = 'text-sm' 
 }
 
 function Row({ row, active, onSelect, demoMode }) {
-  // "Aguardando": a última mensagem é do cliente — ninguém respondeu ainda.
-  const awaiting = row.lastMessageDirection === 'inbound'
+  // Não lida: o cliente escreveu e ninguém abriu a conversa nem respondeu ainda.
+  const awaiting = !!row.unread
   const name = row.name || displayPhone(formatPhoneBR(row.phone), demoMode)
   return (
     <button
@@ -33,12 +34,16 @@ function Row({ row, active, onSelect, demoMode }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <p className={`text-sm truncate flex-1 ${awaiting ? 'font-bold text-gray-900' : 'font-medium text-gray-800'}`}>{name}</p>
-          <span className={`text-[11px] shrink-0 ${awaiting ? 'text-teal-600 font-semibold' : 'text-gray-400'}`}>{listTime(row.lastMessageAt)}</span>
+          <span className={`text-[11px] shrink-0 ${awaiting ? 'text-green-600 font-semibold' : 'text-gray-400'}`}>{listTime(row.lastMessageAt)}</span>
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <p className={`text-[13px] truncate flex-1 ${awaiting ? 'text-gray-700' : 'text-gray-500'}`}>{previewText(row) || 'Sem mensagens'}</p>
           {row.aiEnabled === false && <BotOff className="w-3.5 h-3.5 text-amber-500 shrink-0" title="IA desligada" />}
-          {awaiting && <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shrink-0" title="Aguardando resposta" />}
+          {awaiting && (
+            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-green-500 text-white text-[11px] font-bold flex items-center justify-center shrink-0" title="Não lida">
+              {row.unreadCount > 0 ? (row.unreadCount > 99 ? '99+' : row.unreadCount) : ''}
+            </span>
+          )}
         </div>
       </div>
     </button>

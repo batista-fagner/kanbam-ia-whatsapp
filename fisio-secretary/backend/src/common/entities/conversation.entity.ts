@@ -16,6 +16,10 @@ export class Conversation {
   @Column({ name: 'ai_enabled', default: true })
   aiEnabled: boolean;
 
+  // Última vez que alguém da conta abriu a conversa (Inbox / card do Kanban) — base do "não lida".
+  @Column({ name: 'last_read_at', type: 'timestamp', nullable: true })
+  lastReadAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

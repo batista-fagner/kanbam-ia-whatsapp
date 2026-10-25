@@ -60,6 +60,12 @@ export const getInbox = ({ search = '', filter = 'all', stage = '', offset = 0, 
   return authFetch(`${BASE}/leads/inbox?${q}`).then(json)
 }
 
+export const getInboxUnreadCount = () =>
+  authFetch(`${BASE}/leads/inbox/unread-count`).then(json)
+
+export const markConversationRead = (id) =>
+  authFetch(`${BASE}/leads/${id}/read`, { method: 'POST' }).then(json)
+
 export const getLead = (id) =>
   authFetch(`${BASE}/leads/${id}`).then(json)
 

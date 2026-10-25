@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getInstanceConfig, getPriceConfig } from '../services/api'
+import { getInstanceConfig, getPriceConfig, getInboxUnreadCount } from '../services/api'
+import { getSocket, closeSocket, isLeadOpenOnScreen } from '../utils/realtime'
+import { getSoundPref, playNotify } from '../utils/notifySound'
 import iconOnly from '../assets/convertHair_icon_only.png'
 
 function NavLink({ item, collapsed, active, small }) {
   const Icon = item.icon
+  const badge = item.badge > 0 ? (item.badge > 99 ? '99+' : String(item.badge)) : null
   return (
     <Link
       to={item.path}
@@ -15,14 +18,60 @@ function NavLink({ item, collapsed, active, small }) {
       }`}
       title={collapsed ? item.label : ''}
     >
-      <Icon className={`${small ? 'w-4 h-4' : 'w-5 h-5'} flex-shrink-0`} />
-      {!collapsed && <span className={`${small ? 'text-[13px]' : 'text-sm'} font-medium`}>{item.label}</span>}
+      <span className="relative flex-shrink-0">
+        <Icon className={`${small ? 'w-4 h-4' : 'w-5 h-5'}`} />
+        {badge && collapsed && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-white" />}
+      </span>
+      {!collapsed && <span className={`${small ? 'text-[13px]' : 'text-sm'} font-medium flex-1`}>{item.label}</span>}
+      {!collapsed && badge && (
+        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-green-500 text-white text-[11px] font-bold flex items-center justify-center">{badge}</span>
+      )}
     </Link>
   )
 }
 
+// Número de conversas não lidas + som de mensagem nova, em qualquer tela do CRM.
+// O número também vai pro título da aba: "(3) Convert Hair".
+function useInboxNotifications() {
+  const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    let timer = null
+    const refresh = () => getInboxUnreadCount().then(r => setUnread(r?.count ?? 0)).catch(() => {})
+    const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refresh, 1200) }
+    refresh()
+    const socket = getSocket()
+    const onMessage = ({ leadId, message, aiEnabled }) => {
+      refreshSoon()
+      if (message?.direction !== 'inbound' || isLeadOpenOnScreen(leadId)) return
+      const pref = getSoundPref()
+      if (pref === 'all' || (pref === 'ai_off' && aiEnabled === false)) playNotify()
+    }
+    socket.on('message:new', onMessage)
+    socket.on('conversation:read', refreshSoon)
+    socket.on('connect', refresh)
+    return () => {
+      clearTimeout(timer)
+      socket.off('message:new', onMessage)
+      socket.off('conversation:read', refreshSoon)
+      socket.off('connect', refresh)
+    }
+  }, [])
+
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\+?\) /, '')
+    document.title = unread > 0 ? `(${unread > 99 ? '99+' : unread}) ${base}` : base
+  }, [unread])
+
+  // Sair da conta troca a sala do tempo real — derruba a conexão compartilhada.
+  useEffect(() => () => closeSocket(), [])
+
+  return unread
+}
+
 export default function Layout({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
+  const inboxUnread = useInboxNotifications()
   const location = useLocation()
   const { user } = useAuth()
   const [promptEngine, setPromptEngine] = useState(null)
@@ -64,7 +113,7 @@ export default function Layout({ onLogout }) {
       label: 'Operação',
       items: [
         { icon: LayoutDashboard, label: 'Kanban', path: '/' },
-        { icon: MessageCircle, label: 'Inbox', path: '/inbox' },
+        { icon: MessageCircle, label: 'Inbox', path: '/inbox', badge: inboxUnread },
         { icon: Calendar, label: 'Calendário', path: '/calendar' },
         { icon: Send, label: 'Envio em Massa', path: '/mass-message' },
         { icon: Image, label: 'Mídias', path: '/media' },

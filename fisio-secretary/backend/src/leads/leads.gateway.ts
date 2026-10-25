@@ -45,9 +45,16 @@ export class LeadsGateway implements OnGatewayConnection {
 
   // Mensagem nova (lead, IA ou operador) — a Inbox anexa na conversa aberta e sobe o
   // contato na lista sem precisar recarregar.
-  emitMessageNew(tenantId: string | null, leadId: string, message: any) {
+  // aiEnabled vai junto pro aviso sonoro "só conversas com a IA desligada".
+  emitMessageNew(tenantId: string | null, leadId: string, message: any, aiEnabled?: boolean) {
     const room = tenantId ? `tenant:${tenantId}` : 'tenant:__all__';
-    this.server.to(room).emit('message:new', { leadId, message });
+    this.server.to(room).emit('message:new', { leadId, message, aiEnabled });
+  }
+
+  // Alguém abriu a conversa: some o "não lida" pros outros atendentes da conta também.
+  emitConversationRead(tenantId: string | null, leadId: string) {
+    const room = tenantId ? `tenant:${tenantId}` : 'tenant:__all__';
+    this.server.to(room).emit('conversation:read', { leadId });
   }
 
   emitLeadDeleted(leadId: string, tenantId?: string | null) {

@@ -66,6 +66,17 @@ export class LeadsController {
     return this.leadsService.getInbox(tenantId, { search, filter, stage, offset: Number(offset), limit: Number(limit) });
   }
 
+  @Get('inbox/unread-count')
+  async inboxUnreadCount(@CurrentUser('tenantId') tenantId: string) {
+    return { count: await this.leadsService.inboxUnreadCount(tenantId) };
+  }
+
+  @Post(':id/read')
+  async markRead(@Param('id') id: string, @CurrentUser('tenantId') tenantId: string) {
+    await this.leadsService.markRead(id, tenantId);
+    return { ok: true };
+  }
+
   @Get()
   findAll(@CurrentUser('tenantId') tenantId: string) {
     return this.leadsService.findAll(tenantId);
