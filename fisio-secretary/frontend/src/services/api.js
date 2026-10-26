@@ -634,3 +634,29 @@ export const changePassword = (currentPassword, newPassword) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ currentPassword, newPassword }),
   }).then(json)
+
+// ── Relatório de vendas (IA) — piloto DALU ──
+export const getSalesReportStatus = () =>
+  authFetch(`${BASE}/sales-reports/status`).then(json)
+
+export const listSalesReports = () =>
+  authFetch(`${BASE}/sales-reports`).then(json)
+
+export const getSalesReport = (id) =>
+  authFetch(`${BASE}/sales-reports/${id}`).then(json)
+
+export const requestSalesReport = () =>
+  authFetch(`${BASE}/sales-reports`, { method: 'POST' }).then(json)
+
+export const downloadSalesReportPdf = async (id) => {
+  const r = await authFetch(`${BASE}/sales-reports/${id}/pdf`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const blob = await r.blob()
+  const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'relatorio-vendas.pdf'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

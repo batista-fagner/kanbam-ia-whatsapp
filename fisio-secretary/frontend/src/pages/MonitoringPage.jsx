@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Activity, AlertTriangle, DollarSign, Users, RefreshCw, TrendingUp, Zap, MessageSquare, Video } from 'lucide-react'
+import { Activity, AlertTriangle, DollarSign, Users, RefreshCw, TrendingUp, Zap, MessageSquare, Video, FileBarChart } from 'lucide-react'
 import { authFetch } from '../services/api'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -46,6 +46,7 @@ export default function MonitoringPage() {
   const [topLeads, setTopLeads] = useState([])
   const [history, setHistory] = useState([])
   const [media, setMedia] = useState(null)
+  const [salesReports, setSalesReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [date, setDate] = useState(brToday())
@@ -54,13 +55,17 @@ export default function MonitoringPage() {
     setLoading(true)
     try {
       const q = `?date=${date}`
-      const [ov, tn, tl, hi, md] = await Promise.all([
+      // Relatórios de vendas (IA): últimos 30 dias até a data escolhida.
+      const from30 = new Date(new Date(date + 'T12:00:00').getTime() - 29 * 86400000).toISOString().slice(0, 10)
+      const [ov, tn, tl, hi, md, sr] = await Promise.all([
         authFetch(`${API_URL}/admin/monitoring/overview${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/tenants${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/top-leads${q}`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/token-history`).then(r => r.json()),
         authFetch(`${API_URL}/admin/monitoring/media${q}`).then(r => r.json()),
+        authFetch(`${API_URL}/admin/monitoring/sales-reports?from=${from30}&to=${date}`).then(r => r.json()).catch(() => []),
       ])
+      setSalesReports(Array.isArray(sr) ? sr : [])
       setOverview(ov)
       setTenants(tn)
       setTopLeads(tl)
@@ -430,6 +435,52 @@ export default function MonitoringPage() {
           </div>
         </div>
       )}
+
+      {/* Relatórios de vendas (IA) — custo estimado de cada geração */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <FileBarChart className="w-4 h-4 text-teal-600" />
+            <h2 className="text-sm font-semibold text-gray-800">Relatórios de vendas (IA) — últimos 30 dias</h2>
+          </div>
+          <span className="text-xs text-gray-500">
+            Total: <strong className="text-gray-800">{fmtUsd(salesReports.reduce((s, r) => s + Number(r.cost_usd || 0), 0))}</strong>
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                <th className="text-left px-5 py-3">Quando</th>
+                <th className="text-left px-4 py-3">Cliente</th>
+                <th className="text-left px-4 py-3">Status</th>
+                <th className="text-left px-4 py-3">Modelo</th>
+                <th className="text-right px-4 py-3">Tokens (entrada / saída)</th>
+                <th className="text-right px-4 py-3">Custo estimado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {salesReports.map(r => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-5 py-3 text-gray-600">{new Date(r.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-4 py-3 text-gray-800">{r.tenant_name}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === 'done' ? 'bg-green-50 text-green-700' : r.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+                      {r.status === 'done' ? (r.pdf_sent ? 'Pronto · PDF enviado' : 'Pronto') : r.status === 'failed' ? 'Falhou' : 'Gerando'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{r.model ?? '—'}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{fmt(r.input_tokens)} / {fmt(r.output_tokens)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-800">{fmtUsd(r.cost_usd)}</td>
+                </tr>
+              ))}
+              {salesReports.length === 0 && (
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">Nenhum relatório gerado no período</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Top leads por mensagens */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle, FileBarChart } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInstanceConfig, getPriceConfig, getInboxUnreadCount } from '../services/api'
 import { getSocket, closeSocket, isLeadOpenOnScreen } from '../utils/realtime'
@@ -105,6 +105,10 @@ export default function Layout({ onLogout }) {
   const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
   const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email) || promptEngine === 'dynamic_modules'
 
+  // Relatório de vendas por IA — piloto só da DALU (mesma lista do backend, SALES_REPORT_TENANT_IDS).
+  const SALES_REPORT_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c']
+  const canSeeSalesReport = isLocalDev || SALES_REPORT_TENANT_IDS.includes(user?.tenantId)
+
   // Menu em seções (Operação / Gestão / Sistema). "group" vira um item que expande —
   // Configurações e Administração guardam o que não se usa o dia todo.
   const isAdmin = user?.role === 'admin'
@@ -123,6 +127,7 @@ export default function Layout({ onLogout }) {
       label: 'Gestão',
       items: [
         { icon: BarChart2, label: 'Dashboard', path: '/dashboard' },
+        ...(canSeeSalesReport ? [{ icon: FileBarChart, label: 'Relatório de vendas', path: '/sales-report' }] : []),
         // Tabela de preços só aparece pra quem vende por gramatura (já tem linha em
         // price_configs, ex: S&A) — pros outros o menu ficaria sem sentido.
         ...(hasPriceConfig || isAdmin ? [{ icon: Tag, label: 'Tabela de preços', path: '/prices' }] : []),

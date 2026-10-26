@@ -64,6 +64,11 @@ export class LeadsGateway implements OnGatewayConnection {
 
   // Financeiro WhatsApp (número Meta 0415) só é visível pro admin da plataforma
   // — reaproveita a sala 'tenant:__all__' onde só quem loga sem tenantId entra.
+  // Relatório de vendas (IA) mudou de estado — a tela do relatório atualiza sozinha.
+  emitSalesReport(tenantId: string, payload: { id: string; status: string }) {
+    this.server.to(`tenant:${tenantId}`).emit('sales-report:updated', payload);
+  }
+
   emitFinanceiroMessage(message: any) {
     this.server.to('tenant:__all__').emit('financeiro:message', message);
   }

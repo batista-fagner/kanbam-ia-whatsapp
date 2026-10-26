@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatório de vendas por IA (piloto DALU)',
+    date: '26/10/2026',
+    detail: 'Novo item "Relatório de vendas" no menu Gestão (só a DALU por enquanto). A cliente clica em "Gerar relatório da semana" e a IA analisa as conversas dos últimos 7 dias: resumo, o que deu certo, o que deu errado, onde a IA precisa melhorar, onde a equipe pode melhorar, clientes para retomar e um plano para a próxima semana — com exemplos reais das conversas. Fica no CRM (com histórico e botão de baixar PDF) e o PDF — com as cores e o logo da Convert Hair, cartões de números, gráfico de mensagens por dia e funil da semana — é enviado ao WhatsApp de notificações (Configurações → Notificação de agendamento). Limite: 1 por semana (admin gera sem limite). Cada geração aparece no Monitoramento com tokens e custo estimado (teste com a semana real da DALU: 129 conversas, ~US$ 0,03, 33 s).',
+  },
+  {
     title: 'Regras de Alertas: seção "Alertas do sistema" escondida',
     date: '26/10/2026',
     detail: 'Os cards informativos do fim da página (follow-up por raia, lembrete de vencimento, alerta visual no Kanban etc.) saíram da tela por enquanto — ficam só as configurações. O conteúdo continua no código para voltar quando quiser.',
@@ -433,6 +438,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'DALU: cadastrar o WhatsApp de notificações para receber o PDF do relatório',
+    detail: 'Hoje ela não tem número cadastrado em Configurações → Notificação de agendamento. Sem isso o relatório aparece só no CRM (a tela avisa).',
+  },
   {
     title: 'Botão "Novo lead" grava o telefone sem o 55',
     detail: 'Hoje 142 leads cadastrados à mão estão sem o 55 (ex.: 84999998888) e não batem com o número que o WhatsApp manda — quando a pessoa escreve, vira outro lead com a IA ligada. Corrigir usando o mesmo formato da importação de clientes.',
