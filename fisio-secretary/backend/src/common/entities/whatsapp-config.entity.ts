@@ -39,7 +39,9 @@ export class WhatsappConfig {
   // `activeSince` (ISO): quando a raia foi ligada. Só conta lead que parou de responder
   // depois disso — gravado pelo backend ao ligar, nunca vem do cliente.
   @Column({ name: 'auto_followup_config', type: 'jsonb', nullable: true })
-  autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string; activeSince?: string }> | null;
+  // `vendas` é o pós-venda: conta `days` a partir da ENTRADA na raia Vendas, não da última
+  // mensagem — lembrete de manutenção pra quem já comprou. `unit` é só como a tela mostra.
+  autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string; activeSince?: string; days?: number; unit?: 'dias' | 'meses' }> | null;
 
   // Chave-mestra: desliga o follow-up automático inteiro (todas as raias) sem apagar a config salva.
   // O cliente decide se quer o recurso ligado; default true para não quebrar quem já usa.

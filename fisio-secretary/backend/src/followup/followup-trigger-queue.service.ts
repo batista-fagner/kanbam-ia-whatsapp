@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import {
-  FOLLOWUP_TRIGGER_QUEUE_NAME, JOB_APPOINTMENT_REMINDER, JOB_CADENCE_STEP, JOB_IDLE_CHECK, QUEUE_ENGINE_BULLMQ,
+  FOLLOWUP_TRIGGER_QUEUE_NAME, JOB_APPOINTMENT_REMINDER, JOB_CADENCE_STEP, JOB_IDLE_CHECK, JOB_POST_SALE, QUEUE_ENGINE_BULLMQ,
 } from '../queue/queue.constants';
 
 // Lead parado na raia: ancorado na ÚLTIMA mensagem (nossa) da conversa. Se chegar
@@ -13,6 +13,9 @@ export interface IdleCheckJob { tenantId: string; leadId: string; stage: string;
 export interface CadenceStepJob { tenantId: string; leadId: string; anchor: number }
 // Lembrete: ancorado no horário do agendamento (ms). Remarcar muda a âncora.
 export interface AppointmentReminderJob { appointmentId: string; startMs: number }
+// Pós-venda: ancorado na entrada em Vendas (linha do lead_stage_history). Sair e voltar
+// pra Vendas cria outra entrada — o job da venda anterior vira no-op.
+export interface PostSaleJob { tenantId: string; leadId: string; entryId: string }
 
 // Piso de delay: quem emite o gatilho pode estar logo antes do commit, e um job com
 // delay 0 poderia ler o banco antes da linha existir.
@@ -47,6 +50,15 @@ export class FollowupTriggerQueueService {
   // ser descartado pelo job antigo (que, ao disparar cedo demais, só confere e sai).
   reminderJobId(d: AppointmentReminderJob, hoursBefore: number, retryTag?: string): string {
     return this.withTag(`reminder_${d.appointmentId}_${d.startMs}_${hoursBefore}h`, retryTag);
+  }
+
+  // O prazo (dias) entra no id pelo mesmo motivo da antecedência do lembrete.
+  postSaleJobId(d: PostSaleJob, days: number, retryTag?: string): string {
+    return this.withTag(`postsale_${d.leadId}_${d.entryId}_${days}d`, retryTag);
+  }
+
+  async schedulePostSale(d: PostSaleJob, days: number, fireAt: Date, retryTag?: string): Promise<void> {
+    await this.add(JOB_POST_SALE, d, this.postSaleJobId(d, days, retryTag), fireAt);
   }
 
   async scheduleIdleCheck(d: IdleCheckJob, fireAt: Date, retryTag?: string): Promise<void> {

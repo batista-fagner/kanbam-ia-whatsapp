@@ -17,6 +17,7 @@ export const FOLLOWUP_TRIGGER_QUEUE_NAME = 'followup-triggers';
 export const JOB_IDLE_CHECK = 'idle-check';
 export const JOB_CADENCE_STEP = 'cadence-step';
 export const JOB_APPOINTMENT_REMINDER = 'appointment-reminder';
+export const JOB_POST_SALE = 'post-sale';
 
 // Onboarding pós-pagamento: a 2ª mensagem (link do formulário) sai X minutos depois da
 // criação do grupo — job com delay, sem cron varrendo nada.

@@ -338,7 +338,7 @@ export class WhatsappConfigService {
   // `activeSince` é do backend: mantém o da raia que já estava ligada, carimba "agora"
   // na que acabou de ligar e some da desligada. O que vier do cliente é ignorado.
   private sanitizeAutoFollowup(
-    raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null | undefined,
+    raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string; days?: number; unit?: string }> | null | undefined,
     previous?: WhatsappConfig['autoFollowupConfig'],
   ): WhatsappConfig['autoFollowupConfig'] {
     if (!raw || typeof raw !== 'object') return null;
@@ -355,6 +355,20 @@ export class WhatsappConfigService {
       const rule: NonNullable<WhatsappConfig['autoFollowupConfig']>[string] = { enabled, idleMinutes, message };
       if (enabled) rule.activeSince = prev?.enabled && prev.activeSince ? prev.activeSince : now;
       clean[stage] = rule;
+    }
+    // Pós-venda: dias (1..730) depois de entrar na raia Vendas; a tela deixa escolher em dias
+    // ou meses (1 mês = 30 dias) e manda `days`. idleMinutes fica espelhado só para o formato
+    // do jsonb continuar igual ao das outras raias.
+    const sale = raw.vendas as { enabled?: boolean; days?: number; unit?: string; message?: string } | undefined;
+    if (sale && typeof sale === 'object') {
+      const days = Math.min(730, Math.max(1, Math.round(Number(sale.days) || 0) || 60));
+      const unit: 'dias' | 'meses' = sale.unit === 'meses' ? 'meses' : 'dias';
+      const message = String(sale.message ?? '').slice(0, 1000);
+      const enabled = !!sale.enabled;
+      const prev = previous?.vendas;
+      const rule: NonNullable<WhatsappConfig['autoFollowupConfig']>[string] = { enabled, days, unit, idleMinutes: days * 1440, message };
+      if (enabled) rule.activeSince = prev?.enabled && prev.activeSince ? prev.activeSince : now;
+      clean.vendas = rule;
     }
     return Object.keys(clean).length > 0 ? clean : null;
   }

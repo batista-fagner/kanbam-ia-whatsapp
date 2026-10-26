@@ -22,11 +22,13 @@ describe('Follow-up por evento (fila)', () => {
   let triggerQueue: any;
   let followupQueue: any;
   let appointments: any;
+  let entry: any;
 
   beforeEach(() => {
     cfg = { id: T, archivedAt: null, autoFollowupEnabled: true, autoFollowupConfig: { novo_lead: RULE }, followupCadence: null, appointmentReminder: null };
     lead = { id: 'l1', tenantId: T, stage: 'novo_lead', phone: '5511999', name: 'Ana', autoFollowupSentStages: [], nurtureStep: 0, nextNurtureAt: null, nurturePaused: false, lastMessageDirection: 'outbound' };
     last = { id: 'm1', direction: 'outbound', createdAt: minutesAgo(61) };
+    entry = { id: 'h1', enteredAt: new Date(Date.now() - 61 * 24 * 3600_000) };
     configRepo = { findOne: jest.fn(async () => cfg), find: jest.fn(async () => [cfg]) };
     followupRepo = { create: jest.fn((x) => x), save: jest.fn(async (x) => ({ id: 'f1', ...x })) };
     leads = {
@@ -38,8 +40,10 @@ describe('Follow-up por evento (fila)', () => {
       update: jest.fn(async () => lead),
       findAutoFollowupCandidates: jest.fn(async () => []),
       findCadenceCandidates: jest.fn(async () => []),
+      findPostSaleCandidates: jest.fn(async () => []),
+      getStageEntry: jest.fn(async () => entry),
     };
-    triggerQueue = { scheduleIdleCheck: jest.fn(async () => undefined), scheduleCadenceStep: jest.fn(async () => undefined), scheduleReminder: jest.fn(async () => undefined) };
+    triggerQueue = { scheduleIdleCheck: jest.fn(async () => undefined), scheduleCadenceStep: jest.fn(async () => undefined), scheduleReminder: jest.fn(async () => undefined), schedulePostSale: jest.fn(async () => undefined) };
     followupQueue = { enqueue: jest.fn(async () => undefined) };
     appointments = { findById: jest.fn(), claimReminder: jest.fn(async () => true), findUpcomingForReminder: jest.fn(async () => []), professionalNameFor: jest.fn(async () => null) };
     const config = { get: (k: string) => (k === 'QUEUE_ENGINE' ? QUEUE_ENGINE_BULLMQ : '') } as any;
@@ -174,6 +178,60 @@ describe('Follow-up por evento (fila)', () => {
     });
   });
 
+  describe('pós-venda (raia Vendas, X dias)', () => {
+    const SALE = { enabled: true, days: 60, idleMinutes: 60 * 1440, message: 'Oi {nome}, hora da manutenção?', activeSince: new Date(Date.now() - 90 * 24 * 3600_000).toISOString() };
+    const saleJob = { tenantId: T, leadId: 'l1', entryId: 'h1' };
+
+    beforeEach(() => {
+      cfg.autoFollowupConfig = { vendas: SALE };
+      lead.stage = 'vendas';
+    });
+
+    it('entrou em Vendas há mais de 60 dias → envia (mesmo com a IA desligada)', async () => {
+      leads.getAiEnabled.mockResolvedValue(false);
+      await svc.runPostSale(saleJob);
+      expect(leads.claimAutoFollowupStage).toHaveBeenCalledWith('l1', 'vendas');
+      expect(followupRepo.save).toHaveBeenCalledWith(expect.objectContaining({ message: 'Oi Ana, hora da manutenção?' }));
+    });
+
+    it('saiu de Vendas → não envia', async () => {
+      lead.stage = 'perdido';
+      await svc.runPostSale(saleJob);
+      expect(followupRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('voltou pra Vendas depois (outra entrada) → o job da venda anterior não envia', async () => {
+      entry = { id: 'h2', enteredAt: new Date() };
+      await svc.runPostSale(saleJob);
+      expect(followupRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('vendeu antes de a regra ser ligada → nunca recebe', async () => {
+      cfg.autoFollowupConfig.vendas = { ...SALE, activeSince: new Date().toISOString() };
+      await svc.runPostSale(saleJob);
+      expect(followupRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('prazo ainda não venceu (dias aumentaram) → reagenda para entrada + dias', async () => {
+      cfg.autoFollowupConfig.vendas = { ...SALE, days: 90 };
+      await svc.runPostSale(saleJob);
+      expect(followupRepo.save).not.toHaveBeenCalled();
+      const [, days, at] = triggerQueue.schedulePostSale.mock.calls[0];
+      expect(days).toBe(90);
+      expect(at.getTime()).toBe(entry.enteredAt.getTime() + 90 * 24 * 3600_000);
+    });
+
+    it('lead entra em Vendas → agenda o lembrete para entrada + dias', async () => {
+      entry = { id: 'h3', enteredAt: new Date() };
+      svc.onApplicationBootstrap();
+      followupTriggers.emit({ kind: 'stage', tenantId: T, leadId: 'l1' });
+      await new Promise((r) => setImmediate(r));
+      expect(triggerQueue.schedulePostSale).toHaveBeenCalledWith(
+        { tenantId: T, leadId: 'l1', entryId: 'h3' }, 60, new Date(entry.enteredAt.getTime() + 60 * 24 * 3600_000),
+      );
+    });
+  });
+
   describe('runAppointmentReminder', () => {
     const start = () => Date.now() + 23 * 3600_000;
 
@@ -236,6 +294,15 @@ describe('Regras de Alertas — corte de ativação e limite diário', () => {
   it('desligar remove o corte (religar depois começa do zero)', () => {
     const prev = { novo_lead: { enabled: true, idleMinutes: 30, message: 'x', activeSince: '2026-10-26T12:00:00.000Z' } };
     expect(svc.sanitizeAutoFollowup(raw(false), prev).novo_lead.activeSince).toBeUndefined();
+  });
+
+  it('pós-venda: dias 1..730, guarda a unidade da tela e o corte de ativação', () => {
+    const out = svc.sanitizeAutoFollowup({ vendas: { enabled: true, days: 60, unit: 'meses', message: 'oi' } }, null);
+    expect(out.vendas.days).toBe(60);
+    expect(out.vendas.unit).toBe('meses');
+    expect(out.vendas.activeSince).toBeDefined();
+    expect(svc.sanitizeAutoFollowup({ vendas: { enabled: true, days: 5000, message: 'oi' } }, null).vendas.days).toBe(730);
+    expect(svc.sanitizeAutoFollowup({ vendas: { enabled: false, days: 0, message: '' } }, null).vendas.days).toBe(60);
   });
 
   it('limite diário: 1..100, inválido cai em 40', () => {

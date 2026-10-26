@@ -67,6 +67,7 @@ describe('jobId das filas — nunca pode conter ":"', () => {
     await svc.scheduleCadenceStep(cad, new Date());
     await svc.scheduleReminder(rem, 24, new Date());
     await svc.scheduleReminder(rem, 2, new Date());            // antecedência mudou na config
+    await svc.schedulePostSale({ tenantId: TENANT_ID, leadId: 'l1', entryId: 'h1' }, 2, new Date());
 
     const ids = q.jobIds();
     for (const id of ids) expect(id).not.toContain(':');

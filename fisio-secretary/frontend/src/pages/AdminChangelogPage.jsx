@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Follow-up de pós-venda (raia Vendas) em dias ou meses — pedido da DALU',
+    date: '26/10/2026',
+    detail: 'Nova opção em Regras de Alertas: "Pós-venda (raia Vendas)", com a mensagem em branco para a cliente escrever (ex.: lembrar da manutenção) e o prazo que ela escolher, em dias ou meses (até 730 dias; 1 mês = 30 dias). Conta a partir do dia em que o lead entrou em Vendas, uma vez por venda — se voltar a comprar, conta de novo. Vale só para quem entrar em Vendas depois de ligar, sai mesmo com a IA desligada na conversa e respeita horário comercial, 1 envio a cada 3 min e o limite diário.',
+  },
+  {
     title: 'Follow-up sem varredura do banco: tudo por fila (Redis/BullMQ) — todos os clientes',
     date: '26/10/2026',
     detail: 'Follow-up por inatividade (Regras de Alertas), cadência de vários toques e lembrete de agendamento deixaram de depender de crons que perguntavam ao banco a cada 1-10 min "quem está parado?". Agora, quando a IA ou o atendente manda a última mensagem, o sistema agenda um job para o horário exato (mensagem + tempo da raia); se o lead responder, mudar de raia ou a IA for desligada, o job morre sozinho. Agendar/remarcar consulta agenda o lembrete; salvar a regra enfileira quem já estava parado. Fora do horário comercial o job espera a abertura. A IA respondendo não é afetada (o agendamento é em segundo plano). Rollback: QUEUE_ENGINE diferente de bullmq volta pros crons antigos.',

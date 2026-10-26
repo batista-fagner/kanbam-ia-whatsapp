@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { FollowupService } from './followup.service';
-import { FOLLOWUP_TRIGGER_QUEUE_NAME, JOB_APPOINTMENT_REMINDER, JOB_CADENCE_STEP, JOB_IDLE_CHECK } from '../queue/queue.constants';
+import { FOLLOWUP_TRIGGER_QUEUE_NAME, JOB_APPOINTMENT_REMINDER, JOB_CADENCE_STEP, JOB_IDLE_CHECK, JOB_POST_SALE } from '../queue/queue.constants';
 
 // Executa os gatilhos agendados pela FollowupTriggerQueueService. Toda a decisão (o lead
 // ainda está parado? a âncora bate? horário comercial?) fica no FollowupService, que relê
@@ -23,6 +23,8 @@ export class FollowupTriggerProcessor extends WorkerHost {
         return this.followups.runCadenceStep(job.data);
       case JOB_APPOINTMENT_REMINDER:
         return this.followups.runAppointmentReminder(job.data);
+      case JOB_POST_SALE:
+        return this.followups.runPostSale(job.data);
       default:
         this.logger.warn(`[FU-TRIGGER] Job desconhecido: ${job.name}`);
     }

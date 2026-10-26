@@ -27,12 +27,20 @@ const minutesToVU = (min) => {
   return { value: min || 1, unit: 'minutos' }
 }
 
-const followupToConfig = (state) => {
+// Pós-venda: raia Vendas, contado a partir da entrada na raia. A cliente escolhe em dias ou
+// meses (1 mês = 30 dias); o backend guarda sempre em dias.
+const emptyPostSale = () => ({ enabled: false, value: 60, unit: 'dias', message: '' })
+const postSaleDays = (p) => (p.unit === 'meses' ? p.value * 30 : p.value)
+
+const followupToConfig = (state, postSale) => {
   const out = {}
   for (const { key } of FOLLOWUP_STAGES) {
     const s = state[key]
     const idleMinutes = s.unit === 'horas' ? Math.round(s.value * 60) : Math.round(s.value)
     out[key] = { enabled: !!s.enabled, idleMinutes: Math.max(1, idleMinutes || 1), message: (s.message ?? '').trim() }
+  }
+  if (postSale) {
+    out.vendas = { enabled: !!postSale.enabled, days: Math.max(1, Math.round(postSaleDays(postSale)) || 1), unit: postSale.unit, message: (postSale.message ?? '').trim() }
   }
   return out
 }
@@ -134,6 +142,7 @@ export default function AlertRulesPage() {
   const [autoFollowup, setAutoFollowup]   = useState(emptyFollowup())
   const [followupEnabled, setFollowupEnabled] = useState(true)
   const [dailyLimit, setDailyLimit] = useState(40)
+  const [postSale, setPostSale] = useState(emptyPostSale())
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved]   = useState(false)
 
@@ -160,6 +169,11 @@ export default function AlertRulesPage() {
             }
           }
           setAutoFollowup(next)
+          if (fu.vendas && typeof fu.vendas === 'object') {
+            const days = Number(fu.vendas.days) > 0 ? Number(fu.vendas.days) : 60
+            const unit = fu.vendas.unit === 'meses' && days % 30 === 0 ? 'meses' : 'dias'
+            setPostSale({ enabled: !!fu.vendas.enabled, value: unit === 'meses' ? days / 30 : days, unit, message: fu.vendas.message ?? '' })
+          }
         }
         if (typeof data?.autoFollowupEnabled === 'boolean') {
           setFollowupEnabled(data.autoFollowupEnabled)
@@ -191,7 +205,7 @@ export default function AlertRulesPage() {
       const res = await authFetch(`${API_URL}/instance/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoFollowupConfig: followupToConfig(autoFollowup), followupLimitPerDay: dailyLimit }),
+        body: JSON.stringify({ autoFollowupConfig: followupToConfig(autoFollowup, postSale), followupLimitPerDay: dailyLimit }),
       })
       // Reflete o limite que o backend gravou (ele limita a 1..100).
       const saved = await res.json().catch(() => null)
@@ -364,6 +378,53 @@ export default function AlertRulesPage() {
                   </div>
                 )
               })}
+            </div>
+
+            <div className={`mt-3 border rounded-lg p-4 transition ${postSale.enabled ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={postSale.enabled}
+                    onChange={e => setPostSale(p => ({ ...p, enabled: e.target.checked }))}
+                    className="w-4 h-4 accent-teal-600"
+                  />
+                  <span className="text-sm font-medium text-gray-800">Pós-venda (raia Vendas)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Após</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={postSale.unit === 'meses' ? 24 : 730}
+                    value={postSale.value}
+                    disabled={!postSale.enabled}
+                    onChange={e => setPostSale(p => ({ ...p, value: Math.min(p.unit === 'meses' ? 24 : 730, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 text-gray-800"
+                  />
+                  <select
+                    value={postSale.unit}
+                    disabled={!postSale.enabled}
+                    onChange={e => setPostSale(p => ({ ...p, unit: e.target.value, value: e.target.value === 'meses' ? Math.max(1, Math.round(p.value / 30)) : p.value * 30 }))}
+                    className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 text-gray-800 bg-white"
+                  >
+                    <option value="dias">dias</option>
+                    <option value="meses">meses</option>
+                  </select>
+                  <span className="text-sm text-gray-500">em Vendas</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Ex.: lembrar da manutenção. Conta a partir do dia em que o lead entrou em Vendas (1 mês = 30 dias), uma vez por venda. Vale para quem entrar em Vendas depois de ligar — mesmo com a IA desligada na conversa.
+              </p>
+              <textarea
+                value={postSale.message}
+                disabled={!postSale.enabled}
+                onChange={e => setPostSale(p => ({ ...p, message: e.target.value }))}
+                placeholder="Digite a mensagem que a cliente vai receber"
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
+              />
             </div>
 
             <div className="mt-4 border border-amber-200 bg-amber-50/50 rounded-lg p-4">

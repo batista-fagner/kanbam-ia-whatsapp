@@ -166,6 +166,34 @@ export class LeadsService implements OnApplicationBootstrap {
     return rows.map((r: any) => ({ id: r.id, stage: r.stage, phone: r.phone, messageId: r.message_id, messageAt: new Date(r.message_at) }));
   }
 
+  // Pós-venda: quando o lead entrou na raia pela última vez (âncora do lembrete de manutenção).
+  async getStageEntry(leadId: string, stage: string): Promise<{ id: string; enteredAt: Date } | null> {
+    const row = await this.historyRepo.findOne({ where: { leadId, toStage: stage }, order: { createdAt: 'DESC' } });
+    return row ? { id: row.id, enteredAt: new Date(row.createdAt) } : null;
+  }
+
+  // Leads em Vendas que entraram depois de `since` e ainda não receberam o pós-venda desta
+  // entrada, já com a data de entrada (varredura única da subida/config, e o cron legado).
+  async findPostSaleCandidates(tenantId: string, since: Date): Promise<Array<{ id: string; stage: LeadStage; phone: string; entryId: string; enteredAt: Date }>> {
+    const rows = await this.leadsRepo.query(
+      `SELECT l.id, l.stage, l.phone, h.id AS entry_id, h.created_at AS entered_at
+         FROM leads l
+         CROSS JOIN LATERAL (
+           SELECT h.id, h.created_at FROM lead_stage_history h
+            WHERE h.lead_id = l.id AND h.to_stage = 'vendas'
+            ORDER BY h.created_at DESC LIMIT 1
+         ) h
+        WHERE l.tenant_id = $1
+          AND l.stage = 'vendas'
+          AND h.created_at >= ($2::timestamptz AT TIME ZONE 'UTC')
+          AND NOT (l.auto_followup_sent_stages @> to_jsonb('vendas'::text))
+          AND l.phone <> ''
+        LIMIT 5000`,
+      [tenantId, since.toISOString()],
+    );
+    return rows.map((r: any) => ({ id: r.id, stage: r.stage, phone: r.phone, entryId: r.entry_id, enteredAt: new Date(r.entered_at) }));
+  }
+
   // Leads com toque de cadência armado — mesma varredura única do método acima.
   async findCadenceCandidates(tenantId: string): Promise<Lead[]> {
     return this.leadsRepo
@@ -274,6 +302,10 @@ export class LeadsService implements OnApplicationBootstrap {
     if (fromStage === toStage) return lead;
 
     lead.stage = toStage;
+    // Pós-venda é 1 por venda: entrar de novo em Vendas (nova compra) libera outro lembrete.
+    if (toStage === 'vendas') {
+      lead.autoFollowupSentStages = (lead.autoFollowupSentStages ?? []).filter((s) => s !== 'vendas');
+    }
     await this.leadsRepo.save(lead);
 
     await this.historyRepo.save({ leadId, fromStage, toStage, changedBy });

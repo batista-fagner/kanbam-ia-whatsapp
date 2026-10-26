@@ -15,7 +15,7 @@ import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { FollowupQueueService } from './followup-queue.service';
-import { AppointmentReminderJob, CadenceStepJob, FollowupTriggerQueueService, IdleCheckJob } from './followup-trigger-queue.service';
+import { AppointmentReminderJob, CadenceStepJob, FollowupTriggerQueueService, IdleCheckJob, PostSaleJob } from './followup-trigger-queue.service';
 import { followupTriggers, FollowupTrigger } from '../common/followup-triggers';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 import { resolveReminderGate } from '../appointments/reminder-gate';
@@ -50,10 +50,14 @@ const AUTO_FOLLOWUP_STAGES: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quent
 const CONFIG_CACHE_MS = 60_000;
 // Varredura única da subida espera o boot assentar (webhook/IA primeiro).
 const BOOT_BACKFILL_DELAY_MS = 30_000;
-type AutoRule = { enabled: boolean; idleMinutes: number; message: string; activeSince?: string };
+type AutoRule = { enabled: boolean; idleMinutes: number; message: string; activeSince?: string; days?: number };
 
 // Lead só entra no follow-up por inatividade se a última mensagem (nossa) for de depois
 // que a raia foi ligada. Regra sem activeSince (gravada direto no banco) não dispara.
+// Pós-venda (raia Vendas): lembrete de manutenção X dias depois da entrada na raia.
+const POST_SALE_STAGE = 'vendas';
+const DAY_MS = 24 * 3600_000;
+
 const isAfterActivation = (rule: AutoRule, messageAt: Date): boolean =>
   !!rule.activeSince && new Date(messageAt).getTime() >= Date.parse(rule.activeSince);
 
@@ -352,7 +356,9 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
         const lead = await this.leadsService.findOne(t.leadId, t.kind === 'stage' ? t.tenantId : undefined);
         if (!lead) return;
         const cfg = await this.getConfigCached(lead.tenantId);
-        if (!cfg || !this.hasLeadFollowupWork(cfg)) return;
+        if (!cfg) return;
+        if (t.kind === 'stage') await this.schedulePostSale(cfg, lead);
+        if (!this.hasLeadFollowupWork(cfg)) return;
         await this.scheduleIdleCheck(cfg, lead);
         await this.scheduleCadenceIfArmed(cfg, lead);
         return;
@@ -388,6 +394,54 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
     const rule = cfg.autoFollowupConfig?.[stage];
     if (!rule?.enabled || !rule.message?.trim() || !(rule.idleMinutes > 0)) return null;
     return rule;
+  }
+
+  // Regra de pós-venda válida (mesmo corte activeSince das outras raias).
+  private postSaleRuleFor(cfg: WhatsappConfig): AutoRule | null {
+    if (cfg.archivedAt || cfg.autoFollowupEnabled === false) return null;
+    const rule = cfg.autoFollowupConfig?.[POST_SALE_STAGE];
+    if (!rule?.enabled || !rule.message?.trim() || !(Number(rule.days) > 0) || !rule.activeSince) return null;
+    return rule;
+  }
+
+  // Agenda o lembrete de manutenção para entrada + X dias. Não exige IA ligada: depois da
+  // venda é comum o atendente ter assumido a conversa, e aí o lembrete nunca sairia.
+  private async schedulePostSale(
+    cfg: WhatsappConfig,
+    lead: Pick<Lead, 'id' | 'stage' | 'phone'> & { autoFollowupSentStages?: string[] },
+    entry?: { id: string; enteredAt: Date },
+  ): Promise<void> {
+    if (lead.stage !== POST_SALE_STAGE || !lead.phone || lead.autoFollowupSentStages?.includes(POST_SALE_STAGE)) return;
+    const rule = this.postSaleRuleFor(cfg);
+    if (!rule) return;
+    const e = entry ?? await this.leadsService.getStageEntry(lead.id, POST_SALE_STAGE);
+    if (!e || !isAfterActivation(rule, e.enteredAt)) return; // vendeu antes de ligar a regra
+    const fireAt = new Date(e.enteredAt.getTime() + rule.days! * DAY_MS);
+    await this.triggerQueue.schedulePostSale({ tenantId: cfg.id, leadId: lead.id, entryId: e.id }, rule.days!, fireAt);
+  }
+
+  // Job: pós-venda vencido. Sai sem enviar se o lead saiu de Vendas ou se houve outra entrada.
+  async runPostSale(data: PostSaleJob): Promise<void> {
+    const cfg = await this.configRepo.findOne({ where: { id: data.tenantId } });
+    const rule = cfg ? this.postSaleRuleFor(cfg) : null;
+    if (!cfg || !rule) return;
+    const lead = await this.leadsService.findOne(data.leadId, data.tenantId);
+    if (!lead || lead.stage !== POST_SALE_STAGE || !lead.phone || lead.autoFollowupSentStages?.includes(POST_SALE_STAGE)) return;
+    const entry = await this.leadsService.getStageEntry(lead.id, POST_SALE_STAGE);
+    if (!entry || entry.id !== data.entryId || !isAfterActivation(rule, entry.enteredAt)) return;
+
+    const dueAt = entry.enteredAt.getTime() + rule.days! * DAY_MS;
+    if (dueAt > Date.now() + 1_000) {
+      // Prazo aumentou depois do agendamento.
+      await this.triggerQueue.schedulePostSale(data, rule.days!, new Date(dueAt), `t${dueAt}`);
+      return;
+    }
+    if (!this.isWithinBusinessHours(cfg.id)) {
+      const opensAt = this.nextBusinessWindowStart(cfg.id);
+      await this.triggerQueue.schedulePostSale(data, rule.days!, opensAt, `w${opensAt.getTime()}`);
+      return;
+    }
+    await this.createAutoFollowup(cfg, lead, POST_SALE_STAGE, rule);
   }
 
   private cadenceStepsFor(cfg: WhatsappConfig, stage: string) {
@@ -533,6 +587,14 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
       if (!rule?.activeSince) continue;
       for (const c of await this.leadsService.findAutoFollowupCandidates(cfg.id, stage, new Date(rule.activeSince))) {
         await this.scheduleIdleCheck(cfg, c, { id: c.messageId, direction: 'outbound', createdAt: c.messageAt });
+        n++;
+      }
+    }
+
+    const saleRule = this.postSaleRuleFor(cfg);
+    if (saleRule) {
+      for (const c of await this.leadsService.findPostSaleCandidates(cfg.id, new Date(saleRule.activeSince!))) {
+        await this.schedulePostSale(cfg, c, { id: c.entryId, enteredAt: c.enteredAt });
         n++;
       }
     }
@@ -696,12 +758,30 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
           this.logger.error(`[AUTO-FOLLOWUP] Falha no tenant ${cfg.id} raia ${stage}: ${err?.message ?? err}`);
         }
       }
+
+      try {
+        await this.processPostSaleLegacy(cfg);
+      } catch (err) {
+        this.logger.error(`[POS-VENDA] Falha no tenant ${cfg.id}: ${err?.message ?? err}`);
+      }
+    }
+  }
+
+  // Pós-venda no modo legado (rollback): mesma regra do runPostSale, pela varredura do cron.
+  private async processPostSaleLegacy(cfg: WhatsappConfig): Promise<void> {
+    const rule = this.postSaleRuleFor(cfg);
+    if (!rule) return;
+    const dueBefore = Date.now() - rule.days! * DAY_MS;
+    for (const c of await this.leadsService.findPostSaleCandidates(cfg.id, new Date(rule.activeSince!))) {
+      if (c.enteredAt.getTime() > dueBefore) continue;
+      const lead = await this.leadsService.findOne(c.id, cfg.id);
+      if (lead) await this.createAutoFollowup(cfg, lead, POST_SALE_STAGE, rule);
     }
   }
 
   // Claim atômico da raia + cria o follow-up pendente e põe na fila de envio. Usado pelo
   // cron legado e pelo job de inatividade (runIdleCheck).
-  private async createAutoFollowup(cfg: WhatsappConfig, lead: Lead, stage: string, rule: AutoRule): Promise<void> {
+  private async createAutoFollowup(cfg: WhatsappConfig, lead: Lead, stage: string, rule: Pick<AutoRule, 'message'>): Promise<void> {
     // Claim atômico: só agenda se ESTA execução marcou a raia.
     const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
     if (!claimed) return;
