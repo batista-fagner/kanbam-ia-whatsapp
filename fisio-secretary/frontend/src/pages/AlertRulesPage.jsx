@@ -47,6 +47,10 @@ const followupToConfig = (state, postSale) => {
 
 // ── Regras informativas ─────────────────────────────────────────────────────
 
+// Seção "Alertas do sistema" (cards só de leitura) escondida por enquanto — o conteúdo
+// fica aqui para voltar trocando para true.
+const SHOW_SYSTEM_ALERTS = false
+
 const rules = [
   {
     icon: <RefreshCw className="w-5 h-5 text-teal-600" />,
@@ -531,6 +535,7 @@ export default function AlertRulesPage() {
         </div>
       )}
 
+      {SHOW_SYSTEM_ALERTS && (<>
       {/* Separador */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex-1 h-px bg-gray-200" />
@@ -571,6 +576,7 @@ export default function AlertRulesPage() {
           </div>
         ))}
       </div>
+      </>)}
     </div>
   )
 }

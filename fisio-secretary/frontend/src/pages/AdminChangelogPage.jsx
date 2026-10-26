@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Regras de Alertas: seção "Alertas do sistema" escondida',
+    date: '26/10/2026',
+    detail: 'Os cards informativos do fim da página (follow-up por raia, lembrete de vencimento, alerta visual no Kanban etc.) saíram da tela por enquanto — ficam só as configurações. O conteúdo continua no código para voltar quando quiser.',
+  },
+  {
     title: 'Follow-up de pós-venda (raia Vendas) em dias ou meses — pedido da DALU',
     date: '26/10/2026',
     detail: 'Nova opção em Regras de Alertas: "Pós-venda (raia Vendas)", com a mensagem em branco para a cliente escrever (ex.: lembrar da manutenção) e o prazo que ela escolher, em dias ou meses (até 730 dias; 1 mês = 30 dias). Conta a partir do dia em que o lead entrou em Vendas, uma vez por venda — se voltar a comprar, conta de novo. Vale só para quem entrar em Vendas depois de ligar, sai mesmo com a IA desligada na conversa e respeita horário comercial, 1 envio a cada 3 min e o limite diário.',
