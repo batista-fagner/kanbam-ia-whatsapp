@@ -10,12 +10,16 @@ import { FollowupService } from './followup.service';
 import { FollowupController } from './followup.controller';
 import { FollowupQueueService } from './followup-queue.service';
 import { FollowupDispatchProcessor } from './followup-dispatch.processor';
-import { FOLLOWUP_QUEUE_NAME } from '../queue/queue.constants';
+import { FollowupTriggerQueueService } from './followup-trigger-queue.service';
+import { FollowupTriggerProcessor } from './followup-trigger.processor';
+import { FOLLOWUP_QUEUE_NAME, FOLLOWUP_TRIGGER_QUEUE_NAME } from '../queue/queue.constants';
 import { queueEngineEnabled } from '../queue/queue.enabled';
 
 // Idem payments.module.ts: sem o modo bullmq não há conexão Redis registrada.
-const queueParts = queueEngineEnabled ? [BullModule.registerQueue({ name: FOLLOWUP_QUEUE_NAME })] : [];
-const queueProviders = queueEngineEnabled ? [FollowupDispatchProcessor] : [];
+const queueParts = queueEngineEnabled
+  ? [BullModule.registerQueue({ name: FOLLOWUP_QUEUE_NAME }, { name: FOLLOWUP_TRIGGER_QUEUE_NAME })]
+  : [];
+const queueProviders = queueEngineEnabled ? [FollowupDispatchProcessor, FollowupTriggerProcessor] : [];
 import { LeadsModule } from '../leads/leads.module';
 import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
@@ -35,7 +39,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     AuthModule,
     AppointmentsModule,
   ],
-  providers: [FollowupService, FollowupQueueService, ...queueProviders],
+  providers: [FollowupService, FollowupQueueService, FollowupTriggerQueueService, ...queueProviders],
   controllers: [FollowupController],
   exports: [FollowupService],
 })

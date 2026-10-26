@@ -22,9 +22,21 @@ describe('FollowupDispatchProcessor — proteções preservadas na fila', () => 
       followupDailyLimit: jest.fn().mockResolvedValue(30),
       lastSentAtByTenant: jest.fn().mockResolvedValue(null),
       claimAndSend: jest.fn().mockResolvedValue('sent'),
+      nextBusinessWindowStart: jest.fn((_t: string, from?: Date) => new Date((from ?? new Date()).getTime() + 2 * 3600_000)),
+      startOfNextDayBRT: jest.fn(() => new Date(Date.now() + 10 * 3600_000)),
     };
-    queue = { enqueue: jest.fn(), requeue: jest.fn(), cancel: jest.fn() };
+    queue = { enqueue: jest.fn(), requeue: jest.fn(), cancel: jest.fn(), tryAcquireSendSlot: jest.fn().mockResolvedValue(0) };
     processor = new FollowupDispatchProcessor(repo, followups, queue);
+  });
+
+  // Jobs concorrentes do mesmo tenant: só quem pega a vaga no Redis envia; os outros
+  // voltam pra fila quando a vaga abrir (bug real: 2 envios do mesmo tenant com 40ms).
+  it('vaga do tenant ocupada → reagenda em vez de enviar', async () => {
+    queue.tryAcquireSendSlot.mockResolvedValue(120_000);
+    await processor.process(job());
+    expect(followups.claimAndSend).not.toHaveBeenCalled();
+    expect(queue.requeue).toHaveBeenCalledWith('f1', expect.any(Number));
+    expect(queue.requeue.mock.calls[0][1]).toBeGreaterThanOrEqual(120_000);
   });
 
   it('caminho feliz: envia via claimAndSend', async () => {
@@ -46,19 +58,22 @@ describe('FollowupDispatchProcessor — proteções preservadas na fila', () => 
     expect(followups.claimAndSend).not.toHaveBeenCalled();
   });
 
-  it('fora da janela de horário → reagenda, não envia', async () => {
+  it('fora da janela de horário → reagenda para a abertura, não envia', async () => {
     followups.isWithinBusinessHours.mockReturnValue(false);
     await processor.process(job());
     expect(followups.claimAndSend).not.toHaveBeenCalled();
-    expect(queue.requeue).toHaveBeenCalledWith('f1', 5 * 60_000);
+    const [, delay] = queue.requeue.mock.calls[0];
+    expect(delay).toBeGreaterThanOrEqual(2 * 3600_000 - 1_000); // abertura (+ jitter)
+    expect(delay).toBeLessThanOrEqual(2 * 3600_000 + 60_000);
   });
 
-  it('teto diário do tenant atingido → reagenda, não envia', async () => {
+  it('teto diário do tenant atingido → reagenda para a abertura de amanhã, não envia', async () => {
     followups.countSentTodayByTenant.mockResolvedValue(30);
     followups.followupDailyLimit.mockResolvedValue(30);
     await processor.process(job());
     expect(followups.claimAndSend).not.toHaveBeenCalled();
-    expect(queue.requeue).toHaveBeenCalledWith('f1', 5 * 60_000);
+    const [, delay] = queue.requeue.mock.calls[0];
+    expect(delay).toBeGreaterThanOrEqual(12 * 3600_000 - 1_000); // amanhã 00h + abertura
   });
 
   // Aqui dá pra calcular o instante exato em que a janela abre, então o job volta na hora

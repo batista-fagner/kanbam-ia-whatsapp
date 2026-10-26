@@ -207,12 +207,14 @@ os `@Module` são avaliados antes do ConfigModule ler o `.env`).
 | Fila | Substitui | Como funciona |
 |---|---|---|
 | `pix-polling` | `PaymentsService.pollPendingPix()` (varria a tabela a cada 1min) | Um job por cobrança. Delay cresce a cada tentativa (20s→40s→…→teto 5min) e a cadeia encerra sozinha quando confirma/expira. Job repetível `pix-deep-reconcile` (30min) reenfileira pendências órfãs |
-| `followup-dispatch` | `FollowupService.processDue()` (lia 200 candidatos a cada 1min) | Um job por follow-up, dormindo até o `scheduledAt`. Janela comercial/teto diário/espaçamento de 3min reagendam o job em vez de deixar a linha pending |
+| `followup-dispatch` | `FollowupService.processDue()` (lia 200 candidatos a cada 1min) | Um job por follow-up, dormindo até o `scheduledAt`. Janela comercial/teto diário/espaçamento de 3min (vaga atômica por tenant no Redis, `tryAcquireSendSlot`) reagendam o job em vez de deixar a linha pending |
+| `followup-triggers` | `processAutoFollowups` (10min), `processCadenceFollowups` (1min), `processAppointmentReminders` (5min) | Job com delay para o instante exato, criado por evento (`common/followup-triggers.ts`): mensagem nossa salva, mudança de raia, IA religada, agendamento criado/remarcado, config salva. O job relê o banco e sai sem fazer nada se a âncora (última mensagem / `next_nurture_at` / horário) mudou. Varredura única na subida enfileira o que já estava esperando |
 
 **Regras que não podem ser quebradas:**
 - **`jobId` nunca pode conter `:`** — o BullMQ lança (`Custom Id cannot contain :`) e a cadeia nunca começa. Separador é `_`; travado por `src/queue/job-id.spec.ts`.
 - **`repeat` não existe mais em `queue.add`** (BullMQ v6) — jobs repetíveis usam `queue.upsertJobScheduler()`.
 - **Expiração do PIX vem sempre do banco** (`lastPixSentAt` relido a cada tick), nunca da idade do job — senão uma cadeia antiga expira um PIX novo gerado no reenvio do dia seguinte.
+- **Gatilho de follow-up nunca pode bloquear a resposta da IA** — `followupTriggers.emit()` é fire-and-forget e engole erro; não transformar em `await`.
 - **O UPDATE atômico condicional continua sendo a garantia de correção.** BullMQ reentrega job de worker morto; quem garante efeito colateral único é o Postgres (`_activatePaidTenant`, `claimAndSend`).
 
 ⚠️ **Produção ainda não tem Redis provisionado** — por isso `QUEUE_ENGINE` segue `legacy-cron` lá. Ver Pendências.

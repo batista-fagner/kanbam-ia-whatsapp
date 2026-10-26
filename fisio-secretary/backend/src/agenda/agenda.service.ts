@@ -11,6 +11,7 @@ import { ScheduleService } from '../schedule/schedule.service';
 import { addDaysToDateStr, formatInTZ, TIME_RE, timeToMinutes } from '../common/utils/sp-time.util';
 import { AvailabilityContext, AvailProfessional, computeDay, DayAvailability, isProfessionalFree, orderByPreference } from './agenda-availability';
 import { AgendaNotifier } from './agenda-notifier';
+import { followupTriggers } from '../common/followup-triggers';
 
 const ACTIVE: AppointmentStatus[] = ['agendado', 'confirmado'];
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
@@ -346,6 +347,7 @@ export class AgendaService {
       }));
     });
     void this.notifier.notify('novo', appt);
+    followupTriggers.emit({ kind: 'appointment', appointmentId: appt.id });
     return appt;
   }
 
@@ -374,6 +376,7 @@ export class AgendaService {
       return m.save(Appointment, current);
     });
     void this.notifier.notify('remarcado', appt, { previousStart, source: opts.source });
+    followupTriggers.emit({ kind: 'appointment', appointmentId: appt.id });
     return appt;
   }
 

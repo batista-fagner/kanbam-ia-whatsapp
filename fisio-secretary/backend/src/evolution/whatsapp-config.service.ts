@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { resolveReminderHours } from '../appointments/reminder-gate';
+import { followupTriggers } from '../common/followup-triggers';
 
 @Injectable()
 export class WhatsappConfigService {
@@ -267,14 +268,29 @@ export class WhatsappConfigService {
       promptEngine?: string;
       notificationPhone?: string | null;
       schedulingHandoffEnabled?: boolean;
+      followupLimitPerDay?: number;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
     let record = tenantId ? await this.getByTenant(tenantId) : await this.get();
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
-    if ('autoFollowupConfig' in fields) record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig);
-    if ('autoFollowupEnabled' in fields) record.autoFollowupEnabled = !!fields.autoFollowupEnabled;
+    if ('autoFollowupConfig' in fields) {
+      record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig, record.autoFollowupConfig);
+    }
+    if ('autoFollowupEnabled' in fields) {
+      const next = !!fields.autoFollowupEnabled;
+      // Religar a chave-mestra reinicia o corte de todas as raias ligadas: quem parou
+      // enquanto estava desligado não recebe nada ao religar.
+      if (next && record.autoFollowupEnabled === false && record.autoFollowupConfig) {
+        const now = new Date().toISOString();
+        record.autoFollowupConfig = Object.fromEntries(
+          Object.entries(record.autoFollowupConfig).map(([k, r]) => [k, r.enabled ? { ...r, activeSince: now } : r]),
+        );
+      }
+      record.autoFollowupEnabled = next;
+    }
+    if ('followupLimitPerDay' in fields) record.followupLimitPerDay = this.sanitizeFollowupLimit(fields.followupLimitPerDay);
     if ('appointmentReminder' in fields) record.appointmentReminder = this.sanitizeAppointmentReminder(fields.appointmentReminder);
     if ('multiAgentEnabled' in fields) record.multiAgentEnabled = !!fields.multiAgentEnabled;
     if ('deactivationKeyword' in fields) record.deactivationKeyword = this.sanitizeKeyword(fields.deactivationKeyword, 'opa');
@@ -284,7 +300,12 @@ export class WhatsappConfigService {
     }
     if ('notificationPhone' in fields) record.notificationPhone = fields.notificationPhone?.trim() || null;
     if ('schedulingHandoffEnabled' in fields) record.schedulingHandoffEnabled = !!fields.schedulingHandoffEnabled;
-    return this.repo.save(record);
+    const saved = await this.repo.save(record);
+    // Regras de Alertas mudaram → enfileira os leads/agendamentos que já se encaixam.
+    if ('autoFollowupConfig' in fields || 'autoFollowupEnabled' in fields || 'appointmentReminder' in fields || 'followupLimitPerDay' in fields) {
+      followupTriggers.emit({ kind: 'config', tenantId: saved.id });
+    }
+    return saved;
   }
 
   private sanitizeKeyword(raw: string | null | undefined, fallback: string): string {
@@ -305,19 +326,35 @@ export class WhatsappConfigService {
     return { enabled: !!raw.enabled && !!message.trim(), message, hoursBefore: resolveReminderHours(raw.hoursBefore) };
   }
 
+  // Teto diário de follow-ups por número (anti-bloqueio), escolhido pela própria cliente.
+  // 1..100; inválido cai no padrão de 40.
+  private sanitizeFollowupLimit(raw: unknown): number {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n) || n < 1) return 40;
+    return Math.min(n, 100);
+  }
+
   // Aceita apenas as 3 raias conhecidas; força tipos e limites seguros.
+  // `activeSince` é do backend: mantém o da raia que já estava ligada, carimba "agora"
+  // na que acabou de ligar e some da desligada. O que vier do cliente é ignorado.
   private sanitizeAutoFollowup(
     raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null | undefined,
+    previous?: WhatsappConfig['autoFollowupConfig'],
   ): WhatsappConfig['autoFollowupConfig'] {
     if (!raw || typeof raw !== 'object') return null;
     const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'];
-    const clean: Record<string, { enabled: boolean; idleMinutes: number; message: string }> = {};
+    const now = new Date().toISOString();
+    const clean: NonNullable<WhatsappConfig['autoFollowupConfig']> = {};
     for (const stage of STAGES) {
       const cfg = raw[stage];
       if (!cfg || typeof cfg !== 'object') continue;
       const idleMinutes = Math.max(1, Math.floor(Number(cfg.idleMinutes) || 0));
       const message = String(cfg.message ?? '').slice(0, 1000);
-      clean[stage] = { enabled: !!cfg.enabled, idleMinutes, message };
+      const enabled = !!cfg.enabled;
+      const prev = previous?.[stage];
+      const rule: NonNullable<WhatsappConfig['autoFollowupConfig']>[string] = { enabled, idleMinutes, message };
+      if (enabled) rule.activeSince = prev?.enabled && prev.activeSince ? prev.activeSince : now;
+      clean[stage] = rule;
     }
     return Object.keys(clean).length > 0 ? clean : null;
   }

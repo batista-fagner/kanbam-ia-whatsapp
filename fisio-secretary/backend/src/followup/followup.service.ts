@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, IsNull } from 'typeorm';
@@ -9,11 +9,14 @@ import { Followup } from '../common/entities/followup.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { Agent } from '../common/entities/agent.entity';
 import { Lead, LeadStage } from '../common/entities/lead.entity';
+import { Appointment } from '../common/entities/appointment.entity';
 import { LeadsService } from '../leads/leads.service';
 import { LeadsGateway } from '../leads/leads.gateway';
 import { AiService } from '../ai/ai.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { FollowupQueueService } from './followup-queue.service';
+import { AppointmentReminderJob, CadenceStepJob, FollowupTriggerQueueService, IdleCheckJob } from './followup-trigger-queue.service';
+import { followupTriggers, FollowupTrigger } from '../common/followup-triggers';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 import { resolveReminderGate } from '../appointments/reminder-gate';
 
@@ -38,6 +41,22 @@ const DUE_POOL_SIZE = 200;
 // Teto diário padrão por tenant, usado se a config não tiver valor.
 const DEFAULT_FOLLOWUP_DAILY_LIMIT = 40;
 
+// ── Follow-up por evento (QUEUE_ENGINE=bullmq) ──
+// Raias que têm follow-up automático por inatividade (Regras de Alertas).
+const AUTO_FOLLOWUP_STAGES: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quente'] as LeadStage[];
+// Config por tenant em memória: toda mensagem enviada emite gatilho, e sem cache cada uma
+// leria a whatsapp_config. Salvar em Regras de Alertas invalida na hora; mudança feita
+// direto no banco (cadência) vale em até 1 min.
+const CONFIG_CACHE_MS = 60_000;
+// Varredura única da subida espera o boot assentar (webhook/IA primeiro).
+const BOOT_BACKFILL_DELAY_MS = 30_000;
+type AutoRule = { enabled: boolean; idleMinutes: number; message: string; activeSince?: string };
+
+// Lead só entra no follow-up por inatividade se a última mensagem (nossa) for de depois
+// que a raia foi ligada. Regra sem activeSince (gravada direto no banco) não dispara.
+const isAfterActivation = (rule: AutoRule, messageAt: Date): boolean =>
+  !!rule.activeSince && new Date(messageAt).getTime() >= Date.parse(rule.activeSince);
+
 // Follow-up "com conhecimento": em vez do template fixo configurado na tela de
 // alertas, gera a mensagem com IA usando o system_prompt real do agente que
 // estava atendendo (voz + regras + base de conhecimento) + a conversa até onde
@@ -60,8 +79,9 @@ const TENANT_FOLLOWUP_WINDOW_OVERRIDES: Record<string, { weekday: FollowupWindow
 };
 
 @Injectable()
-export class FollowupService {
+export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(FollowupService.name);
+  private readonly configCache = new Map<string, { cfg: WhatsappConfig | null; at: number }>();
 
   constructor(
     @InjectRepository(Followup)
@@ -77,7 +97,27 @@ export class FollowupService {
     private readonly http: HttpService,
     private readonly appointmentsService: AppointmentsService,
     private readonly followupQueue: FollowupQueueService,
+    private readonly triggerQueue: FollowupTriggerQueueService,
   ) {}
+
+  // Modo fila: passa a ouvir os gatilhos (salvar mensagem, mudar raia, religar IA,
+  // agendamento, config) e faz UMA varredura para enfileirar quem já estava na fila de
+  // espera antes do deploy. No legado nada disso liga e os crons seguem como antes.
+  onApplicationBootstrap(): void {
+    if (!this.queueMode) return;
+    followupTriggers.setListener((t) => {
+      void this.onTrigger(t).catch((err) =>
+        this.logger.error(`[FU-TRIGGER] Falha ao agendar (${t.kind}): ${err?.message ?? err}`));
+    });
+    setTimeout(() => {
+      void this.backfillAll().catch((err) =>
+        this.logger.error(`[FU-TRIGGER] Falha na varredura da subida: ${err?.message ?? err}`));
+    }, BOOT_BACKFILL_DELAY_MS).unref?.();
+  }
+
+  onModuleDestroy(): void {
+    followupTriggers.setListener(null);
+  }
 
   private get queueMode(): boolean {
     return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
@@ -286,39 +326,285 @@ export class FollowupService {
     }
   }
 
+  // ───────────────────────── Follow-up por evento (fila) ─────────────────────────
+  //
+  // Nada aqui varre o banco periodicamente. Cada gatilho (ver common/followup-triggers.ts)
+  // agenda UM job com delay para o instante exato; o job relê o banco na hora e decide.
+  // Job velho (o lead respondeu, mudou de raia, remarcou) não precisa ser cancelado:
+  // a âncora dele (mensagem / next_nurture_at / horário) não bate mais e ele sai sem fazer nada.
+
+  private async onTrigger(t: FollowupTrigger): Promise<void> {
+    switch (t.kind) {
+      case 'message': {
+        // Resposta do lead não agenda inatividade (só conta quando NÓS falamos por último);
+        // o relógio da cadência ela já reinicia em resetCadenceOnReply.
+        if (t.direction !== 'outbound') return;
+        const cfg = await this.getConfigCached(t.tenantId);
+        if (!cfg || !this.hasLeadFollowupWork(cfg)) return; // maioria dos tenants: zero consulta
+        const lead = await this.leadsService.findOne(t.leadId, t.tenantId);
+        if (!lead) return;
+        await this.scheduleIdleCheck(cfg, lead, { id: t.messageId, direction: 'outbound', createdAt: t.at });
+        await this.scheduleCadenceIfArmed(cfg, lead);
+        return;
+      }
+      case 'stage':
+      case 'ai-enabled': {
+        const lead = await this.leadsService.findOne(t.leadId, t.kind === 'stage' ? t.tenantId : undefined);
+        if (!lead) return;
+        const cfg = await this.getConfigCached(lead.tenantId);
+        if (!cfg || !this.hasLeadFollowupWork(cfg)) return;
+        await this.scheduleIdleCheck(cfg, lead);
+        await this.scheduleCadenceIfArmed(cfg, lead);
+        return;
+      }
+      case 'appointment': {
+        const appt = await this.appointmentsService.findById(t.appointmentId);
+        if (!appt?.tenantId) return;
+        const cfg = await this.getConfigCached(appt.tenantId);
+        if (cfg) await this.scheduleReminder(cfg, appt);
+        return;
+      }
+      case 'config': {
+        this.configCache.delete(t.tenantId);
+        const n = await this.backfillTenant(t.tenantId);
+        if (n > 0) this.logger.log(`[FU-TRIGGER] Config salva (tenant ${t.tenantId}): ${n} job(s) agendado(s)`);
+        return;
+      }
+    }
+  }
+
+  private async getConfigCached(tenantId: string): Promise<WhatsappConfig | null> {
+    const hit = this.configCache.get(tenantId);
+    if (hit && Date.now() - hit.at < CONFIG_CACHE_MS) return hit.cfg;
+    const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
+    this.configCache.set(tenantId, { cfg, at: Date.now() });
+    return cfg;
+  }
+
+  // Regra de inatividade válida para a raia — mesmas condições do cron legado.
+  private autoRuleFor(cfg: WhatsappConfig, stage: string): AutoRule | null {
+    if (cfg.archivedAt || cfg.autoFollowupEnabled === false) return null;
+    if (!AUTO_FOLLOWUP_STAGES.includes(stage as LeadStage)) return null;
+    const rule = cfg.autoFollowupConfig?.[stage];
+    if (!rule?.enabled || !rule.message?.trim() || !(rule.idleMinutes > 0)) return null;
+    return rule;
+  }
+
+  private cadenceStepsFor(cfg: WhatsappConfig, stage: string) {
+    if (cfg.archivedAt) return null;
+    const steps = cfg.followupCadence?.[stage];
+    return steps?.length ? steps : null;
+  }
+
+  private hasLeadFollowupWork(cfg: WhatsappConfig): boolean {
+    if (cfg.archivedAt) return false;
+    const hasRule = AUTO_FOLLOWUP_STAGES.some((s) => !!this.autoRuleFor(cfg, s));
+    const hasCadence = Object.values(cfg.followupCadence ?? {}).some((steps) => !!steps?.length);
+    return hasRule || hasCadence;
+  }
+
+  // Agenda o job de inatividade da raia atual, ancorado na última mensagem (nossa).
+  private async scheduleIdleCheck(
+    cfg: WhatsappConfig,
+    lead: Pick<Lead, 'id' | 'stage' | 'phone'> & { autoFollowupSentStages?: string[] },
+    last?: { id: string; direction: 'inbound' | 'outbound'; createdAt: Date },
+  ): Promise<void> {
+    const rule = this.autoRuleFor(cfg, lead.stage);
+    if (!rule || !lead.phone || lead.autoFollowupSentStages?.includes(lead.stage)) return;
+    const msg = last ?? await this.leadsService.getLastMessageInfo(lead.id);
+    if (!msg || msg.direction !== 'outbound' || !isAfterActivation(rule, msg.createdAt)) return;
+    const fireAt = new Date(new Date(msg.createdAt).getTime() + rule.idleMinutes * 60_000);
+    await this.triggerQueue.scheduleIdleCheck({ tenantId: cfg.id, leadId: lead.id, stage: lead.stage, messageId: msg.id }, fireAt);
+  }
+
+  private async scheduleCadenceIfArmed(cfg: WhatsappConfig, lead: Lead): Promise<void> {
+    if (!lead.nextNurtureAt || lead.nurturePaused || !this.cadenceStepsFor(cfg, lead.stage)) return;
+    await this.triggerQueue.scheduleCadenceStep(
+      { tenantId: cfg.id, leadId: lead.id, anchor: new Date(lead.nextNurtureAt).getTime() },
+      new Date(lead.nextNurtureAt),
+    );
+  }
+
+  // Fire-and-forget: chamado de dentro do fluxo de mensagem (resetCadenceOnReply).
+  private armCadence(tenantId: string, leadId: string, nextNurtureAt: Date): void {
+    void this.triggerQueue
+      .scheduleCadenceStep({ tenantId, leadId, anchor: nextNurtureAt.getTime() }, nextNurtureAt)
+      .catch((err) => this.logger.error(`[CADENCE] Falha ao agendar job p/ lead ${leadId}: ${err?.message ?? err}`));
+  }
+
+  private async scheduleReminder(cfg: WhatsappConfig, appt: Appointment): Promise<void> {
+    if (cfg.archivedAt) return;
+    const gate = resolveReminderGate(cfg.appointmentReminder);
+    if (gate.skip) return;
+    if (!['agendado', 'confirmado'].includes(appt.status) || appt.reminderSentAt || !appt.clientPhone) return;
+    const start = new Date(appt.startDateTime).getTime();
+    // Mesma regra do findDueReminders: em cima da hora não manda lembrete.
+    if (start - Date.now() < AppointmentsService.REMINDER_MIN_LEAD_MS) return;
+    const fireAt = new Date(start - gate.hoursBefore * 3600_000);
+    await this.triggerQueue.scheduleReminder({ appointmentId: appt.id, startMs: start }, gate.hoursBefore, fireAt);
+  }
+
+  // Job: lead parado na raia. Mesmas condições do findIdleLeadsForAutoFollowup, para UM lead.
+  async runIdleCheck(data: IdleCheckJob): Promise<void> {
+    const cfg = await this.configRepo.findOne({ where: { id: data.tenantId } });
+    const rule = cfg ? this.autoRuleFor(cfg, data.stage) : null;
+    if (!cfg || !rule) return;
+    const lead = await this.leadsService.findOne(data.leadId, data.tenantId);
+    if (!lead || lead.stage !== data.stage || !lead.phone || lead.autoFollowupSentStages?.includes(data.stage)) return;
+    const last = await this.leadsService.getLastMessageInfo(lead.id);
+    if (!last || last.id !== data.messageId || last.direction !== 'outbound') return; // teve mensagem depois
+    if (!isAfterActivation(rule, last.createdAt)) return; // parou antes de a raia ser ligada (ou religada)
+    if (!(await this.leadsService.getAiEnabled(lead.id))) return; // religar a IA reagenda
+
+    const dueAt = last.createdAt.getTime() + rule.idleMinutes * 60_000;
+    if (dueAt > Date.now() + 1_000) {
+      // Tempo de inatividade aumentou depois do agendamento.
+      await this.triggerQueue.scheduleIdleCheck(data, new Date(dueAt), `t${dueAt}`);
+      return;
+    }
+    if (!this.isWithinBusinessHours(cfg.id)) {
+      const opensAt = this.nextBusinessWindowStart(cfg.id);
+      await this.triggerQueue.scheduleIdleCheck(data, opensAt, `w${opensAt.getTime()}`);
+      return;
+    }
+    await this.createAutoFollowup(cfg, lead, data.stage, rule);
+  }
+
+  // Job: toque de cadência vencido. Mesmas condições do findDueCadenceLeads, para UM lead.
+  async runCadenceStep(data: CadenceStepJob): Promise<void> {
+    const cfg = await this.configRepo.findOne({ where: { id: data.tenantId } });
+    if (!cfg) return;
+    const lead = await this.leadsService.findOne(data.leadId, data.tenantId);
+    if (!lead?.nextNurtureAt || new Date(lead.nextNurtureAt).getTime() !== data.anchor) return; // lead respondeu
+    if (lead.nurturePaused || !lead.phone) return; // resposta nova tira a pausa e reagenda
+    const steps = this.cadenceStepsFor(cfg, lead.stage);
+    if (!steps) return; // mudar pra raia com cadência reagenda
+    // Lead falou por último: a resposta da IA (mensagem nossa) re-arma este mesmo job.
+    if (lead.lastMessageDirection !== 'outbound') return;
+    if (!(await this.leadsService.getAiEnabled(lead.id))) return;
+
+    if (!this.isWithinBusinessHours(cfg.id)) {
+      const opensAt = this.nextBusinessWindowStart(cfg.id);
+      await this.triggerQueue.scheduleCadenceStep(data, opensAt, `w${opensAt.getTime()}`);
+      return;
+    }
+    await this.fireCadenceStep(cfg, lead, steps);
+  }
+
+  // Job: lembrete de agendamento. Mesmas condições do findDueReminders, para UM agendamento.
+  async runAppointmentReminder(data: AppointmentReminderJob): Promise<void> {
+    const appt = await this.appointmentsService.findById(data.appointmentId);
+    if (!appt?.tenantId || new Date(appt.startDateTime).getTime() !== data.startMs) return; // remarcado
+    if (!['agendado', 'confirmado'].includes(appt.status) || appt.reminderSentAt || !appt.clientPhone) return;
+    const cfg = await this.configRepo.findOne({ where: { id: appt.tenantId } });
+    if (!cfg || cfg.archivedAt) return;
+    const gate = resolveReminderGate(cfg.appointmentReminder);
+    if (gate.skip) return;
+    const msLeft = data.startMs - Date.now();
+    if (msLeft < AppointmentsService.REMINDER_MIN_LEAD_MS) return;
+    // Antecedência diminuiu depois do agendamento: o job da antecedência nova já existe.
+    if (msLeft > gate.hoursBefore * 3600_000 + 60_000) return;
+    if (!(await this.appointmentsService.claimReminder(appt.id))) return;
+    await this.sendAppointmentReminder(cfg, appt);
+  }
+
+  // Varredura ÚNICA (subida do deploy / config salva): enfileira quem já estava esperando.
+  // Os jobIds são determinísticos, então rodar de novo não duplica nada.
+  private async backfillAll(): Promise<void> {
+    const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
+    let total = 0;
+    for (const cfg of configs) {
+      try {
+        total += await this.backfillTenant(cfg);
+      } catch (err) {
+        this.logger.error(`[FU-TRIGGER] Varredura falhou no tenant ${cfg.id}: ${err?.message ?? err}`);
+      }
+    }
+    this.logger.log(`[FU-TRIGGER] Varredura da subida: ${total} job(s) agendado(s)`);
+  }
+
+  private async backfillTenant(cfgOrId: WhatsappConfig | string): Promise<number> {
+    const cfg = typeof cfgOrId === 'string' ? await this.configRepo.findOne({ where: { id: cfgOrId } }) : cfgOrId;
+    if (!cfg || cfg.archivedAt) return 0;
+    let n = 0;
+
+    for (const stage of AUTO_FOLLOWUP_STAGES) {
+      const rule = this.autoRuleFor(cfg, stage);
+      if (!rule?.activeSince) continue;
+      for (const c of await this.leadsService.findAutoFollowupCandidates(cfg.id, stage, new Date(rule.activeSince))) {
+        await this.scheduleIdleCheck(cfg, c, { id: c.messageId, direction: 'outbound', createdAt: c.messageAt });
+        n++;
+      }
+    }
+
+    if (Object.values(cfg.followupCadence ?? {}).some((steps) => !!steps?.length)) {
+      for (const lead of await this.leadsService.findCadenceCandidates(cfg.id)) {
+        if (!this.cadenceStepsFor(cfg, lead.stage)) continue;
+        await this.scheduleCadenceIfArmed(cfg, lead);
+        n++;
+      }
+    }
+
+    if (!resolveReminderGate(cfg.appointmentReminder).skip) {
+      for (const appt of await this.appointmentsService.findUpcomingForReminder(cfg.id)) {
+        await this.scheduleReminder(cfg, appt);
+        n++;
+      }
+    }
+    return n;
+  }
+
   // ── Helpers anti-bloqueio ──
 
-  // Hora atual em Brasília (0–23).
-  private currentHourBRT(): number {
+  // Hora em Brasília (0–23) — agora, ou no instante `at`.
+  private currentHourBRT(at: Date = new Date()): number {
     const h = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false,
-    }).format(new Date());
+    }).format(at);
     // '24' pode aparecer à meia-noite em alguns ambientes — normaliza para 0.
     const n = parseInt(h, 10);
     return n === 24 ? 0 : n;
   }
 
   // Dia da semana em Brasília (0=domingo ... 6=sábado, igual Date#getDay()).
-  private currentWeekdayBRT(): number {
+  private currentWeekdayBRT(at: Date = new Date()): number {
     const short = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Sao_Paulo', weekday: 'short',
-    }).format(new Date());
+    }).format(at);
     const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    return map[short] ?? new Date().getDay();
+    return map[short] ?? at.getDay();
   }
 
   // tenantId opcional: se o tenant tiver uma janela customizada (ver
   // TENANT_FOLLOWUP_WINDOW_OVERRIDES), usa ela — com janela própria pra sáb/dom —
   // em vez do padrão 9h-20h (todo santo dia) do resto do sistema.
-  isWithinBusinessHours(tenantId?: string): boolean {
-    const h = this.currentHourBRT();
+  isWithinBusinessHours(tenantId?: string, at: Date = new Date()): boolean {
+    const h = this.currentHourBRT(at);
     const override = tenantId ? TENANT_FOLLOWUP_WINDOW_OVERRIDES[tenantId] : undefined;
     if (!override) {
       return h >= BUSINESS_START_HOUR && h < BUSINESS_END_HOUR;
     }
-    const dow = this.currentWeekdayBRT();
+    const dow = this.currentWeekdayBRT(at);
     const window = dow === 0 ? override.sunday : dow === 6 ? override.saturday : override.weekday;
     return h >= window.start && h < window.end;
+  }
+
+  // 00:00 de amanhã em Brasília (UTC-3 fixo, sem horário de verão desde 2019).
+  startOfNextDayBRT(from: Date = new Date()): Date {
+    const DAY = 24 * 3600_000;
+    const OFFSET = 3 * 3600_000;
+    return new Date(Math.floor((from.getTime() - OFFSET) / DAY) * DAY + DAY + OFFSET);
+  }
+
+  // Próximo instante dentro da janela de envio do tenant. As janelas abrem em hora cheia
+  // e o fuso de Brasília é inteiro, então andar de 15 em 15 min cai exatamente na abertura.
+  nextBusinessWindowStart(tenantId: string, from: Date = new Date()): Date {
+    const STEP = 15 * 60_000;
+    let t = Math.ceil(from.getTime() / STEP) * STEP;
+    for (let i = 0; i < 8 * 24 * 4; i++, t += STEP) {
+      if (this.isWithinBusinessHours(tenantId, new Date(t))) return new Date(t);
+    }
+    return new Date(from.getTime() + 60 * 60_000); // janela inválida: tenta de novo em 1h
   }
 
   private sleep(ms: number): Promise<void> {
@@ -383,6 +669,7 @@ export class FollowupService {
   // O claim atômico da raia garante "1x por raia, para sempre".
   @Cron('*/10 * * * *')
   async processAutoFollowups(): Promise<void> {
+    if (this.queueMode) return; // modo fila: job de inatividade por lead (runIdleCheck)
     // Fora do horário comercial (9h–20h BRT) nem agenda — evita acumular backlog de madrugada.
     if (!this.isWithinBusinessHours()) return;
 
@@ -398,40 +685,46 @@ export class FollowupService {
 
       for (const stage of STAGES) {
         const rule = fu[stage];
-        if (!rule?.enabled || !rule.message?.trim() || !(rule.idleMinutes > 0)) continue;
+        if (!rule?.enabled || !rule.message?.trim() || !(rule.idleMinutes > 0) || !rule.activeSince) continue;
 
         try {
-          const leads = await this.leadsService.findIdleLeadsForAutoFollowup(cfg.id, stage, rule.idleMinutes);
+          const leads = await this.leadsService.findIdleLeadsForAutoFollowup(cfg.id, stage, rule.idleMinutes, new Date(rule.activeSince));
           for (const lead of leads) {
-            // Claim atômico: só agenda se ESTA execução marcou a raia.
-            const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
-            if (!claimed) continue;
-
-            let message: string | null = null;
-            if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
-              message = await this.buildAgentAwareFollowupMessage(cfg.id, lead);
-            }
-            if (!message) {
-              message = this.interpolateName(rule.message, lead.name);
-            }
-            const savedAuto = await this.followupRepo.save(this.followupRepo.create({
-              tenantId: cfg.id,
-              leadId: lead.id,
-              phone: lead.phone,
-              message,
-              scheduledAt: new Date(),
-              status: 'pending',
-            }));
-            // Jitter espalha o lote criado neste tick (no modo fila os jobs correm em
-            // paralelo; no legado o sleep entre envios do processDue fazia esse papel).
-            await this.followupQueue.enqueue(savedAuto.id, savedAuto.scheduledAt, Math.floor(Math.random() * 8000));
-            this.logger.log(`[AUTO-FOLLOWUP] Agendado [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
+            await this.createAutoFollowup(cfg, lead, stage, rule);
           }
         } catch (err) {
           this.logger.error(`[AUTO-FOLLOWUP] Falha no tenant ${cfg.id} raia ${stage}: ${err?.message ?? err}`);
         }
       }
     }
+  }
+
+  // Claim atômico da raia + cria o follow-up pendente e põe na fila de envio. Usado pelo
+  // cron legado e pelo job de inatividade (runIdleCheck).
+  private async createAutoFollowup(cfg: WhatsappConfig, lead: Lead, stage: string, rule: AutoRule): Promise<void> {
+    // Claim atômico: só agenda se ESTA execução marcou a raia.
+    const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
+    if (!claimed) return;
+
+    let message: string | null = null;
+    if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
+      message = await this.buildAgentAwareFollowupMessage(cfg.id, lead);
+    }
+    if (!message) {
+      message = this.interpolateName(rule.message, lead.name);
+    }
+    const savedAuto = await this.followupRepo.save(this.followupRepo.create({
+      tenantId: cfg.id,
+      leadId: lead.id,
+      phone: lead.phone,
+      message,
+      scheduledAt: new Date(),
+      status: 'pending',
+    }));
+    // Jitter espalha o lote criado neste tick (no modo fila os jobs correm em
+    // paralelo; no legado o sleep entre envios do processDue fazia esse papel).
+    await this.followupQueue.enqueue(savedAuto.id, savedAuto.scheduledAt, Math.floor(Math.random() * 8000));
+    this.logger.log(`[AUTO-FOLLOWUP] Agendado [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
   }
 
   // Cadência de follow-up (múltiplos toques): reinicia o relógio de ociosidade
@@ -460,6 +753,8 @@ export class FollowupService {
       }
       const nextNurtureAt = new Date(Date.now() + steps[0].offsetMinutes * 60_000);
       await this.leadsService.update(lead.id, { nurtureStep: 0, nextNurtureAt, nurturePaused: false } as any, tenantId);
+      // Sem await: isto roda antes da IA responder — Redis lento não pode atrasar a resposta.
+      if (this.queueMode) this.armCadence(tenantId, lead.id, nextNurtureAt);
     } catch (err) {
       this.logger.error(`[CADENCE] Falha ao resetar p/ lead ${lead.id}: ${err?.message ?? err}`);
     }
@@ -473,6 +768,7 @@ export class FollowupService {
   // herdando automaticamente horário comercial / teto diário / espaçamento.
   @Cron(CronExpression.EVERY_MINUTE)
   async processCadenceFollowups(): Promise<void> {
+    if (this.queueMode) return; // modo fila: job por toque (runCadenceStep)
     // Cliente arquivado não dispara nada (follow-up automático, cadência, lembrete de consulta).
     const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
 
@@ -490,52 +786,63 @@ export class FollowupService {
         try {
           const leads = await this.leadsService.findDueCadenceLeads(cfg.id, stage);
           for (const lead of leads) {
-            const step = steps[lead.nurtureStep];
-            const expectedNextNurtureAt = lead.nextNurtureAt;
-
-            // Sem passo neste índice → cadência esgotada, encerra (sem reivindicar).
-            if (!step) {
-              await this.leadsService.update(lead.id, { nextNurtureAt: null } as any, cfg.id);
-              continue;
-            }
-
-            // Claim atômico: só segue quem conseguiu mover o next_nurture_at desta execução.
-            const claimed = await this.leadsService.claimCadenceStep(lead.id, expectedNextNurtureAt);
-            if (!claimed) continue;
-
-            let message: string | null = null;
-            if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
-              message = await this.buildAgentAwareFollowupMessage(cfg.id, lead, step.angle);
-            }
-            if (!message && step.fallbackMessage?.trim()) {
-              message = this.interpolateName(step.fallbackMessage, lead.name);
-            }
-
-            const nextStep = steps[lead.nurtureStep + 1];
-            const nextNurtureAt = nextStep ? new Date(Date.now() + nextStep.offsetMinutes * 60_000) : null;
-            await this.leadsService.update(lead.id, { nurtureStep: lead.nurtureStep + 1, nextNurtureAt } as any, cfg.id);
-
-            if (!message) {
-              this.logger.warn(`[CADENCE] Passo ${lead.nurtureStep} sem mensagem (agente falhou e sem fallbackMessage) — lead ${lead.id}, pulando envio`);
-              continue;
-            }
-
-            const savedCadence = await this.followupRepo.save(this.followupRepo.create({
-              tenantId: cfg.id,
-              leadId: lead.id,
-              phone: lead.phone,
-              message,
-              scheduledAt: new Date(),
-              status: 'pending',
-            }));
-            await this.followupQueue.enqueue(savedCadence.id, savedCadence.scheduledAt, Math.floor(Math.random() * 8000));
-            this.logger.log(`[CADENCE] Toque ${lead.nurtureStep + 1}/${steps.length} [raia=${stage}] → ${lead.phone} (lead ${lead.id})`);
+            await this.fireCadenceStep(cfg, lead, steps);
           }
         } catch (err) {
           this.logger.error(`[CADENCE] Falha no tenant ${cfg.id} raia ${stage}: ${err?.message ?? err}`);
         }
       }
     }
+  }
+
+  // Um toque de cadência: claim otimista no next_nurture_at, avança o passo, gera a
+  // mensagem e põe na fila de envio. Usado pelo cron legado e pelo job (runCadenceStep).
+  private async fireCadenceStep(
+    cfg: WhatsappConfig,
+    lead: Lead,
+    steps: { offsetMinutes: number; angle: string; fallbackMessage?: string }[],
+  ): Promise<void> {
+    const step = steps[lead.nurtureStep];
+    const expectedNextNurtureAt = lead.nextNurtureAt;
+
+    // Sem passo neste índice → cadência esgotada, encerra (sem reivindicar).
+    if (!step) {
+      await this.leadsService.update(lead.id, { nextNurtureAt: null } as any, cfg.id);
+      return;
+    }
+
+    // Claim atômico: só segue quem conseguiu mover o next_nurture_at desta execução.
+    const claimed = await this.leadsService.claimCadenceStep(lead.id, expectedNextNurtureAt);
+    if (!claimed) return;
+
+    let message: string | null = null;
+    if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
+      message = await this.buildAgentAwareFollowupMessage(cfg.id, lead, step.angle);
+    }
+    if (!message && step.fallbackMessage?.trim()) {
+      message = this.interpolateName(step.fallbackMessage, lead.name);
+    }
+
+    const nextStep = steps[lead.nurtureStep + 1];
+    const nextNurtureAt = nextStep ? new Date(Date.now() + nextStep.offsetMinutes * 60_000) : null;
+    await this.leadsService.update(lead.id, { nurtureStep: lead.nurtureStep + 1, nextNurtureAt } as any, cfg.id);
+    if (this.queueMode && nextNurtureAt) this.armCadence(cfg.id, lead.id, nextNurtureAt);
+
+    if (!message) {
+      this.logger.warn(`[CADENCE] Passo ${lead.nurtureStep} sem mensagem (agente falhou e sem fallbackMessage) — lead ${lead.id}, pulando envio`);
+      return;
+    }
+
+    const savedCadence = await this.followupRepo.save(this.followupRepo.create({
+      tenantId: cfg.id,
+      leadId: lead.id,
+      phone: lead.phone,
+      message,
+      scheduledAt: new Date(),
+      status: 'pending',
+    }));
+    await this.followupQueue.enqueue(savedCadence.id, savedCadence.scheduledAt, Math.floor(Math.random() * 8000));
+    this.logger.log(`[CADENCE] Toque ${lead.nurtureStep + 1}/${steps.length} [raia=${lead.stage}] → ${lead.phone} (lead ${lead.id})`);
   }
 
   // A cada 5 minutos: envia lembrete com a antecedência configurada pelo tenant
@@ -547,51 +854,57 @@ export class FollowupService {
   // explícito pedido pelo produto — o lead não recebe nada.
   @Cron('*/5 * * * *')
   async processAppointmentReminders(): Promise<void> {
+    if (this.queueMode) return; // modo fila: job por agendamento (runAppointmentReminder)
     // Cliente arquivado não dispara nada (follow-up automático, cadência, lembrete de consulta).
     const configs = await this.configRepo.find({ where: { archivedAt: IsNull() } });
 
     for (const cfg of configs) {
       const gate = resolveReminderGate(cfg.appointmentReminder);
       if (gate.skip) continue;
-      const reminder = cfg.appointmentReminder!;
 
       try {
         const appointments = await this.appointmentsService.findDueReminders(cfg.id, gate.hoursBefore);
         for (const appt of appointments) {
           // Claim atômico: marca reminder_sent_at antes de enviar para evitar duplo envio.
           await this.appointmentsService.markReminderSent(appt.id);
-
-          const hora = appt.startDateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
-          const data = appt.startDateTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
-          const profissional = await this.appointmentsService.professionalNameFor(appt);
-          const message = this.interpolateAppointment(reminder.message, appt.clientName, hora, data, appt.service, profissional);
-
-          const token = await this.resolveTenantToken(cfg.id);
-          if (!token) continue;
-
-          const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
-          await firstValueFrom(
-            this.http.post(`${baseUrl}/send/text`, { number: appt.clientPhone, text: message }, { headers: { token } }),
-          );
-          this.logger.log(`[REMINDER] Enviado → ${appt.clientPhone} (appt ${appt.id}, ${data} ${hora})`);
-
-          // Registra na conversa do lead (aparece no CRM e entra no histórico da IA). Falha aqui
-          // não pode derrubar o loop: o lembrete já foi enviado e reminder_sent_at já está marcado.
-          if (appt.leadId) {
-            try {
-              const conversation = await this.leadsService.getConversationWithMessages(appt.leadId, cfg.id);
-              if (conversation?.id) {
-                await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', message);
-                const lead = await this.leadsService.findOne(appt.leadId, cfg.id);
-                if (lead) this.leadsGateway.emitLeadUpdated(lead);
-              }
-            } catch (err) {
-              this.logger.error(`[REMINDER] Enviado, mas falhou ao gravar na conversa (appt ${appt.id}): ${err?.message ?? err}`);
-            }
-          }
+          await this.sendAppointmentReminder(cfg, appt);
         }
       } catch (err) {
         this.logger.error(`[REMINDER] Falha no tenant ${cfg.id}: ${err?.message ?? err}`);
+      }
+    }
+  }
+
+  // Envia o lembrete (reminder_sent_at já marcado por quem chamou) e grava na conversa.
+  // Usado pelo cron legado e pelo job (runAppointmentReminder).
+  private async sendAppointmentReminder(cfg: WhatsappConfig, appt: Appointment): Promise<void> {
+    const reminder = cfg.appointmentReminder!;
+    const hora = appt.startDateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const data = appt.startDateTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const profissional = await this.appointmentsService.professionalNameFor(appt);
+    const message = this.interpolateAppointment(reminder.message, appt.clientName, hora, data, appt.service, profissional);
+
+    const token = await this.resolveTenantToken(cfg.id);
+    if (!token) return;
+
+    const baseUrl = this.config.get<string>('UAZAPI_BASE_URL') ?? '';
+    await firstValueFrom(
+      this.http.post(`${baseUrl}/send/text`, { number: appt.clientPhone, text: message }, { headers: { token } }),
+    );
+    this.logger.log(`[REMINDER] Enviado → ${appt.clientPhone} (appt ${appt.id}, ${data} ${hora})`);
+
+    // Registra na conversa do lead (aparece no CRM e entra no histórico da IA). Falha aqui
+    // não pode derrubar o loop: o lembrete já foi enviado e reminder_sent_at já está marcado.
+    if (appt.leadId) {
+      try {
+        const conversation = await this.leadsService.getConversationWithMessages(appt.leadId, cfg.id);
+        if (conversation?.id) {
+          await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', message);
+          const lead = await this.leadsService.findOne(appt.leadId, cfg.id);
+          if (lead) this.leadsGateway.emitLeadUpdated(lead);
+        }
+      } catch (err) {
+        this.logger.error(`[REMINDER] Enviado, mas falhou ao gravar na conversa (appt ${appt.id}): ${err?.message ?? err}`);
       }
     }
   }

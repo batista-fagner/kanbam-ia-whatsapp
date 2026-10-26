@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Appointment, AppointmentService as ServiceType, AppointmentStatus } from '../common/entities/appointment.entity';
 import { AgendaProfessional } from '../common/entities/agenda-professional.entity';
+import { followupTriggers } from '../common/followup-triggers';
 
 export interface CreateAppointmentDto {
   tenantId?: string | null;
@@ -64,7 +65,9 @@ export class AppointmentsService {
       endDateTime: dto.endDateTime ? (typeof dto.endDateTime === 'string' ? new Date(dto.endDateTime) : dto.endDateTime) : null,
       notes: dto.notes ?? null,
     });
-    return this.repo.save(appt);
+    const saved = await this.repo.save(appt);
+    followupTriggers.emit({ kind: 'appointment', appointmentId: saved.id });
+    return saved;
   }
 
   async update(id: string, dto: UpdateAppointmentDto, tenantId?: string): Promise<Appointment> {
@@ -82,7 +85,9 @@ export class AppointmentsService {
     }
     if (dto.notes !== undefined) appt.notes = dto.notes;
     if (dto.leadId !== undefined) appt.leadId = dto.leadId;
-    return this.repo.save(appt);
+    const saved = await this.repo.save(appt);
+    followupTriggers.emit({ kind: 'appointment', appointmentId: saved.id });
+    return saved;
   }
 
   async delete(id: string, tenantId?: string): Promise<void> {
@@ -132,4 +137,35 @@ export class AppointmentsService {
   async markReminderSent(id: string): Promise<void> {
     await this.repo.update({ id }, { reminderSentAt: new Date() });
   }
+
+  // Versão condicional do markReminderSent para o job da fila: o BullMQ pode reentregar
+  // um job (worker morto, redeploy) e só quem marcar a linha primeiro envia o lembrete.
+  async claimReminder(id: string): Promise<boolean> {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Appointment)
+      .set({ reminderSentAt: () => 'now()' })
+      .where('id = :id AND reminder_sent_at IS NULL', { id })
+      .execute();
+    return result.affected === 1;
+  }
+
+  async findById(id: string): Promise<Appointment | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
+  // Agendamentos futuros que ainda vão receber lembrete — usado uma vez, na subida ou ao
+  // salvar a config, para enfileirar os jobs de quem já estava marcado.
+  async findUpcomingForReminder(tenantId: string): Promise<Appointment[]> {
+    return this.repo
+      .createQueryBuilder('a')
+      .where('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.status IN (:...statuses)', { statuses: ['agendado', 'confirmado'] })
+      .andWhere('a.start_date_time > now()')
+      .andWhere('a.reminder_sent_at IS NULL')
+      .andWhere('a.client_phone IS NOT NULL')
+      .getMany();
+  }
+
+  static readonly REMINDER_MIN_LEAD_MS = AppointmentsService.MIN_LEAD_MINUTES * 60 * 1000;
 }

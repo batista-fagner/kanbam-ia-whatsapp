@@ -48,13 +48,14 @@ const rules = [
     description: 'Leads que pararam de responder recebem uma única mensagem de reengajamento por raia. Configurável por raia com texto e tempo de ociosidade personalizados.',
     items: [
       { label: 'Gatilho',       color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: 'Última mensagem foi nossa (IA ou operador) + lead sem responder pelo tempo configurado', reason: 'Não cobra leads que estão esperando nossa resposta.' },
-      { label: 'Frequência',    color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Verificação a cada minuto',                                                             reason: 'Cron detecta leads ociosos e agenda o envio automaticamente.' },
+      { label: 'Frequência',    color: 'bg-gray-50 text-gray-700 border-gray-200',    rule: 'Agendado para o minuto exato em que o tempo vence',                                     reason: 'Quando a última mensagem sai, o sistema marca a hora; se o lead responder antes, o envio é cancelado.' },
+      { label: 'Início',        color: 'bg-rose-50 text-rose-700 border-rose-200',    rule: 'Só quem parar de responder depois que a raia foi ligada',                               reason: 'Ligar a regra não dispara para a base antiga de leads (evita bloqueio do número).' },
       { label: 'Limite',        color: 'bg-amber-50 text-amber-700 border-amber-200', rule: '1 mensagem por raia, para sempre',                                                       reason: 'Mesmo que o lead volte à raia, não recebe novamente.' },
       { label: 'Raias cobertas', color: 'bg-purple-50 text-purple-700 border-purple-200', rule: 'Novo Lead · Lead Frio · Lead Quente',                                               reason: 'Cada raia tem sua própria mensagem e tempo configurados.' },
       { label: 'Pré-requisitos', color: 'bg-rose-50 text-rose-700 border-rose-200',   rule: 'IA ligada no lead + telefone preenchido',                                               reason: 'Leads com IA desativada (atendimento manual) não recebem.' },
       { label: 'Variável',      color: 'bg-blue-50 text-blue-700 border-blue-200',    rule: '{nome} → primeiro nome do lead',                                                        reason: 'Se o lead não tiver nome, o placeholder é removido automaticamente.' },
       { label: 'Variação',      color: 'bg-teal-50 text-teal-700 border-teal-200',    rule: '{opção A|opção B} → sorteia uma redação por envio',                                     reason: 'Anti-bloqueio: cada lead recebe um texto único, evitando mensagens idênticas em massa.' },
-      { label: 'Proteção',      color: 'bg-amber-50 text-amber-700 border-amber-200', rule: 'Janela 9h–20h · lote espaçado · teto diário por conta',                                 reason: 'Evita rajada e horários suspeitos que levam a bloqueio pelo WhatsApp.' },
+      { label: 'Proteção',      color: 'bg-amber-50 text-amber-700 border-amber-200', rule: 'Janela 9h–20h · 1 envio a cada 3 min · limite diário escolhido por você',             reason: 'Evita rajada e horários suspeitos que levam a bloqueio pelo WhatsApp. Passou do limite, o restante sai no dia seguinte.' },
     ],
     extra: 'O envio é feito pelo mesmo mecanismo do follow-up manual. A mensagem aparece na conversa do lead e atualiza o Kanban em tempo real.',
   },
@@ -132,6 +133,7 @@ const rules = [
 export default function AlertRulesPage() {
   const [autoFollowup, setAutoFollowup]   = useState(emptyFollowup())
   const [followupEnabled, setFollowupEnabled] = useState(true)
+  const [dailyLimit, setDailyLimit] = useState(40)
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved]   = useState(false)
 
@@ -162,6 +164,7 @@ export default function AlertRulesPage() {
         if (typeof data?.autoFollowupEnabled === 'boolean') {
           setFollowupEnabled(data.autoFollowupEnabled)
         }
+        if (Number(data?.followupLimitPerDay) > 0) setDailyLimit(Number(data.followupLimitPerDay))
 
         const ar = data?.appointmentReminder
         if (ar && typeof ar === 'object') {
@@ -185,11 +188,14 @@ export default function AlertRulesPage() {
     setSavingFollowup(true)
     setFollowupSaved(false)
     try {
-      await authFetch(`${API_URL}/instance/config`, {
+      const res = await authFetch(`${API_URL}/instance/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoFollowupConfig: followupToConfig(autoFollowup) }),
+        body: JSON.stringify({ autoFollowupConfig: followupToConfig(autoFollowup), followupLimitPerDay: dailyLimit }),
       })
+      // Reflete o limite que o backend gravou (ele limita a 1..100).
+      const saved = await res.json().catch(() => null)
+      if (Number(saved?.followupLimitPerDay) > 0) setDailyLimit(Number(saved.followupLimitPerDay))
       setFollowupSaved(true)
       setTimeout(() => setFollowupSaved(false), 2500)
     } finally {
@@ -295,7 +301,7 @@ export default function AlertRulesPage() {
             <p className="text-sm text-gray-500 mb-2">
               Leads que pararam de responder recebem <strong>uma única</strong> mensagem por raia.
               Use <code className="px-1 py-0.5 bg-gray-100 rounded text-teal-700">{'{nome}'}</code> para o primeiro nome.
-              Verificação a cada minuto.
+              Só recebe quem parar de responder <strong>depois</strong> que a raia for ligada — leads antigos não recebem.
             </p>
             <div className={`transition-opacity ${followupEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
             <div className="mb-4 p-3 bg-teal-50 border border-teal-100 rounded-lg text-xs text-gray-600 leading-relaxed">
@@ -306,7 +312,7 @@ export default function AlertRulesPage() {
               <br />
               Ex: <code className="px-1 py-0.5 bg-white rounded text-teal-700">{'{Oi|Olá|Ei} {nome}! {Vamos combinar?|Bora marcar?|Que tal agendar?}'}</code>
               <br />
-              <span className="text-gray-500">Envios são espaçados e só saem entre <strong>9h e 20h</strong>, com teto diário por conta.</span>
+              <span className="text-gray-500">Envios saem 1 a cada 3 minutos, só entre <strong>9h e 20h</strong>, até o limite diário abaixo.</span>
             </div>
 
             <div className="space-y-3">
@@ -358,6 +364,25 @@ export default function AlertRulesPage() {
                   </div>
                 )
               })}
+            </div>
+
+            <div className="mt-4 border border-amber-200 bg-amber-50/50 rounded-lg p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-gray-800">Limite por dia:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={dailyLimit}
+                  onChange={e => setDailyLimit(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-gray-800 bg-white"
+                />
+                <span className="text-sm text-gray-500">follow-ups por dia neste número</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Vale para todos os follow-ups (automáticos e agendados no card). Ao atingir o limite, o restante sai no dia seguinte.
+                Recomendado: até <strong>40</strong> — mais que isso aumenta o risco de bloqueio do WhatsApp.
+              </p>
             </div>
             </div>
 

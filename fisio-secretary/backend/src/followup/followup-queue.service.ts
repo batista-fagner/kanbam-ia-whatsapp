@@ -1,13 +1,16 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import { FOLLOWUP_QUEUE_NAME, JOB_DISPATCH_FOLLOWUP, QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 
 // Um job por follow-up, agendado para o próprio scheduledAt — no lugar do cron que varre
 // a tabela inteira a cada minuto procurando vencidos.
 @Injectable()
-export class FollowupQueueService {
+export class FollowupQueueService implements OnModuleDestroy {
+  private slotRedis: Redis | null = null;
+
   constructor(
     // @Optional: no modo legado a fila nem é registrada (ver queue.module.ts).
     @Optional() @InjectQueue(FOLLOWUP_QUEUE_NAME) private readonly queue: Queue | null,
@@ -57,6 +60,40 @@ export class FollowupQueueService {
         removeOnFail: { count: 200 },
       },
     );
+  }
+
+  // Vaga de envio por tenant (anti-rajada): SET NX com TTL no Redis da fila. Só UM job
+  // por tenant consegue a vaga a cada janela — o processor roda com concorrência 5, e a
+  // checagem "último envio há menos de 3 min" lida do banco deixava passar vários jobs do
+  // mesmo tenant no mesmo instante (todos leem o mesmo último envio antes de qualquer um
+  // enviar). Retorna 0 se pegou a vaga, ou quantos ms faltam para ela abrir.
+  async tryAcquireSendSlot(tenantId: string, gapMs: number): Promise<number> {
+    if (!this.enabled) return 0;
+    const redis = this.getSlotRedis();
+    const key = `fisio-bullmq:followup-send-slot:${tenantId}`;
+    const ok = await redis.set(key, '1', 'PX', gapMs, 'NX');
+    if (ok === 'OK') return 0;
+    const ttl = await redis.pttl(key);
+    return ttl > 0 ? ttl : 1_000;
+  }
+
+  // Conexão própria (mesmo Redis/db da fila): o cliente que o BullMQ v6 expõe não tem
+  // SET NX. Só abre no modo fila, na primeira vez que alguém pede vaga.
+  private getSlotRedis(): Redis {
+    if (!this.slotRedis) {
+      this.slotRedis = new Redis({
+        host: this.config.get<string>('REDIS_HOST') ?? 'localhost',
+        port: Number(this.config.get<string>('REDIS_PORT') ?? 6379),
+        password: this.config.get<string>('REDIS_PASSWORD') || undefined,
+        db: Number(this.config.get<string>('REDIS_BULLMQ_DB') ?? 2),
+        maxRetriesPerRequest: 2,
+      });
+    }
+    return this.slotRedis;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.slotRedis?.quit().catch(() => undefined);
   }
 
   // Sem guard de propósito: remover um jobId inexistente é no-op, então funciona igual

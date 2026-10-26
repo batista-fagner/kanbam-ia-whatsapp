@@ -9,6 +9,15 @@ export const JOB_DEEP_RECONCILE = 'deep-reconcile';
 export const FOLLOWUP_QUEUE_NAME = 'followup-dispatch';
 export const JOB_DISPATCH_FOLLOWUP = 'dispatch';
 
+// Gatilhos do follow-up: em vez de cron varrendo lead parado / toque vencido / lembrete
+// na janela, um job com delay para o instante exato, criado quando o dado muda (ver
+// common/followup-triggers.ts). Fila separada da de envio de propósito: aqui só se
+// decide SE vai ter follow-up; o envio continua passando pela followup-dispatch.
+export const FOLLOWUP_TRIGGER_QUEUE_NAME = 'followup-triggers';
+export const JOB_IDLE_CHECK = 'idle-check';
+export const JOB_CADENCE_STEP = 'cadence-step';
+export const JOB_APPOINTMENT_REMINDER = 'appointment-reminder';
+
 // Onboarding pós-pagamento: a 2ª mensagem (link do formulário) sai X minutos depois da
 // criação do grupo — job com delay, sem cron varrendo nada.
 export const ONBOARDING_QUEUE_NAME = 'onboarding-messages';

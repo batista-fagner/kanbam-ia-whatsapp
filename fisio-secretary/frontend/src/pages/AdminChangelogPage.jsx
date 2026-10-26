@@ -7,6 +7,21 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Follow-up sem varredura do banco: tudo por fila (Redis/BullMQ) — todos os clientes',
+    date: '26/10/2026',
+    detail: 'Follow-up por inatividade (Regras de Alertas), cadência de vários toques e lembrete de agendamento deixaram de depender de crons que perguntavam ao banco a cada 1-10 min "quem está parado?". Agora, quando a IA ou o atendente manda a última mensagem, o sistema agenda um job para o horário exato (mensagem + tempo da raia); se o lead responder, mudar de raia ou a IA for desligada, o job morre sozinho. Agendar/remarcar consulta agenda o lembrete; salvar a regra enfileira quem já estava parado. Fora do horário comercial o job espera a abertura. A IA respondendo não é afetada (o agendamento é em segundo plano). Rollback: QUEUE_ENGINE diferente de bullmq volta pros crons antigos.',
+  },
+  {
+    title: 'Follow-up só para quem parar de responder depois de ligar a raia + limite diário na tela',
+    date: '26/10/2026',
+    detail: 'Antes, ligar uma regra de follow-up disparava para todo lead antigo parado naquela raia (no teste, 625 de uma vez, alguns de meses atrás) — risco de bloqueio do chip (ex.: DALU, que vai começar a usar). Agora cada raia guarda quando foi ligada e só recebe quem parar de responder depois disso; as regras que já estavam ligadas começaram a contar na hora do deploy. Desligar e religar recomeça do zero. Novo campo "Limite por dia" em Regras de Alertas (1 a 100, padrão 40): a própria cliente escolhe quantos follow-ups o número dela manda por dia; o que passar sai no dia seguinte.',
+  },
+  {
+    title: 'Follow-ups do mesmo cliente saindo juntos (anti-bloqueio)',
+    date: '26/10/2026',
+    detail: 'A fila de envio processa 5 follow-ups em paralelo e a regra de "3 min entre envios do mesmo cliente" deixava passar rajadas (2 envios com 40 ms de diferença no teste). Agora cada cliente tem uma vaga de envio no Redis: só um follow-up sai a cada 3 min, os outros esperam a vez.',
+  },
+  {
     title: 'Inbox: "não lidas" + som de mensagem nova',
     date: '25/10/2026',
     detail: 'Conversa em que o cliente escreveu e ninguém abriu nem respondeu fica em destaque com o número de mensagens novas; número total aparece ao lado de "Inbox" no menu e no título da aba ("(3) ..."), em qualquer tela. Abrir a conversa (na Inbox ou no card do Kanban) tira o "não lida" para todos os atendentes; resposta da IA também tira. Novo filtro "Não lidas". Som curto de aviso com 3 opções no topo da Inbox: todas as mensagens, só conversas com a IA desligada, ou desligado (fica salvo no navegador). Conversas antigas começaram como lidas.',
@@ -453,6 +468,12 @@ const PENDING = [
 ]
 
 const BUGS = [
+  {
+    title: 'Follow-ups do mesmo cliente saindo em rajada pela fila',
+    date: '26/10/2026',
+    detail: 'Com vários follow-ups prontos ao mesmo tempo, a fila enviava até 5 de uma vez para o mesmo número de WhatsApp, ignorando o intervalo de 3 min — risco de bloqueio.',
+    status: 'corrigido',
+  },
   {
     title: 'Áudios chegando em branco pra IA desde 07/10 (todos os clientes)',
     date: '09/10/2026',

@@ -82,6 +82,7 @@ export class InstanceController {
       promptEngine?: string;
       notificationPhone?: string | null;
       schedulingHandoffEnabled?: boolean;
+      followupLimitPerDay?: number;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

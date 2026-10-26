@@ -35,9 +35,11 @@ export class WhatsappConfig {
   @Column({ name: 'custom_prompt_megahair', nullable: true, type: 'text' })
   customPromptMegaHair: string | null;
 
-  // Follow-up automático por raia. Ex: { novo_lead: { enabled, idleMinutes, message }, ... }
+  // Follow-up automático por raia. Ex: { novo_lead: { enabled, idleMinutes, message, activeSince }, ... }
+  // `activeSince` (ISO): quando a raia foi ligada. Só conta lead que parou de responder
+  // depois disso — gravado pelo backend ao ligar, nunca vem do cliente.
   @Column({ name: 'auto_followup_config', type: 'jsonb', nullable: true })
-  autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string }> | null;
+  autoFollowupConfig: Record<string, { enabled: boolean; idleMinutes: number; message: string; activeSince?: string }> | null;
 
   // Chave-mestra: desliga o follow-up automático inteiro (todas as raias) sem apagar a config salva.
   // O cliente decide se quer o recurso ligado; default true para não quebrar quem já usa.

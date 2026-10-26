@@ -9,9 +9,10 @@ import { FollowupQueueService } from './followup-queue.service';
 import { FOLLOWUP_QUEUE_NAME } from '../queue/queue.constants';
 
 // Mesmas proteções anti-bloqueio do processDue(), só que aplicadas a um follow-up por vez.
-// Quando uma delas barra o envio, o job é reagendado em vez de "ficar pending esperando o
-// próximo tick" — o efeito é o mesmo, sem varrer a tabela.
-const BLOCKED_RETRY_DELAY_MS = 5 * 60_000;
+// Quando uma delas barra o envio, o job é reagendado para o instante em que ela deixa de
+// barrar (abertura da janela, virada do dia) — sem reperguntar de tempos em tempos.
+// Jitter: vários follow-ups barrados não voltam todos no mesmo milissegundo.
+const REOPEN_JITTER_MS = 60_000;
 const MIN_TENANT_SEND_GAP_MS = 3 * 60 * 1000; // igual ao followup.service.ts
 
 @Processor(FOLLOWUP_QUEUE_NAME, { concurrency: 5 })
@@ -30,10 +31,9 @@ export class FollowupDispatchProcessor extends WorkerHost {
     const f = await this.followupRepo.findOne({ where: { id: job.data.followupId } });
     if (!f || f.status !== 'pending') return; // cancelado no painel ou já enviado
 
-    // PROTEÇÃO 1 — janela de horário do tenant. Recalcular o horário exato de abertura
-    // exigiria repetir a lógica de fuso/overrides; reperguntar a cada 5min custa quase nada.
+    // PROTEÇÃO 1 — janela de horário do tenant: volta na abertura.
     if (!this.followups.isWithinBusinessHours(f.tenantId)) {
-      await this.reschedule(f.id, BLOCKED_RETRY_DELAY_MS);
+      await this.rescheduleAt(f.id, this.followups.nextBusinessWindowStart(f.tenantId));
       return;
     }
 
@@ -43,8 +43,9 @@ export class FollowupDispatchProcessor extends WorkerHost {
       this.followups.followupDailyLimit(f.tenantId),
     ]);
     if (sentToday >= limit) {
-      this.logger.warn(`[FOLLOWUP][queue] Teto diário (${limit}) atingido p/ tenant ${f.tenantId} — adiando`);
-      await this.reschedule(f.id, BLOCKED_RETRY_DELAY_MS);
+      // Teto do dia (escolhido pela cliente em Regras de Alertas): volta na abertura de amanhã.
+      this.logger.warn(`[FOLLOWUP][queue] Teto diário (${limit}) atingido p/ tenant ${f.tenantId} — adiando pra amanhã`);
+      await this.rescheduleAt(f.id, this.followups.nextBusinessWindowStart(f.tenantId, this.followups.startOfNextDayBRT()));
       return;
     }
 
@@ -57,12 +58,25 @@ export class FollowupDispatchProcessor extends WorkerHost {
       return;
     }
 
+    // PROTEÇÃO 4 — vaga atômica por tenant: a PROTEÇÃO 3 sozinha não segura jobs
+    // concorrentes do mesmo tenant (lêem o mesmo "último envio" no mesmo instante).
+    const slotWaitMs = await this.followupQueue.tryAcquireSendSlot(f.tenantId, MIN_TENANT_SEND_GAP_MS);
+    if (slotWaitMs > 0) {
+      await this.reschedule(f.id, slotWaitMs + Math.floor(Math.random() * 5000));
+      return;
+    }
+
     // Claim atômico + envio. Se lançar, o BullMQ aplica attempts/backoff.
     await this.followups.claimAndSend(f);
   }
 
   private async reschedule(followupId: string, delayMs: number): Promise<void> {
     await this.followupQueue.requeue(followupId, delayMs);
+  }
+
+  private async rescheduleAt(followupId: string, at: Date): Promise<void> {
+    const delay = Math.max(1_000, at.getTime() - Date.now()) + Math.floor(Math.random() * REOPEN_JITTER_MS);
+    await this.reschedule(followupId, delay);
   }
 
   // Só dispara depois de esgotadas as tentativas (attempts) — aí sim é falha definitiva.

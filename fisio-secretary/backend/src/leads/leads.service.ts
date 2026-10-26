@@ -10,6 +10,7 @@ import { Appointment } from '../common/entities/appointment.entity';
 import { MediaService } from '../media/media.service';
 import { normalizeWhatsAppPhone, phoneAlternates } from './phone-normalize.util';
 import { LeadsGateway } from './leads.gateway';
+import { followupTriggers } from '../common/followup-triggers';
 
 // Não lida = a última mensagem é do cliente e chegou depois da última vez que alguém abriu a
 // conversa. Resposta da IA ou do operador também tira do "não lida" (já foi atendida).
@@ -52,7 +53,8 @@ export class LeadsService implements OnApplicationBootstrap {
   // Follow-up automático: leads ociosos elegíveis numa raia.
   // Critérios: nós falamos por último (outbound), passou o tempo de ociosidade,
   // a IA está ligada na conversa e a raia ainda não recebeu follow-up automático.
-  async findIdleLeadsForAutoFollowup(tenantId: string, stage: LeadStage, idleMinutes: number): Promise<Lead[]> {
+  // `since`: hora em que a raia foi ligada — quem parou antes disso nunca recebe.
+  async findIdleLeadsForAutoFollowup(tenantId: string, stage: LeadStage, idleMinutes: number, since: Date): Promise<Lead[]> {
     return this.leadsRepo
       .createQueryBuilder('l')
       .innerJoin(Conversation, 'c', 'c.lead_id = l.id')
@@ -61,6 +63,7 @@ export class LeadsService implements OnApplicationBootstrap {
       .andWhere("l.last_message_direction = 'outbound'")
       .andWhere('l.last_message_at IS NOT NULL')
       .andWhere(`l.last_message_at <= (now() - (:idleMinutes || ' minutes')::interval)`, { idleMinutes })
+      .andWhere('l.last_message_at >= :since', { since })
       .andWhere('c.ai_enabled = true')
       .andWhere('NOT (l.auto_followup_sent_stages @> to_jsonb(:stage::text))', { stage })
       .andWhere("l.phone <> ''")
@@ -119,6 +122,59 @@ export class LeadsService implements OnApplicationBootstrap {
       .andWhere('NOT (auto_followup_sent_stages @> to_jsonb(:stage::text))', { stage })
       .execute();
     return result.affected === 1;
+  }
+
+  // Follow-up por evento: última mensagem da conversa do lead. O job de inatividade é
+  // ancorado nela — se depois dela entrou outra mensagem, o job vira no-op.
+  async getLastMessageInfo(leadId: string): Promise<{ id: string; direction: 'inbound' | 'outbound'; createdAt: Date } | null> {
+    const rows = await this.messagesRepo.query(
+      `SELECT m.id, m.direction, m.created_at
+         FROM conversations c
+         JOIN messages m ON m.conversation_id = c.id
+        WHERE c.lead_id = $1
+        ORDER BY m.created_at DESC
+        LIMIT 1`,
+      [leadId],
+    );
+    const r = rows[0];
+    return r ? { id: r.id, direction: r.direction, createdAt: new Date(r.created_at) } : null;
+  }
+
+  // Mesmos critérios do findIdleLeadsForAutoFollowup, sem o filtro de tempo e já com a
+  // última mensagem (LATERAL, uma consulta só): é a varredura ÚNICA feita na subida ou ao
+  // salvar a regra, para enfileirar quem já estava parado. O tempo é decidido pelo job.
+  async findAutoFollowupCandidates(tenantId: string, stage: LeadStage, since: Date): Promise<Array<{ id: string; stage: LeadStage; phone: string; messageId: string; messageAt: Date }>> {
+    const rows = await this.leadsRepo.query(
+      `SELECT l.id, l.stage, l.phone, lm.id AS message_id, lm.created_at AS message_at
+         FROM leads l
+         JOIN conversations c ON c.lead_id = l.id
+         CROSS JOIN LATERAL (
+           SELECT m.id, m.direction, m.created_at FROM messages m
+            WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1
+         ) lm
+        WHERE l.tenant_id = $1
+          AND l.stage = $2
+          AND l.last_message_direction = 'outbound'
+          AND lm.direction = 'outbound'
+          AND lm.created_at >= ($3::timestamptz AT TIME ZONE 'UTC')
+          AND c.ai_enabled = true
+          AND NOT (l.auto_followup_sent_stages @> to_jsonb($2::text))
+          AND l.phone <> ''
+        LIMIT 5000`,
+      [tenantId, stage, since.toISOString()],
+    );
+    return rows.map((r: any) => ({ id: r.id, stage: r.stage, phone: r.phone, messageId: r.message_id, messageAt: new Date(r.message_at) }));
+  }
+
+  // Leads com toque de cadência armado — mesma varredura única do método acima.
+  async findCadenceCandidates(tenantId: string): Promise<Lead[]> {
+    return this.leadsRepo
+      .createQueryBuilder('l')
+      .where('l.tenant_id = :tenantId', { tenantId })
+      .andWhere('l.next_nurture_at IS NOT NULL')
+      .andWhere('l.nurture_paused = false')
+      .take(5000)
+      .getMany();
   }
 
   async findOrCreate(phone: string, tenantId: string, pushName?: string | null): Promise<{ lead: Lead; conversation: Conversation; isNew: boolean }> {
@@ -198,6 +254,11 @@ export class LeadsService implements OnApplicationBootstrap {
       } catch {
         // tempo real é só conveniência da Inbox — nunca derruba o salvamento
       }
+      // Follow-up por evento: agenda o job de inatividade a partir desta mensagem.
+      followupTriggers.emit({
+        kind: 'message', tenantId: row.tenant_id ?? row.tenantId, leadId: row.id,
+        messageId: saved.id, direction, at: saved.createdAt,
+      });
     }
 
     return saved;
@@ -216,6 +277,8 @@ export class LeadsService implements OnApplicationBootstrap {
     await this.leadsRepo.save(lead);
 
     await this.historyRepo.save({ leadId, fromStage, toStage, changedBy });
+    // Raia nova = regra de inatividade/cadência nova (outro tempo, outra mensagem).
+    followupTriggers.emit({ kind: 'stage', tenantId: lead.tenantId, leadId });
 
     return lead;
   }
@@ -571,6 +634,8 @@ export class LeadsService implements OnApplicationBootstrap {
     if (conversation) {
       conversation.aiEnabled = enabled;
       await this.conversationsRepo.save(conversation);
+      // IA desligada barra o follow-up; ao religar, os jobs do lead são reagendados.
+      if (enabled) followupTriggers.emit({ kind: 'ai-enabled', leadId });
     }
   }
 
