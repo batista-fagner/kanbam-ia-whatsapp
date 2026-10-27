@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Orçamento só depois da foto do cabelo (Mayara França)',
+    date: '27/10/2026',
+    detail: 'A Mayara pediu que a cliente mande foto do cabelo e o tamanho antes do orçamento, porque é pela foto que ela indica as gramas. Agora a IA não passa valor de cabelo: pede a foto + tamanho. Reconhecimento de foto ligado: se for foto de referência (o cabelo que a cliente quer), a IA usa pra identificar textura e cor; se for o cabelo da cliente, responde que a especialista vai avaliar, pausa e a Mayara é avisada no número de Configurações com a anotação da IA (cabelo dela + o que ela quer). Se a foto não puder ser baixada, o sistema faz o mesmo encaminhamento com resposta fixa. Antes a IA respondia "não consigo ver imagens" e passava o preço sem a foto.',
+  },
+  {
+    title: 'Follow-up automático escrito pela IA pelo contexto da conversa (piloto DALU)',
+    date: '27/10/2026',
+    detail: 'Em Regras de Alertas, cada raia (e o pós-venda) ganhou a opção "IA escreve pelo contexto da conversa": em vez do texto fixo, a IA escreve com o prompt da DALU e a conversa da cliente, usando o texto da raia como objetivo (e enviando ele como está se a IA falhar). A IA recebe a data de hoje e da última mensagem, para não repetir "hoje/amanhã" de conversa antiga. Por enquanto só aparece para a DALU.',
+  },
+  {
     title: 'Relatório de vendas por IA (piloto DALU)',
     date: '26/10/2026',
     detail: 'Novo item "Relatório de vendas" no menu Gestão (só a DALU por enquanto). A cliente clica em "Gerar relatório da semana" e a IA analisa as conversas dos últimos 7 dias: resumo, o que deu certo, o que deu errado, onde a IA precisa melhorar, onde a equipe pode melhorar, clientes para retomar e um plano para a próxima semana — com exemplos reais das conversas. Fica no CRM (com histórico e botão de baixar PDF) e o PDF — com as cores e o logo da Convert Hair, cartões de números, gráfico de mensagens por dia e funil da semana — é enviado ao WhatsApp de notificações (Configurações → Notificação de agendamento). Limite: 1 por semana (admin gera sem limite). Cada geração aparece no Monitoramento com tokens e custo estimado (teste com a semana real da DALU: 129 conversas, ~US$ 0,03, 33 s).',

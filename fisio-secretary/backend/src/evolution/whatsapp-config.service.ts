@@ -6,6 +6,7 @@ import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { UazapiProvider } from './providers/uazapi.provider';
 import { resolveReminderHours } from '../appointments/reminder-gate';
 import { followupTriggers } from '../common/followup-triggers';
+import { canAiWriteFollowup } from '../followup/ai-followup';
 
 @Injectable()
 export class WhatsappConfigService {
@@ -259,7 +260,7 @@ export class WhatsappConfigService {
   async updateConfig(
     fields: {
       customPromptMegaHair?: string | null;
-      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string; days?: number; unit?: string; aiWrite?: boolean }> | null;
       autoFollowupEnabled?: boolean;
       appointmentReminder?: { enabled?: boolean; message?: string; hoursBefore?: number } | null;
       multiAgentEnabled?: boolean;
@@ -276,7 +277,7 @@ export class WhatsappConfigService {
     if (!record) record = this.repo.create();
     if ('customPromptMegaHair' in fields) record.customPromptMegaHair = fields.customPromptMegaHair ?? null;
     if ('autoFollowupConfig' in fields) {
-      record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig, record.autoFollowupConfig);
+      record.autoFollowupConfig = this.sanitizeAutoFollowup(fields.autoFollowupConfig, record.autoFollowupConfig, record.id ?? tenantId);
     }
     if ('autoFollowupEnabled' in fields) {
       const next = !!fields.autoFollowupEnabled;
@@ -338,9 +339,12 @@ export class WhatsappConfigService {
   // `activeSince` é do backend: mantém o da raia que já estava ligada, carimba "agora"
   // na que acabou de ligar e some da desligada. O que vier do cliente é ignorado.
   private sanitizeAutoFollowup(
-    raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string; days?: number; unit?: string }> | null | undefined,
+    raw: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string; days?: number; unit?: string; aiWrite?: boolean }> | null | undefined,
     previous?: WhatsappConfig['autoFollowupConfig'],
+    tenantId?: string,
   ): WhatsappConfig['autoFollowupConfig'] {
+    // "IA escreve pelo contexto": só grava para quem tem a opção liberada (ai-followup.ts).
+    const aiAllowed = !!tenantId && canAiWriteFollowup(tenantId);
     if (!raw || typeof raw !== 'object') return null;
     const STAGES = ['novo_lead', 'lead_frio', 'lead_quente'];
     const now = new Date().toISOString();
@@ -353,13 +357,14 @@ export class WhatsappConfigService {
       const enabled = !!cfg.enabled;
       const prev = previous?.[stage];
       const rule: NonNullable<WhatsappConfig['autoFollowupConfig']>[string] = { enabled, idleMinutes, message };
+      if (aiAllowed && cfg.aiWrite) rule.aiWrite = true;
       if (enabled) rule.activeSince = prev?.enabled && prev.activeSince ? prev.activeSince : now;
       clean[stage] = rule;
     }
     // Pós-venda: dias (1..730) depois de entrar na raia Vendas; a tela deixa escolher em dias
     // ou meses (1 mês = 30 dias) e manda `days`. idleMinutes fica espelhado só para o formato
     // do jsonb continuar igual ao das outras raias.
-    const sale = raw.vendas as { enabled?: boolean; days?: number; unit?: string; message?: string } | undefined;
+    const sale = raw.vendas as { enabled?: boolean; days?: number; unit?: string; message?: string; aiWrite?: boolean } | undefined;
     if (sale && typeof sale === 'object') {
       const days = Math.min(730, Math.max(1, Math.round(Number(sale.days) || 0) || 60));
       const unit: 'dias' | 'meses' = sale.unit === 'meses' ? 'meses' : 'dias';
@@ -367,6 +372,7 @@ export class WhatsappConfigService {
       const enabled = !!sale.enabled;
       const prev = previous?.vendas;
       const rule: NonNullable<WhatsappConfig['autoFollowupConfig']>[string] = { enabled, days, unit, idleMinutes: days * 1440, message };
+      if (aiAllowed && sale.aiWrite) rule.aiWrite = true;
       if (enabled) rule.activeSince = prev?.enabled && prev.activeSince ? prev.activeSince : now;
       clean.vendas = rule;
     }

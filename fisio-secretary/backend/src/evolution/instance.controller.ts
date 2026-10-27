@@ -4,6 +4,7 @@ import { WhatsappConfigService } from './whatsapp-config.service';
 import { AiService } from '../ai/ai.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { canAiWriteFollowup } from '../followup/ai-followup';
 
 @UseGuards(JwtAuthGuard)
 @Controller('instance')
@@ -66,14 +67,16 @@ export class InstanceController {
 
   @Get('config')
   async getConfig(@CurrentUser('tenantId') tenantId: string) {
-    return this.whatsappConfigService.getByTenant(tenantId);
+    const cfg = await this.whatsappConfigService.getByTenant(tenantId);
+    // aiFollowupAvailable: libera na tela a opção "IA escreve pelo contexto" (piloto, ai-followup.ts).
+    return cfg ? { ...cfg, aiFollowupAvailable: canAiWriteFollowup(tenantId) } : cfg;
   }
 
   @Patch('config')
   async updateConfig(
     @Body() body: {
       customPromptMegaHair?: string | null;
-      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string }> | null;
+      autoFollowupConfig?: Record<string, { enabled?: boolean; idleMinutes?: number; message?: string; days?: number; unit?: string; aiWrite?: boolean }> | null;
       autoFollowupEnabled?: boolean;
       appointmentReminder?: { enabled?: boolean; message?: string; hoursBefore?: number } | null;
       multiAgentEnabled?: boolean;

@@ -93,6 +93,7 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
   '6fac64ce-9189-414a-9ad9-fd2fc102e599', // Tiago Adan (conta de teste p/ demonstração a clientes, 2026-10-09)
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline / HE Cabelos (2026-10-14) — cliente manda foto do próprio cabelo pra pedir indicação de cor
   '83a5e1bb-e33a-491c-a2d8-ccf126830ac3', // Studio Simone Trindade (2026-10-22) — a cliente manda foto do cabelo pra IA indicar textura/volume; pedido da Simone
+  'b54dae58-f4e9-44cf-a238-8548d4ec3812', // Mayara França (2026-10-27) — foto de referência + foto do cabelo pro orçamento (ver PHOTO_HANDOFF_TENANT_IDS)
 ];
 
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
@@ -103,6 +104,18 @@ const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouv
 const IMAGE_PLACEHOLDER_TO_AI_TENANT_IDS = [
   'e70ccdef-c21a-4f2f-9082-b71073b04b31', // Fabiana Cavalcanti Mega Hair
 ];
+
+// Tenants em que o orçamento depende da foto do cabelo da cliente (a dona avalia e passa gramas +
+// valor). A IA vê a foto (IMAGE_ANALYSIS_TENANT_IDS): se for o cabelo da cliente, responde,
+// encaminha (shouldIgnore) e aqui a dona é avisada no número de Configurações; se for foto de
+// referência, segue o atendimento. Se a foto não puder ser baixada pra IA, cai no handoff fixo
+// (handlePhotoHandoff). Mayara França (27/10/2026): "antes de passar o orçamento eu peço a foto".
+const PHOTO_HANDOFF_TENANT_IDS = [
+  'b54dae58-f4e9-44cf-a238-8548d4ec3812', // Mayara França
+];
+const PHOTO_HANDOFF_REPLY = 'Recebi sua foto! 💕 Agora nossa especialista vai avaliar seu cabelo e já te responde com a quantidade de gramas e o valor certinho, tá bom?';
+// Várias fotos seguidas (álbum) chegam em webhooks paralelos: só a primeira faz o handoff.
+const PHOTO_HANDOFF_COOLDOWN_MS = 10 * 60 * 1000;
 
 // Tenants em que foto, vídeo e documento recebidos são guardados no R2 e aparecem na
 // conversa do card (CRM). Hoje são os mesmos do reconhecimento de foto.
@@ -143,6 +156,8 @@ export class EvolutionController {
   private readonly pendingMedia = new Map<string, Array<{ url: string; type: string; content: string; queuedLine?: string }>>();
   // Último aviso de intenção de compra por lead (chave: leadId) — ver maybeNotifyPurchaseIntent().
   private readonly purchaseNotifiedAt = new Map<string, number>();
+  // Último handoff por foto (chave: tenantId:phone) — ver PHOTO_HANDOFF_TENANT_IDS.
+  private readonly photoHandoffAt = new Map<string, number>();
   // URL (R2) do ÁUDIO recebido do lead (mensagem de voz) — baixado uma vez em
   // paralelo à transcrição, pra tocar no Kanban. Ver transcribeAndEnqueue().
   private readonly pendingAudioUrl = new Map<string, string>();
@@ -314,8 +329,17 @@ export class EvolutionController {
         return { ok: true };
       } catch (err) {
         this.logger.error(`[IMG-ANALYSIS] Erro ao baixar/processar imagem de ${phone}: ${err.message} — cai pro fluxo padrão`);
+        // Libera o id: sem isso o fluxo padrão abaixo descartava a foto como duplicada.
+        if (messageId) this.processedIds.delete(messageId);
         // não retorna — segue pro bloco padrão abaixo
       }
+    }
+
+    // Reserva do handoff por foto: a IA não conseguiu ver a imagem (ou o tenant não tem
+    // reconhecimento) — resposta fixa + pausa + aviso, em vez de "não consigo ver imagens".
+    if (isImage && PHOTO_HANDOFF_TENANT_IDS.includes(tenantId)) {
+      const handled = await this.handlePhotoHandoff(tenantId, phone, message, rawText, pushName);
+      if (handled) return { ok: true };
     }
 
     // Vídeo / documento do lead (tenants em INBOUND_MEDIA_STORE_TENANT_IDS): guarda o arquivo
@@ -1037,6 +1061,14 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       if (aiResponse.stage === 'agendado' && !wasAgendado) {
         this.notifyAppointmentScheduled(lead, instanceConfig, tenantToken, tenantId);
       }
+      // PHOTO_HANDOFF_TENANT_IDS: todo encaminhamento avisa a dona. O da foto costuma vir no turno
+      // SEGUINTE ao da imagem (a IA pede o tamanho antes), então não dá pra exigir imagem no turno.
+      if (PHOTO_HANDOFF_TENANT_IDS.includes(tenantId)) {
+        if (!aiResponse.stage && ['novo_lead', 'qualificando', 'lead_frio'].includes(lead.stage)) {
+          await this.leadsService.updateStage(lead.id, 'lead_quente' as any, 'ai');
+        }
+        this.notifyPhotoHandoff(lead, pushName ?? null, instanceConfig, tenantToken, tenantId, aiResponse.fields?.symptoms, aiResponse.reply);
+      }
       // shouldIgnore=true SEMPRE desativa a IA do lead, inclusive em tenants com
       // schedulingHandoffEnabled. Chegou a ficar "pontual" (IA seguia respondendo
       // depois do handoff) mas isso causou loop de pergunta repetida pós-handoff
@@ -1179,6 +1211,79 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     const text = `📅 Novo agendamento!\nCliente: ${lead.name || lead.phone}\nTelefone: ${lead.phone}`;
     this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
       .catch(err => this.logger.error(`[NOTIFY] Falha ao notificar agendamento pra ${notificationPhone}: ${err.message}`));
+  }
+
+  // Ver PHOTO_HANDOFF_TENANT_IDS. Salva a foto (R2, aparece no card) e, se a IA estava ligada,
+  // responde o texto fixo, pausa a IA e avisa a dona. Com a IA já desligada só salva — a dona
+  // já está atendendo. Retorna false em erro pra cair no fluxo padrão de imagem.
+  private async handlePhotoHandoff(tenantId: string, phone: string, message: any, rawText: string, pushName: string | null): Promise<boolean> {
+    const messageId: string = message.messageid;
+    if (messageId && this.processedIds.has(messageId)) return true;
+    if (messageId) {
+      this.processedIds.add(messageId);
+      setTimeout(() => this.processedIds.delete(messageId), 5 * 60 * 1000);
+    }
+    // Marca antes de qualquer await: as outras fotos do álbum chegam em paralelo.
+    const key = `${tenantId}:${phone}`;
+    const firstPhoto = Date.now() - (this.photoHandoffAt.get(key) ?? 0) > PHOTO_HANDOFF_COOLDOWN_MS;
+    if (firstPhoto) this.photoHandoffAt.set(key, Date.now());
+
+    try {
+      const { lead, conversation } = await this.leadsService.findOrCreate(phone, tenantId, pushName);
+      const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
+      let imageUrl: string | undefined;
+      try {
+        const downloaded = await this.uazapiProvider.downloadImageUrl(messageId, tenantToken);
+        if (downloaded) {
+          const img = await axios.get(downloaded.fileURL, { responseType: 'arraybuffer', maxContentLength: MAX_INBOUND_FILE_BYTES });
+          imageUrl = await this.mediaService.uploadInboundImage(Buffer.from(img.data), tenantId, lead.id, downloaded.mimetype);
+        }
+      } catch (err) {
+        this.logger.error(`[PHOTO-HANDOFF] Foto de ${phone} não foi salva no R2: ${err.message} — segue só com o registro`);
+      }
+      const content = rawText ? `[imagem] ${rawText}` : '[imagem]';
+      await this.leadsService.saveMessage(conversation.id, 'inbound', phone, content, messageId, imageUrl, imageUrl ? 'image' : undefined);
+      await this.leadsService.update(lead.id, { lastMessageAt: new Date() } as any);
+      await this.followupService.resetCadenceOnReply(tenantId, lead);
+
+      const cfg = await this.whatsappConfigService.getByTenant(tenantId);
+      const canReply = firstPhoto
+        && cfg?.isActive !== false
+        && isAllowedInTestMode(cfg?.testOnlyPhone, phone)
+        && await this.leadsService.getAiEnabled(lead.id);
+      if (canReply) {
+        this.logger.log(`📸 [PHOTO-HANDOFF] ${phone} mandou foto — IA pausada, avisando a dona`);
+        await this.evolutionService.sendTextMessage(phone, PHOTO_HANDOFF_REPLY, tenantToken, tenantId, { dynamicTyping: !!cfg?.bubbleMode });
+        await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', PHOTO_HANDOFF_REPLY);
+        await this.leadsService.toggleAi(lead.id, false);
+        if (['novo_lead', 'qualificando', 'lead_frio'].includes(lead.stage)) {
+          await this.leadsService.updateStage(lead.id, 'lead_quente' as any, 'ai');
+        }
+        this.notifyPhotoHandoff(lead, pushName, cfg, tenantToken, tenantId);
+      }
+      this.leadsGateway.emitLeadUpdated(await this.leadsService.findOne(lead.id, tenantId));
+      return true;
+    } catch (err) {
+      this.logger.error(`[PHOTO-HANDOFF] Erro com a foto de ${phone}: ${err.message} — cai pro fluxo padrão`);
+      if (firstPhoto) this.photoHandoffAt.delete(key);
+      if (messageId) this.processedIds.delete(messageId); // senão o fluxo padrão descarta como duplicada
+      return false;
+    }
+  }
+
+  // Aviso pra dona (número de Configurações) de que a IA pausou e passou a cliente pra ela.
+  // Sem `aiReply`: handoff fixo da foto. Com `aiReply`: a IA encaminhou (foto ou outro motivo,
+  // ex.: pedido de colocação) — `notes` é o que ela anotou (cabelo da cliente + o que ela quer).
+  private notifyPhotoHandoff(lead: any, pushName: string | null, cfg: any, tenantToken: string | undefined, tenantId: string, notes?: string | null, aiReply?: string | null): void {
+    const notificationPhone = cfg?.notificationPhone;
+    if (!notificationPhone) return;
+    const head = aiReply ? '🔔 A IA passou uma cliente pra você!' : '📸 Cliente mandou foto do cabelo pra orçamento!';
+    const tail = aiReply
+      ? `\nÚltima resposta da IA: "${aiReply.replace(/\|\|\|/g, ' ').slice(0, 200)}"\nA IA pausou nessa conversa — continue o atendimento.`
+      : '\nA IA pausou nessa conversa — avalie a foto e passe as gramas e o valor.';
+    const text = `${head}\nCliente: ${lead.name || pushName || lead.phone}\nTelefone: ${lead.phone}${notes ? `\nAnotação da IA: ${notes}` : ''}${tail}`;
+    this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
+      .catch(err => this.logger.error(`[NOTIFY] Falha ao avisar foto pra ${notificationPhone}: ${err.message}`));
   }
 
   // Ver PURCHASE_NOTIFY_ONLY_TENANT_IDS. Sem número cadastrado não consome o cooldown:

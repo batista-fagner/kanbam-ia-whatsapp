@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Bell, Flame, MessageSquareWarning, Clock, Info, CreditCard, RefreshCw, Calendar, Loader2 } from 'lucide-react'
+import { Bell, Flame, MessageSquareWarning, Clock, Info, CreditCard, RefreshCw, Calendar, Loader2, Sparkles } from 'lucide-react'
 import { authFetch } from '../services/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
@@ -37,10 +37,10 @@ const followupToConfig = (state, postSale) => {
   for (const { key } of FOLLOWUP_STAGES) {
     const s = state[key]
     const idleMinutes = s.unit === 'horas' ? Math.round(s.value * 60) : Math.round(s.value)
-    out[key] = { enabled: !!s.enabled, idleMinutes: Math.max(1, idleMinutes || 1), message: (s.message ?? '').trim() }
+    out[key] = { enabled: !!s.enabled, idleMinutes: Math.max(1, idleMinutes || 1), message: (s.message ?? '').trim(), aiWrite: !!s.aiWrite }
   }
   if (postSale) {
-    out.vendas = { enabled: !!postSale.enabled, days: Math.max(1, Math.round(postSaleDays(postSale)) || 1), unit: postSale.unit, message: (postSale.message ?? '').trim() }
+    out.vendas = { enabled: !!postSale.enabled, days: Math.max(1, Math.round(postSaleDays(postSale)) || 1), unit: postSale.unit, message: (postSale.message ?? '').trim(), aiWrite: !!postSale.aiWrite }
   }
   return out
 }
@@ -140,6 +140,30 @@ const rules = [
   },
 ]
 
+// "IA escreve pelo contexto": só aparece para quem tem a opção liberada (piloto DALU).
+// O texto da raia vira o objetivo da mensagem e a reserva se a IA falhar.
+function AiWriteToggle({ checked, disabled, onChange }) {
+  return (
+    <label className={`flex items-start gap-2 mb-2 select-none ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={e => onChange(e.target.checked)}
+        className="w-4 h-4 mt-0.5 accent-teal-600"
+      />
+      <span className="text-sm text-gray-700">
+        <span className="inline-flex items-center gap-1 font-medium"><Sparkles className="w-3.5 h-3.5 text-teal-600" /> IA escreve pelo contexto da conversa</span>
+        {checked && (
+          <span className="block text-xs text-gray-500 mt-0.5">
+            Cada cliente recebe uma mensagem escrita pela IA com base na conversa dela. O texto abaixo é o objetivo da mensagem e é enviado como está se a IA falhar.
+          </span>
+        )}
+      </span>
+    </label>
+  )
+}
+
 // ── Componente ───────────────────────────────────────────────────────────────
 
 export default function AlertRulesPage() {
@@ -147,6 +171,7 @@ export default function AlertRulesPage() {
   const [followupEnabled, setFollowupEnabled] = useState(true)
   const [dailyLimit, setDailyLimit] = useState(40)
   const [postSale, setPostSale] = useState(emptyPostSale())
+  const [aiAvailable, setAiAvailable] = useState(false)
   const [savingFollowup, setSavingFollowup] = useState(false)
   const [followupSaved, setFollowupSaved]   = useState(false)
 
@@ -169,16 +194,17 @@ export default function AlertRulesPage() {
             const r = fu[key]
             if (r && typeof r === 'object') {
               const { value, unit } = minutesToVU(r.idleMinutes)
-              next[key] = { enabled: !!r.enabled, value, unit, message: r.message ?? '' }
+              next[key] = { enabled: !!r.enabled, value, unit, message: r.message ?? '', aiWrite: !!r.aiWrite }
             }
           }
           setAutoFollowup(next)
           if (fu.vendas && typeof fu.vendas === 'object') {
             const days = Number(fu.vendas.days) > 0 ? Number(fu.vendas.days) : 60
             const unit = fu.vendas.unit === 'meses' && days % 30 === 0 ? 'meses' : 'dias'
-            setPostSale({ enabled: !!fu.vendas.enabled, value: unit === 'meses' ? days / 30 : days, unit, message: fu.vendas.message ?? '' })
+            setPostSale({ enabled: !!fu.vendas.enabled, value: unit === 'meses' ? days / 30 : days, unit, message: fu.vendas.message ?? '', aiWrite: !!fu.vendas.aiWrite })
           }
         }
+        setAiAvailable(!!data?.aiFollowupAvailable)
         if (typeof data?.autoFollowupEnabled === 'boolean') {
           setFollowupEnabled(data.autoFollowupEnabled)
         }
@@ -371,11 +397,12 @@ export default function AlertRulesPage() {
                         <span className="text-sm text-gray-500">sem resposta</span>
                       </div>
                     </div>
+                    {aiAvailable && <AiWriteToggle checked={!!s.aiWrite} disabled={!s.enabled} onChange={v => set({ aiWrite: v })} />}
                     <textarea
                       value={s.message}
                       disabled={!s.enabled}
                       onChange={e => set({ message: e.target.value })}
-                      placeholder={`Ex: {Oi|Olá} {nome}, tudo bem? {Vi que ficou com dúvida|Passando pra saber se posso ajudar}...`}
+                      placeholder={s.aiWrite ? 'Ex: retomar a conversa e convidar para agendar' : `Ex: {Oi|Olá} {nome}, tudo bem? {Vi que ficou com dúvida|Passando pra saber se posso ajudar}...`}
                       rows={2}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
                     />
@@ -421,11 +448,12 @@ export default function AlertRulesPage() {
               <p className="text-xs text-gray-500 mb-3">
                 Ex.: lembrar da manutenção. Conta a partir do dia em que o lead entrou em Vendas (1 mês = 30 dias), uma vez por venda. Vale para quem entrar em Vendas depois de ligar — mesmo com a IA desligada na conversa.
               </p>
+              {aiAvailable && <AiWriteToggle checked={!!postSale.aiWrite} disabled={!postSale.enabled} onChange={v => setPostSale(p => ({ ...p, aiWrite: v }))} />}
               <textarea
                 value={postSale.message}
                 disabled={!postSale.enabled}
                 onChange={e => setPostSale(p => ({ ...p, message: e.target.value }))}
-                placeholder="Digite a mensagem que a cliente vai receber"
+                placeholder={postSale.aiWrite ? 'Ex: lembrar da manutenção e convidar para agendar' : 'Digite a mensagem que a cliente vai receber'}
                 rows={2}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50 disabled:bg-gray-50 text-gray-800 placeholder-gray-400"
               />

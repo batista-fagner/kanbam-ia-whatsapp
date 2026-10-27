@@ -19,6 +19,7 @@ import { AppointmentReminderJob, CadenceStepJob, FollowupTriggerQueueService, Id
 import { followupTriggers, FollowupTrigger } from '../common/followup-triggers';
 import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 import { resolveReminderGate } from '../appointments/reminder-gate';
+import { canAiWriteFollowup } from './ai-followup';
 
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
 const ALLOWED_DELAYS = [1, 4, 24];
@@ -50,7 +51,7 @@ const AUTO_FOLLOWUP_STAGES: LeadStage[] = ['novo_lead', 'lead_frio', 'lead_quent
 const CONFIG_CACHE_MS = 60_000;
 // Varredura única da subida espera o boot assentar (webhook/IA primeiro).
 const BOOT_BACKFILL_DELAY_MS = 30_000;
-type AutoRule = { enabled: boolean; idleMinutes: number; message: string; activeSince?: string; days?: number };
+type AutoRule = { enabled: boolean; idleMinutes: number; message: string; activeSince?: string; days?: number; aiWrite?: boolean };
 
 // Lead só entra no follow-up por inatividade se a última mensagem (nossa) for de depois
 // que a raia foi ligada. Regra sem activeSince (gravada direto no banco) não dispara.
@@ -781,13 +782,15 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
 
   // Claim atômico da raia + cria o follow-up pendente e põe na fila de envio. Usado pelo
   // cron legado e pelo job de inatividade (runIdleCheck).
-  private async createAutoFollowup(cfg: WhatsappConfig, lead: Lead, stage: string, rule: Pick<AutoRule, 'message'>): Promise<void> {
+  private async createAutoFollowup(cfg: WhatsappConfig, lead: Lead, stage: string, rule: Pick<AutoRule, 'message' | 'aiWrite' | 'days'>): Promise<void> {
     // Claim atômico: só agenda se ESTA execução marcou a raia.
     const claimed = await this.leadsService.claimAutoFollowupStage(lead.id, stage);
     if (!claimed) return;
 
     let message: string | null = null;
-    if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
+    if (rule.aiWrite && canAiWriteFollowup(cfg.id)) {
+      message = await this.buildAgentAwareFollowupMessage(cfg.id, lead, this.aiFollowupAngle(stage, rule), cfg);
+    } else if (AGENT_AWARE_FOLLOWUP_TENANT_IDS.includes(cfg.id) && cfg.multiAgentEnabled) {
       message = await this.buildAgentAwareFollowupMessage(cfg.id, lead);
     }
     if (!message) {
@@ -1051,22 +1054,51 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
   // se não achar agente ou se a geração falhar — o chamador cai pro template fixo.
   // `angle`: instrução opcional do passo da cadência (ex.: "retoma a dor que ela
   // relatou"), pra cada toque ter um ângulo diferente em vez de repetir a mesma ideia.
-  private async buildAgentAwareFollowupMessage(tenantId: string, lead: Lead, angle?: string): Promise<string | null> {
+  // `cfg`: quando passado, cliente sem agentes (multi-agente desligado) usa o prompt
+  // personalizado da instância (follow-up escrito pela IA, ver ai-followup.ts).
+  private async buildAgentAwareFollowupMessage(tenantId: string, lead: Lead, angle?: string, cfg?: WhatsappConfig): Promise<string | null> {
     try {
       const agent = (lead.currentAgentId
         ? await this.agentRepo.findOne({ where: { id: lead.currentAgentId, tenantId } })
         : null) ?? await this.agentRepo.findOne({ where: { tenantId, isDefault: true } });
-      if (!agent) return null;
+      const instancePrompt = cfg ? (cfg.agentType === 'megahair' ? cfg.customPromptMegaHair : cfg.customPromptSofia) : null;
+      const systemPrompt = agent?.systemPrompt || instancePrompt?.trim();
+      if (!systemPrompt) return null;
 
       const conversation = await this.leadsService.getConversationWithMessages(lead.id, tenantId);
-      const aiLabel = agent.name?.split('—')[0]?.trim() || 'IA';
-      const transcript = this.buildTranscript(conversation?.messages ?? [], aiLabel);
-      const text = await this.aiService.generateAgentAwareFollowup(agent.systemPrompt, lead.name, transcript, angle);
+      const aiLabel = agent?.name?.split('—')[0]?.trim() || 'IA';
+      let transcript = this.buildTranscript(conversation?.messages ?? [], aiLabel);
+      if (cfg) transcript = `${this.followupDateContext(conversation?.messages ?? [])}\n\n${transcript}`;
+      const text = await this.aiService.generateAgentAwareFollowup(systemPrompt, lead.name, transcript, angle);
       return text?.trim() || null;
     } catch (err) {
       this.logger.error(`[FOLLOWUP-AGENT-AWARE] Falha ao gerar p/ lead ${lead.id}: ${err?.message ?? err} — usando template fixo`);
       return null;
     }
+  }
+
+  // Instrução do follow-up escrito pela IA: o texto da raia vira o objetivo da mensagem.
+  // No pós-venda a conversa é da época da venda — a IA não pode tratar como sumiço recente.
+  private aiFollowupAngle(stage: string, rule: Pick<AutoRule, 'message' | 'days'>): string {
+    const goal = `o objetivo foi definido pelo próprio negócio neste texto (use como base, com suas palavras e o contexto da conversa; ignore marcações como {nome} ou {a|b}): "${rule.message.trim()}"`;
+    if (stage === POST_SALE_STAGE) {
+      return `PÓS-VENDA — a cliente já comprou/fez o serviço há cerca de ${rule.days} dias e a conversa acima é da época da venda. Não trate como se ela tivesse parado de responder agora; retome o que ela fez/comprou. ${goal}`;
+    }
+    return goal;
+  }
+
+  // A transcrição não tem datas: sem isso a IA dizia "hoje às 16h" de um horário de dias
+  // atrás e respondia pergunta pendente com medida/preço chutado. Vai junto da conversa
+  // (mensagem do usuário) porque no fim do prompt longo o modelo lite ignorava.
+  private followupDateContext(messages: Array<{ createdAt?: Date }>): string {
+    const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
+    const now = new Date();
+    const last = messages.length ? messages[messages.length - 1].createdAt : null;
+    const lastLine = last
+      ? `A última mensagem da conversa foi em ${fmt(new Date(last))} (há ${Math.max(0, Math.floor((now.getTime() - new Date(last).getTime()) / DAY_MS))} dia(s)).`
+      : '';
+    return `[Contexto do follow-up — hoje é ${fmt(now)}. ${lastLine}
+Regras: dias e horários citados na conversa são relativos à data em que foram ditos — nunca repita "hoje"/"amanhã" deles nem confirme horário que já passou. Se a cliente deixou pergunta sem resposta, só responda se a informação estiver na conversa ou no seu conhecimento; senão, retome a pergunta e diga que vai confirmar. Não prometa nada que não foi combinado.]`;
   }
 
   // aiLabel: nome do agente/persona pra rotular as falas da IA na transcrição (uso
