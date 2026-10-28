@@ -154,7 +154,7 @@ export default function SalesReportPage() {
             Gerar relatório da semana
           </button>
         </div>
-        {!status?.notificationPhone && (
+        {status?.whatsappPdf && !status?.notificationPhone && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3 flex items-start gap-2">
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <span>Para receber o PDF no WhatsApp, cadastre o número em <Link to="/settings" className="underline">Configurações → Geral → Notificação de agendamento</Link>. O relatório aparece aqui de qualquer jeito.</span>
@@ -218,9 +218,11 @@ export default function SalesReportPage() {
                 ))}
               </div>
             )}
-            <p className="text-xs text-gray-400 mt-3">
-              {report.pdfSentTo ? `PDF enviado para o WhatsApp ${fmtPhone(report.pdfSentTo)}.` : report.pdfError ?? ''}
-            </p>
+            {status?.whatsappPdf && (
+              <p className="text-xs text-gray-400 mt-3">
+                {report.pdfSentTo ? `PDF enviado para o WhatsApp ${fmtPhone(report.pdfSentTo)}.` : report.pdfError ?? ''}
+              </p>
+            )}
           </div>
 
           <Section icon={CheckCircle2} title="O que deu certo" color="text-green-700" items={c.acertos}

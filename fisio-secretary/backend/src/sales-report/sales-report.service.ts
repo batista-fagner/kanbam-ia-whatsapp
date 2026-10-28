@@ -23,6 +23,13 @@ export const SALES_REPORT_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c'];
 // Admin gera sem limite (teste/suporte).
 export const SALES_REPORT_RULES = { periodDays: 7, maxPerWindow: 1, windowDays: 7 };
 
+// Tenants do piloto que NÃO recebem o PDF no WhatsApp — o relatório fica só no CRM (tela +
+// "Baixar PDF"). DALU (28/10/2026): pedido do Fagner, "por enquanto fica lá mesmo no CRM".
+export const SALES_REPORT_NO_WHATSAPP_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c'];
+
+export const sendsPdfToWhatsapp = (tenantId: string): boolean =>
+  !SALES_REPORT_NO_WHATSAPP_TENANT_IDS.includes(tenantId);
+
 const DAY_MS = 24 * 3600_000;
 // Geração presa (processo reiniciou no meio) vira 'failed' na subida — não conta no limite.
 const STALE_PROCESSING_MS = 15 * 60_000;
@@ -35,6 +42,7 @@ export interface SalesReportStatus {
   processing: boolean;
   nextAvailableAt: string | null;
   notificationPhone: string | null;
+  whatsappPdf: boolean;
   rules: typeof SALES_REPORT_RULES;
 }
 
@@ -78,7 +86,7 @@ export class SalesReportService implements OnApplicationBootstrap {
 
   async status(tenantId: string, isAdmin: boolean): Promise<SalesReportStatus> {
     const cfg = await this.configRepo.findOne({ where: { id: tenantId } });
-    const base = { notificationPhone: cfg?.notificationPhone ?? null, rules: SALES_REPORT_RULES };
+    const base = { notificationPhone: cfg?.notificationPhone ?? null, whatsappPdf: sendsPdfToWhatsapp(tenantId), rules: SALES_REPORT_RULES };
     if (!this.isEnabled(tenantId)) return { ...base, enabled: false, canGenerate: false, processing: false, nextAvailableAt: null };
 
     const processing = !!(await this.reportRepo.findOne({ where: { tenantId, status: 'processing' } }));
@@ -185,7 +193,7 @@ export class SalesReportService implements OnApplicationBootstrap {
       this.logger.log(`[SALES-REPORT] Pronto ${id} (tenant ${report.tenantId}): ${transcript.included} conversas, ${ai.inputTokens}+${ai.outputTokens} tokens, US$ ${costUsd.toFixed(4)}`);
       this.gateway.emitSalesReport(report.tenantId, { id, status: 'done' });
 
-      await this.sendPdf(id, report.tenantId, cfg);
+      if (sendsPdfToWhatsapp(report.tenantId)) await this.sendPdf(id, report.tenantId, cfg);
     } catch (err: any) {
       this.logger.error(`[SALES-REPORT] Falhou ${id}: ${err?.message ?? err}`);
       await this.reportRepo.update(id, { status: 'failed', error: 'Não foi possível gerar o relatório agora. Tente de novo em alguns minutos.' });

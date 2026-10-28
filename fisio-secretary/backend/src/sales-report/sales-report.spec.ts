@@ -94,6 +94,11 @@ describe('Relatório de vendas — limite semanal e piloto', () => {
     expect(st.canGenerate).toBe(true);
   });
 
+  it('DALU: relatório só no CRM, sem PDF no WhatsApp', async () => {
+    expect((await make([]).status(DALU, false)).whatsappPdf).toBe(false);
+    expect((await make([]).status('outro-tenant', false)).whatsappPdf).toBe(true);
+  });
+
   it('relatório em andamento → ninguém gera outro', async () => {
     const st = await make([], true).status(DALU, true);
     expect(st.canGenerate).toBe(false);

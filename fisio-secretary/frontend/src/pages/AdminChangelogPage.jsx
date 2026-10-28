@@ -7,6 +7,16 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatório de vendas da DALU só no CRM (sem PDF no WhatsApp)',
+    date: '28/10/2026',
+    detail: 'Por enquanto o relatório da DALU fica só na tela Relatório de vendas (com o botão Baixar PDF). O sistema não manda mais o PDF pro WhatsApp de notificações e a tela não pede mais pra cadastrar o número.',
+  },
+  {
+    title: 'Studio Simone: valores de serviços sem duplicidade no prompt',
+    date: '28/10/2026',
+    detail: 'A lista de serviços que a Simone mandou no grupo (salão, colocação, retirada e confecção) foi colada no prompt sem apagar os valores antigos do formulário, e a IA ficava com dois preços diferentes pro mesmo serviço (ex.: microcápsulas volume médio 650 x 550, Tic Tac 250 x 290). Agora vale só a lista nova; Ponto americano e Entrelace passaram a ser oferecidos (antes o prompt mandava dizer que o Studio não fazia Ponto Americano).',
+  },
+  {
     title: 'Orçamento só depois da foto do cabelo (Mayara França)',
     date: '27/10/2026',
     detail: 'A Mayara pediu que a cliente mande foto do cabelo e o tamanho antes do orçamento, porque é pela foto que ela indica as gramas. Agora a IA não passa valor de cabelo: pede a foto + tamanho. Reconhecimento de foto ligado: se for foto de referência (o cabelo que a cliente quer), a IA usa pra identificar textura e cor; se for o cabelo da cliente, responde que a especialista vai avaliar, pausa e a Mayara é avisada no número de Configurações com a anotação da IA (cabelo dela + o que ela quer). Se a foto não puder ser baixada, o sistema faz o mesmo encaminhamento com resposta fixa. Antes a IA respondia "não consigo ver imagens" e passava o preço sem a foto.',
@@ -449,8 +459,8 @@ const DONE = [
 
 const PENDING = [
   {
-    title: 'DALU: cadastrar o WhatsApp de notificações para receber o PDF do relatório',
-    detail: 'Hoje ela não tem número cadastrado em Configurações → Notificação de agendamento. Sem isso o relatório aparece só no CRM (a tela avisa).',
+    title: 'Studio Simone: confirmar 3 valores que não vieram na lista nova',
+    detail: 'Ponto Micro Screem (é o mesmo que Ponto americano?), Nanocápsulas franja e laterais R$ 350 / só franja R$ 80, e a confecção pra cliente de fora (Tela Slim R$ 450, entrada de 50%). Continuam no prompt com os valores antigos até ela confirmar.',
   },
   {
     title: 'Botão "Novo lead" grava o telefone sem o 55',
