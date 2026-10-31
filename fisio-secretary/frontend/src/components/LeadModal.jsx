@@ -64,7 +64,7 @@ function resolveVisual(msg, mediaList) {
   const m = /^\[mídia: (.+?)\]/.exec(msg.content || '')
   if (m) {
     const f = mediaList.find(x => x.name === m[1])
-    if (f) return { url: f.url, video: !!f.mimeType?.startsWith('video/') }
+    if (f && f.mimeType !== 'application/pdf') return { url: f.url, video: !!f.mimeType?.startsWith('video/') }
   }
   return null
 }
@@ -781,6 +781,8 @@ export default function LeadModal({ lead, onClose }) {
                           <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
                             {media.mimeType?.startsWith('video/') ? (
                               <Play className="w-4 h-4 text-gray-400" />
+                            ) : media.mimeType === 'application/pdf' ? (
+                              <FileText className="w-4 h-4 text-red-500" />
                             ) : (
                               <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
                             )}

@@ -110,6 +110,8 @@ export default function Composer({ aiEnabled, onTakeOver, onSendText, onSendCata
                         <span className="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center"><Play className="w-4 h-4 text-white fill-white" /></span>
                       </span>
                     </div>
+                  ) : media.mimeType === 'application/pdf' ? (
+                    <FileText className="w-8 h-8 text-red-500" />
                   ) : <img src={media.url} alt="" loading="lazy" className="w-full h-full object-cover" />}
                 </div>
                 <p className="text-[11px] text-gray-600 truncate px-1.5 py-1">{media.name}</p>

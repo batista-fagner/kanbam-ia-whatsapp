@@ -24,6 +24,7 @@ import { LeadsGateway } from '../leads/leads.gateway';
 import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
+import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -1420,16 +1421,16 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         }).catch(err => this.logger.error(`Falha ao registrar media_send_error (not_found): ${err.message}`));
         continue;
       }
-      const type = mediaFile.mimeType?.startsWith('video/') ? 'video' : 'image';
+      const type = mediaSendType(mediaFile.mimeType);
       // Legenda configurável por vídeo (MediaPage). Sem legenda cadastrada → usa padrão.
       const caption = mediaFile.caption?.trim() || DEFAULT_CAPTION;
-      const sendResult = await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken);
+      const sendResult = await this.uazapiProvider.sendMediaByUrl(phone, mediaFile.url, type, caption, tenantToken, mediaDocName(mediaFile.name, mediaFile.mimeType));
       if (!sendResult.ok) {
         void this.mediaSendErrorRepo.save({
           tenantId, phone, mediaName: mediaFile.name, reason: 'send_failed', errorMessage: sendResult.error ?? null,
         }).catch(err => this.logger.error(`Falha ao registrar media_send_error (send_failed): ${err.message}`));
       }
-      await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `[mídia: ${mediaFile.name}] ${caption}`, undefined, mediaFile.url, type);
+      await this.leadsService.saveMessage(conversationId, 'outbound', 'ai', `${type === 'document' ? `[documento: ${mediaDocName(mediaFile.name, mediaFile.mimeType)}]` : `[mídia: ${mediaFile.name}]`} ${caption}`, undefined, mediaFile.url, type);
       sentCount++;
       // Pequeno intervalo entre vídeos — evita rate limit do WhatsApp e parece mais natural.
       if (i < names.length - 1) await new Promise(r => setTimeout(r, 300));
@@ -1543,10 +1544,10 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     if (!media) throw new Error('Mídia não encontrada');
     const { lead, conversation } = await this.leadsService.findOrCreate(body.phone, tenantId);
     const tenantToken = await this.whatsappConfigService.getTokenByTenant(tenantId);
-    const type = media.mimeType?.startsWith('video/') ? 'video' : 'image';
+    const type = mediaSendType(media.mimeType);
     this.logger.log(`📤 [MANUAL-MEDIA] Enviando ${type} "${media.name}" para ${body.phone}`);
-    await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '', tenantToken);
-    const logMsg = `[mídia: ${media.name}]${body.caption ? ' ' + body.caption : ''}`;
+    await this.uazapiProvider.sendMediaByUrl(body.phone, media.url, type, body.caption ?? '', tenantToken, mediaDocName(media.name, media.mimeType));
+    const logMsg = `${type === 'document' ? `[documento: ${mediaDocName(media.name, media.mimeType)}]` : `[mídia: ${media.name}]`}${body.caption ? ' ' + body.caption : ''}`;
     await this.leadsService.saveMessage(conversation.id, 'outbound', 'operator', logMsg, undefined, media.url, type);
     await this.leadsService.update(lead.id, { lastMessageAt: new Date() }, tenantId);
     const updatedLead = await this.leadsService.findOne(lead.id, tenantId);

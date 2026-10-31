@@ -68,7 +68,7 @@ export function resolveVisual(msg, mediaList) {
   const m = /^\[mídia: (.+?)\]/.exec(msg.content || '')
   if (m) {
     const f = mediaList.find(x => x.name === m[1])
-    if (f) return { url: f.url, video: !!f.mimeType?.startsWith('video/') }
+    if (f && f.mimeType !== 'application/pdf') return { url: f.url, video: !!f.mimeType?.startsWith('video/') }
   }
   return null
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing, CalendarClock } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, FileText, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing, CalendarClock } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import PromptSearchViewer from '../components/PromptSearchViewer'
@@ -1634,6 +1634,8 @@ export default function SettingsPage() {
                           <div className="w-full h-full flex items-center justify-center bg-gray-800">
                             <Play className="w-3.5 h-3.5 text-white" />
                           </div>
+                        ) : media.mimeType === 'application/pdf' ? (
+                          <FileText className="w-3.5 h-3.5 text-red-500" />
                         ) : (
                           <ImageIcon className="w-3.5 h-3.5 text-gray-400" />
                         )}

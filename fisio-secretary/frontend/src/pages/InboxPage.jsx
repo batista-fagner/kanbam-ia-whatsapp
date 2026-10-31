@@ -298,8 +298,9 @@ export default function InboxPage() {
   function handleSendCatalog(media) {
     const phone = selected.phone
     const isVideo = media.mimeType?.startsWith('video/')
+    const isPdf = media.mimeType === 'application/pdf'
     sendOptimistic(
-      { content: `[mídia: ${media.name}]`, mediaType: isVideo ? 'video' : 'image', mediaUrl: media.url },
+      { content: isPdf ? `[documento: ${media.name}.pdf]` : `[mídia: ${media.name}]`, mediaType: isPdf ? 'document' : isVideo ? 'video' : 'image', mediaUrl: media.url },
       () => sendManualMedia(phone, media.id),
     )
   }

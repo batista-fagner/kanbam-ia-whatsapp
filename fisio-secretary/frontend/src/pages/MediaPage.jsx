@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2, MessageSquare } from 'lucide-react'
+import { Upload, Trash2, Image, Loader2, AlertCircle, X, Check, Play, Pencil, Link2, MessageSquare, FileText } from 'lucide-react'
 import { authFetch, getPriceConfig } from '../services/api'
 import { hasKeywordMatch } from '../utils/priceMediaMatch'
 
@@ -272,7 +272,7 @@ export default function MediaPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,video/*"
+              accept="image/*,video/*,application/pdf"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -288,7 +288,7 @@ export default function MediaPage() {
               <div className="space-y-2">
                 <Upload className="w-8 h-8 text-gray-300 mx-auto" />
                 <p className="text-sm text-gray-500">Arraste um arquivo aqui ou <span className="text-teal-600 font-medium">clique para selecionar</span></p>
-                <p className="text-sm text-gray-400">Imagens até 50 MB — vídeos até 10 MB</p>
+                <p className="text-sm text-gray-400">Imagens e PDFs até 50 MB — vídeos até 10 MB</p>
               </div>
             )}
           </div>
@@ -363,6 +363,10 @@ export default function MediaPage() {
                 >
                   {file.mimeType?.startsWith('image/') ? (
                     <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                  ) : file.mimeType === 'application/pdf' ? (
+                    <div className="w-full h-full flex items-center justify-center bg-red-50">
+                      <FileText className="w-7 h-7 text-red-500" />
+                    </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gray-800">
                       <Play className="w-6 h-6 text-white" />
@@ -578,6 +582,8 @@ export default function MediaPage() {
                 alt={previewFile.name}
                 className="w-full rounded-xl max-h-[80vh] object-contain"
               />
+            ) : previewFile.mimeType === 'application/pdf' ? (
+              <iframe src={previewFile.url} title={previewFile.name} className="w-full h-[80vh] rounded-xl bg-white" />
             ) : (
               <video
                 src={previewFile.url}

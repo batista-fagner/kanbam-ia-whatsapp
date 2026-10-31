@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Mídias: agora dá para subir PDF e enviar como documento (todos os clientes)',
+    date: '31/10/2026',
+    detail: 'A tela de Mídias aceita PDF (até 50 MB). A IA, o envio manual da conversa e o Kanban mandam o PDF como documento no WhatsApp, com o nome da mídia + .pdf. Antes só entrava imagem e vídeo, e um PDF iria como foto e não abriria.',
+  },
+  {
     title: 'Relatório de vendas da DALU só no CRM (sem PDF no WhatsApp)',
     date: '28/10/2026',
     detail: 'Por enquanto o relatório da DALU fica só na tela Relatório de vendas (com o botão Baixar PDF). O sistema não manda mais o PDF pro WhatsApp de notificações e a tela não pede mais pra cadastrar o número.',
