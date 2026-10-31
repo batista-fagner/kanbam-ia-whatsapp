@@ -5,6 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { canAiWriteFollowup } from '../followup/ai-followup';
+import { getReplyDelaySeconds } from './reply-delay';
 
 @UseGuards(JwtAuthGuard)
 @Controller('instance')
@@ -69,7 +70,7 @@ export class InstanceController {
   async getConfig(@CurrentUser('tenantId') tenantId: string) {
     const cfg = await this.whatsappConfigService.getByTenant(tenantId);
     // aiFollowupAvailable: libera na tela a opção "IA escreve pelo contexto" (piloto, ai-followup.ts).
-    return cfg ? { ...cfg, aiFollowupAvailable: canAiWriteFollowup(tenantId) } : cfg;
+    return cfg ? { ...cfg, replyDelaySeconds: getReplyDelaySeconds(tenantId), aiFollowupAvailable: canAiWriteFollowup(tenantId) } : cfg;
   }
 
   @Patch('config')
@@ -86,6 +87,7 @@ export class InstanceController {
       notificationPhone?: string | null;
       schedulingHandoffEnabled?: boolean;
       followupLimitPerDay?: number;
+      replyDelaySeconds?: number | null;
     },
     @CurrentUser('tenantId') tenantId: string,
   ) {

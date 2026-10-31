@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -7,9 +7,10 @@ import { UazapiProvider } from './providers/uazapi.provider';
 import { resolveReminderHours } from '../appointments/reminder-gate';
 import { followupTriggers } from '../common/followup-triggers';
 import { canAiWriteFollowup } from '../followup/ai-followup';
+import { sanitizeReplyDelay, setReplyDelay } from './reply-delay';
 
 @Injectable()
-export class WhatsappConfigService {
+export class WhatsappConfigService implements OnModuleInit {
   private readonly logger = new Logger(WhatsappConfigService.name);
 
   constructor(
@@ -18,6 +19,16 @@ export class WhatsappConfigService {
     private readonly uazapi: UazapiProvider,
     private readonly config: ConfigService,
   ) {}
+
+  // Carrega o tempo de resposta de cada cliente na subida: a fila de mensagens lê de memória.
+  async onModuleInit(): Promise<void> {
+    try {
+      const rows = await this.repo.find({ select: ['id', 'replyDelaySeconds'] });
+      for (const r of rows) if (r.replyDelaySeconds != null) setReplyDelay(r.id, r.replyDelaySeconds);
+    } catch (err: any) {
+      this.logger.warn(`Não carregou o tempo de resposta por cliente (usa os padrões): ${err.message}`);
+    }
+  }
 
   async get(): Promise<WhatsappConfig | null> {
     const configs = await this.repo.find({ order: { createdAt: 'DESC' } });
@@ -270,6 +281,7 @@ export class WhatsappConfigService {
       notificationPhone?: string | null;
       schedulingHandoffEnabled?: boolean;
       followupLimitPerDay?: number;
+      replyDelaySeconds?: number | null;
     },
     tenantId?: string,
   ): Promise<WhatsappConfig> {
@@ -301,7 +313,9 @@ export class WhatsappConfigService {
     }
     if ('notificationPhone' in fields) record.notificationPhone = fields.notificationPhone?.trim() || null;
     if ('schedulingHandoffEnabled' in fields) record.schedulingHandoffEnabled = !!fields.schedulingHandoffEnabled;
+    if ('replyDelaySeconds' in fields) record.replyDelaySeconds = sanitizeReplyDelay(fields.replyDelaySeconds);
     const saved = await this.repo.save(record);
+    if ('replyDelaySeconds' in fields) setReplyDelay(saved.id, saved.replyDelaySeconds);
     // Regras de Alertas mudaram → enfileira os leads/agendamentos que já se encaixam.
     if ('autoFollowupConfig' in fields || 'autoFollowupEnabled' in fields || 'appointmentReminder' in fields || 'followupLimitPerDay' in fields) {
       followupTriggers.emit({ kind: 'config', tenantId: saved.id });

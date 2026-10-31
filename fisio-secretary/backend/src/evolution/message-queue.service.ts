@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { getReplyDelaySeconds } from './reply-delay';
 
 type QueueCallback = (combinedText: string) => void | Promise<unknown>;
 
@@ -12,25 +13,9 @@ interface QueueEntry {
 // processamento travar, a cliente não fica sem resposta pra sempre.
 const MAX_PROCESSING_LOCK_MS = 3 * 60 * 1000;
 
-// Debounce por tenant maior que o padrão — pedido pontual da demo de prospecção
-// ativa (claudia_teste@hotmail.com), o cliente dele costuma mandar várias mensagens
-// picadas e quer mais margem pra IA juntar tudo antes de responder. Não generalizar.
-// alex_teste (e624e817...): debounce reduzido pra 5s pra agilizar os testes
-// de reconhecimento de imagem no tenant sandbox — não generalizar.
-// Heline / HE Cabelos (3ff8efe4...): 45s — pedido do Fagner (19/10/2026), as clientes
-// mandam a frase picada em várias mensagens e a IA respondia antes de ler tudo.
-const TENANT_DEBOUNCE_OVERRIDES_MS: Record<string, number> = {
-  '1ff3f0b3-52d1-4e89-b7bf-552d0556de29': 25000,
-  'e624e817-5b6c-4840-b0ea-269eb78afe8d': 5000,
-  '3ff8efe4-7a7c-44ee-b98b-548e5921b174': 45000,
-  '69420c85-634c-451d-af45-2ebccf8aa1d3': 30000, // Mult Festa — clientes mandam data/tema/local em várias mensagens
-  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c': 35000, // DALU — pedido do Fagner (21/10/2026), 15s era pouco pra juntar as mensagens da cliente
-};
-
 @Injectable()
 export class MessageQueueService implements OnModuleDestroy {
   private readonly logger = new Logger(MessageQueueService.name);
-  private readonly DEBOUNCE_MS = 15000;
   private readonly queues = new Map<string, QueueEntry>();
   // Uma resposta por cliente de cada vez: enquanto a IA ainda está respondendo
   // (20-40s com mídia/bolhas), mensagens que chegam e passam do debounce esperam
@@ -56,7 +41,7 @@ export class MessageQueueService implements OnModuleDestroy {
     }
 
     const tenantId = phone.split(':')[0];
-    const debounceMs = TENANT_DEBOUNCE_OVERRIDES_MS[tenantId] ?? this.DEBOUNCE_MS;
+    const debounceMs = getReplyDelaySeconds(tenantId) * 1000;
 
     const entry = this.queues.get(phone)!;
     entry.timer = setTimeout(() => {

@@ -67,6 +67,10 @@ export class WhatsappConfig {
   @Column({ name: 'followup_limit_per_day', type: 'integer', default: 40 })
   followupLimitPerDay: number;
 
+  // Segundos de silêncio da cliente antes da IA responder (junta mensagens picadas). null = padrão (15s).
+  @Column({ name: 'reply_delay_seconds', type: 'integer', nullable: true })
+  replyDelaySeconds: number | null;
+
   // Quando true, usa o sistema multi-agente (Supervisor + sub-agentes) em vez do prompt único.
   @Column({ name: 'multi_agent_enabled', type: 'boolean', default: false })
   multiAgentEnabled: boolean;

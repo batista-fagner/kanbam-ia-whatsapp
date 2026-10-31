@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, FileText, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing, CalendarClock } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Smartphone, RotateCcw, AlertCircle, X, RefreshCw, Trash2, Radio, Plus, Image as ImageIcon, FileText, Play, ChevronDown, Wand2, CheckCircle2, Copy, BookOpen, Sparkles, MessageSquare, Bot, Zap, Boxes, BellRing, CalendarClock, Timer } from 'lucide-react'
 import { authFetch, getMediaList } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import PromptSearchViewer from '../components/PromptSearchViewer'
@@ -403,6 +403,71 @@ function NotificationPhoneCard({ config, onSaved }) {
         </button>
       </div>
       {saved && <p className="text-xs text-amber-600 mt-2">Salvo!</p>}
+    </div>
+  )
+}
+
+function ReplyDelayCard({ config, onSaved }) {
+  const [seconds, setSeconds] = useState(String(config?.replyDelaySeconds ?? 15))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    const n = Number(seconds)
+    if (!Number.isFinite(n) || n < 5 || n > 120) {
+      setError('Informe um valor entre 5 e 120 segundos.')
+      return
+    }
+    setError('')
+    setSaving(true)
+    try {
+      await authFetch(`${API_URL}/instance/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replyDelaySeconds: Math.round(n) }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      await onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100">
+          <Timer className="w-4 h-4 text-teal-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Tempo para a IA responder</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Quantos segundos a IA espera em silêncio antes de responder. Se a cliente manda a frase picada em várias mensagens, um tempo maior deixa a IA ler tudo antes. Entre 5 e 120 segundos (padrão: 15).
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={5}
+          max={120}
+          value={seconds}
+          onChange={(e) => setSeconds(e.target.value)}
+          className="w-28 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+        <span className="text-sm text-gray-500">segundos</span>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="ml-auto px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 transition"
+        >
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+      {saved && <p className="text-xs text-teal-600 mt-2">Salvo! Vale a partir da próxima mensagem.</p>}
     </div>
   )
 }
@@ -1568,6 +1633,10 @@ export default function SettingsPage() {
       {/* Card notificação de agendamento */}
       {!bootstrapping && instanceConfig && (
         <NotificationPhoneCard config={instanceConfig} onSaved={fetchConfig} />
+      )}
+
+      {!bootstrapping && instanceConfig && (
+        <ReplyDelayCard key={instanceConfig.replyDelaySeconds} config={instanceConfig} onSaved={fetchConfig} />
       )}
 
       {/* Card palavra de desativação da IA */}

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Tempo para a IA responder agora é configurável (e o admin subiu para 35s)',
+    date: '31/10/2026',
+    detail: 'Em Configurações há um campo "Tempo para a IA responder" (5 a 120 segundos). Ele já abre com o tempo de cada cliente (padrão 15s; Heline 45s, DALU 35s, Mult Festa 30s etc.) e a mudança vale a partir da próxima mensagem. O perfil admin passou de 15s para 35s.',
+  },
+  {
     title: 'Mídias: agora dá para subir PDF e enviar como documento (todos os clientes)',
     date: '31/10/2026',
     detail: 'A tela de Mídias aceita PDF (até 50 MB). A IA, o envio manual da conversa e o Kanban mandam o PDF como documento no WhatsApp, com o nome da mídia + .pdf. Antes só entrava imagem e vídeo, e um PDF iria como foto e não abriria.',
