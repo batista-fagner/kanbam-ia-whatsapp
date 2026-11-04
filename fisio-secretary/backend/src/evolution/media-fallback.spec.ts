@@ -11,7 +11,7 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
   let mediaSendErrorRepo: any;
 
   beforeEach(() => {
-    mediaService = { findByName: jest.fn() };
+    mediaService = { findByName: jest.fn(), findBySimilarName: jest.fn().mockResolvedValue(null) };
     uazapiProvider = { sendMediaByUrl: jest.fn().mockResolvedValue({ ok: true }) };
     leadsService = { countTodayOutboundMedia: jest.fn().mockResolvedValue(0), saveMessage: jest.fn().mockResolvedValue(undefined) };
     const configService = { get: jest.fn() };
@@ -41,6 +41,29 @@ describe('EvolutionController — sendMediaMessages (base do fallback "não enco
 
     expect(result).toEqual({ sentCount: 0, notFound: ['Vietnamita Select Liso 60 cm'] });
     expect(uazapiProvider.sendMediaByUrl).not.toHaveBeenCalled();
+  });
+
+  it('nome encurtado pela IA: acha por semelhança e envia a mídia do catálogo (Paraíso Dos Fios 04/11)', async () => {
+    mediaService.findByName.mockResolvedValue(null);
+    mediaService.findBySimilarName.mockResolvedValue({
+      file: { id: 'm2', name: 'CABELO VIETNAMITA LISO ONDULADO 50/55 CM', url: 'https://x/v.mp4', mimeType: 'video/mp4', caption: null },
+      ambiguous: true,
+    });
+
+    const result = await controller.sendMediaMessages('46318606-4be1-4791-b063-3b99f7b30e6a', '5511999999999', 'conv1', 'token', {}, 'VIETNAMITA ONDULADO');
+
+    expect(result).toEqual({ sentCount: 1, notFound: [] });
+    expect(uazapiProvider.sendMediaByUrl).toHaveBeenCalledTimes(1);
+    expect(mediaSendErrorRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('semelhança é só do Paraíso Dos Fios: outro cliente segue "não encontrada"', async () => {
+    mediaService.findByName.mockResolvedValue(null);
+
+    const result = await controller.sendMediaMessages('tenant1', '5511999999999', 'conv1', 'token', {}, 'VIETNAMITA ONDULADO');
+
+    expect(mediaService.findBySimilarName).not.toHaveBeenCalled();
+    expect(result).toEqual({ sentCount: 0, notFound: ['VIETNAMITA ONDULADO'] });
   });
 
   it('mistura: uma mídia encontrada e outra não — sentCount=1, notFound só com a que faltou', async () => {

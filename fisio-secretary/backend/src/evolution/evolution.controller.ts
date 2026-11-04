@@ -25,6 +25,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
 import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
+import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -1412,7 +1413,15 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
         this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
         break;
       }
-      const mediaFile = await this.mediaService.findByName(names[i], tenantId);
+      let mediaFile = await this.mediaService.findByName(names[i], tenantId);
+      if (!mediaFile && SIMILAR_MEDIA_TENANT_IDS.has(tenantId)) {
+        // A IA às vezes encurta o nome do catálogo ("VIETNAMITA ONDULADO"): tenta por semelhança.
+        const similar = await this.mediaService.findBySimilarName(names[i], tenantId);
+        if (similar) {
+          mediaFile = similar.file;
+          this.logger.warn(`[MEDIA-SIMILAR] "${names[i]}" não existe; usando "${similar.file.name}"${similar.ambiguous ? ' (havia mais de uma parecida)' : ''}`);
+        }
+      }
       if (!mediaFile) {
         this.logger.warn(`Mídia "${names[i]}" não encontrada no banco`);
         notFound.push(names[i]);

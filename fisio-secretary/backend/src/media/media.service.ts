@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { MediaFile } from '../common/entities/media-file.entity';
+import { findSimilarMedia } from './media-similar-match.util';
 
 @Injectable()
 export class MediaService {
@@ -63,6 +64,14 @@ export class MediaService {
     const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const target = squash(name);
     return all.find(m => squash(m.name) === target) ?? null;
+  }
+
+  // Último recurso, só pro envio pela IA: ela às vezes encurta o nome ("VIETNAMITA ONDULADO"
+  // pro "CABELO VIETNAMITA LISO ONDULADO 50/55 CM"). Não usar em upload/rename (conflito de nome).
+  async findBySimilarName(name: string, tenantId: string): Promise<{ file: MediaFile; ambiguous: boolean } | null> {
+    const all = await this.repo.find({ where: { tenantId } });
+    const r = findSimilarMedia(name, all);
+    return r ? { file: r.item, ambiguous: r.ambiguous } : null;
   }
 
   // Extrai códigos de reel/post de uma mensagem (instagram.com/reel/CODE ou /p/CODE)
