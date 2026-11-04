@@ -140,7 +140,7 @@ export default function Layout({ onLogout }) {
           icon: Settings, label: 'Configurações', key: 'config',
           children: [
             { icon: Settings, label: 'Geral', path: '/settings' },
-            { icon: Bell, label: 'Regras de Alertas', path: '/alert-rules' },
+            { icon: Bell, label: 'Follow-up personalizado', path: '/alert-rules' },
             { icon: Trash2, label: 'Leads Excluídos', path: '/deleted-leads' },
             // Multi-agente em rollout controlado — localhost + conta beta
             ...(canSeeMultiAgent ? [{ icon: Sparkles, label: 'Agentes', path: '/agents' }] : []),

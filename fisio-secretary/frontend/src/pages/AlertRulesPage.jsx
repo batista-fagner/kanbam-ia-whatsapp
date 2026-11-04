@@ -306,8 +306,8 @@ export default function AlertRulesPage() {
           <Bell className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Regras de Alertas</h1>
-          <p className="text-xs text-gray-500">Automações de mensagem e alertas do sistema</p>
+          <h1 className="text-xl font-bold text-gray-800">Follow-up personalizado</h1>
+          <p className="text-xs text-gray-500">Mensagens automáticas por raia — a mesma mensagem vai para todos os leads da raia. Para uma mensagem só de um lead, use o follow-up no card dele (Kanban).</p>
         </div>
       </div>
 

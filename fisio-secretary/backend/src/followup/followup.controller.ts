@@ -14,7 +14,7 @@ export class FollowupController {
     return this.followupService.generateSuggestion(body.leadId, tenantId);
   }
 
-  // Agenda o envio (delayHours: 1 | 4 | 24)
+  // Agenda o envio (delayHours: de 1 até 90 dias × 24)
   @Post()
   schedule(
     @Body() body: { leadId: string; message: string; delayHours: number },

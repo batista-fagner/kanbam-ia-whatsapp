@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Follow-up do card do lead: agora dá para escolher quantos dias',
+    date: '04/11/2026',
+    detail: 'No card do lead (Kanban), além de 1h, 4h e 24h, há a opção "Dias": a cliente escolhe de 1 a 90 dias e escreve a mensagem que quiser (ou gera com a IA), individual para aquele lead. A tela mostra a data prevista; se cair fora do horário comercial, sai quando abrir. O menu "Regras de Alertas" passou a se chamar "Follow-up personalizado" (mensagem automática por raia, a mesma para todos os leads).',
+  },
+  {
     title: 'Relatório de vendas por IA liberado também na conta admin',
     date: '04/11/2026',
     detail: 'O menu "Relatório de vendas" agora aparece também no admin, igual ao da DALU (fica só no CRM, sem PDF no WhatsApp), para gravar o vídeo ensinando a DALU a usar. Os outros clientes continuam sem o relatório.',

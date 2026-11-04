@@ -121,7 +121,8 @@ export default function LeadModal({ lead, onClose }) {
   // Follow-up agendado
   const [followups, setFollowups] = useState([])
   const [fuText, setFuText] = useState('')
-  const [fuDelay, setFuDelay] = useState(24) // horas: 1 | 4 | 24
+  const [fuDelay, setFuDelay] = useState(24) // horas: 1 | 4 | 24 | 'days'
+  const [fuDays, setFuDays] = useState(3) // usado quando fuDelay === 'days' (1 a 90)
   const [fuGenerating, setFuGenerating] = useState(false)
   const [fuScheduling, setFuScheduling] = useState(false)
   const [editingName, setEditingName] = useState(false)
@@ -218,11 +219,14 @@ export default function LeadModal({ lead, onClose }) {
     }
   }
 
+  const fuDaysValid = Number.isInteger(fuDays) && fuDays >= 1 && fuDays <= 90
+  const fuDelayHours = fuDelay === 'days' ? fuDays * 24 : fuDelay
+
   async function handleScheduleFollowup() {
-    if (!fuText.trim() || fuScheduling) return
+    if (!fuText.trim() || fuScheduling || (fuDelay === 'days' && !fuDaysValid)) return
     setFuScheduling(true)
     try {
-      const created = await scheduleFollowup(lead.id, fuText.trim(), fuDelay)
+      const created = await scheduleFollowup(lead.id, fuText.trim(), fuDelayHours)
       setFollowups(prev => [...prev, created])
       setFuText('')
     } catch {
@@ -601,7 +605,7 @@ export default function LeadModal({ lead, onClose }) {
 
                 {/* Tempo */}
                 <div className="flex items-center gap-1.5 mt-2">
-                  {[{ h: 1, l: '1h' }, { h: 4, l: '4h' }, { h: 24, l: '24h' }].map(opt => (
+                  {[{ h: 1, l: '1h' }, { h: 4, l: '4h' }, { h: 24, l: '24h' }, { h: 'days', l: 'Dias' }].map(opt => (
                     <button
                       key={opt.h}
                       onClick={() => setFuDelay(opt.h)}
@@ -616,9 +620,29 @@ export default function LeadModal({ lead, onClose }) {
                   ))}
                 </div>
 
+                {fuDelay === 'days' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-500">Enviar daqui a</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      value={Number.isNaN(fuDays) ? '' : fuDays}
+                      onChange={e => setFuDays(parseInt(e.target.value, 10))}
+                      className="w-16 text-sm text-center bg-white border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                    <span className="text-xs text-gray-500">dia(s)</span>
+                  </div>
+                )}
+                <p className={`text-[11px] mt-1.5 ${fuDelay === 'days' && !fuDaysValid ? 'text-red-500' : 'text-gray-400'}`}>
+                  {fuDelay === 'days' && !fuDaysValid
+                    ? 'Escolha de 1 a 90 dias.'
+                    : `Previsto para ${new Date(Date.now() + fuDelayHours * 3600_000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — fora do horário comercial, sai quando abrir.`}
+                </p>
+
                 <button
                   onClick={handleScheduleFollowup}
-                  disabled={!fuText.trim() || fuScheduling}
+                  disabled={!fuText.trim() || fuScheduling || (fuDelay === 'days' && !fuDaysValid)}
                   className="mt-2 w-full flex items-center justify-center gap-1.5 bg-purple-600 disabled:bg-gray-300 text-white text-sm font-medium py-2 rounded-lg transition"
                 >
                   {fuScheduling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}

@@ -22,7 +22,9 @@ import { resolveReminderGate } from '../appointments/reminder-gate';
 import { canAiWriteFollowup } from './ai-followup';
 
 // Delays permitidos (horas). O front oferece 1h / 4h / 24h.
-const ALLOWED_DELAYS = [1, 4, 24];
+// Follow-up manual do card: de 1 hora até 90 dias (a cliente escolhe 1h/4h/24h ou N dias).
+export const MIN_DELAY_HOURS = 1;
+export const MAX_DELAY_HOURS = 90 * 24;
 
 // ── Proteção anti-bloqueio do WhatsApp (envios automáticos) ──
 // Janela de horário comercial (BRT): só envia follow-up entre 9h e 20h.
@@ -153,8 +155,8 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
   async schedule(leadId: string, tenantId: string, message: string, delayHours: number): Promise<Followup> {
     const text = (message ?? '').trim();
     if (!text) throw new BadRequestException('Mensagem é obrigatória');
-    if (!ALLOWED_DELAYS.includes(delayHours)) {
-      throw new BadRequestException('Tempo inválido (use 1, 4 ou 24 horas)');
+    if (!Number.isInteger(delayHours) || delayHours < MIN_DELAY_HOURS || delayHours > MAX_DELAY_HOURS) {
+      throw new BadRequestException('Tempo inválido (de 1 hora até 90 dias)');
     }
     const lead = await this.leadsService.findOne(leadId, tenantId);
     if (!lead) throw new NotFoundException('Lead não encontrado');
