@@ -105,8 +105,8 @@ export default function Layout({ onLogout }) {
   const DYNAMIC_MODULES_BETA_EMAILS = ['bfagner@hotmail.com.br', 'alex_teste@hotmail.com', 'alexcosta171@yahoo.com', 'soraiadias2023@gmail.com']
   const canSeeModulesTest = isLocalDev || DYNAMIC_MODULES_BETA_EMAILS.includes(user?.email) || promptEngine === 'dynamic_modules'
 
-  // Relatório de vendas por IA — piloto só da DALU (mesma lista do backend, SALES_REPORT_TENANT_IDS).
-  const SALES_REPORT_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c']
+  // Relatório de vendas por IA — piloto da DALU, + admin pra demonstração (mesma lista do backend, SALES_REPORT_TENANT_IDS).
+  const SALES_REPORT_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', '2c562828-0fe9-43c8-bad0-77a931968afc'] // DALU + admin (demonstração)
   const canSeeSalesReport = isLocalDev || SALES_REPORT_TENANT_IDS.includes(user?.tenantId)
 
   // Menu em seções (Operação / Gestão / Sistema). "group" vira um item que expande —

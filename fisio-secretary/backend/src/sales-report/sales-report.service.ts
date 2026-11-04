@@ -14,10 +14,13 @@ import {
   ReportConversation, ReportMetrics, SalesReportContent,
 } from './sales-report.prompt';
 
-// Piloto: só a DALU tem o relatório. Para liberar outro cliente, incluir o id aqui (e no
+// Piloto: DALU (+ admin, para demonstração). Para liberar outro cliente, incluir o id aqui (e no
 // SALES_REPORT_TENANT_IDS do frontend, Layout.jsx) ou na env SALES_REPORT_EXTRA_TENANT_IDS
 // (ids separados por vírgula — libera sem deploy; o menu aparece pela rota /sales-report).
-export const SALES_REPORT_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c'];
+export const SALES_REPORT_TENANT_IDS = [
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', // DALU (piloto)
+  '2c562828-0fe9-43c8-bad0-77a931968afc', // admin (04/11/2026) — conta de demonstração para o vídeo de treinamento da DALU
+];
 
 // Regra de uso (vai mudar): 1 relatório por janela de 7 dias, analisando os últimos 7 dias.
 // Admin gera sem limite (teste/suporte).
@@ -25,7 +28,7 @@ export const SALES_REPORT_RULES = { periodDays: 7, maxPerWindow: 1, windowDays: 
 
 // Tenants do piloto que NÃO recebem o PDF no WhatsApp — o relatório fica só no CRM (tela +
 // "Baixar PDF"). DALU (28/10/2026): pedido do Fagner, "por enquanto fica lá mesmo no CRM".
-export const SALES_REPORT_NO_WHATSAPP_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c'];
+export const SALES_REPORT_NO_WHATSAPP_TENANT_IDS = ['d69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', '2c562828-0fe9-43c8-bad0-77a931968afc'];
 
 export const sendsPdfToWhatsapp = (tenantId: string): boolean =>
   !SALES_REPORT_NO_WHATSAPP_TENANT_IDS.includes(tenantId);

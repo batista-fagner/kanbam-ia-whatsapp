@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatório de vendas por IA liberado também na conta admin',
+    date: '04/11/2026',
+    detail: 'O menu "Relatório de vendas" agora aparece também no admin, igual ao da DALU (fica só no CRM, sem PDF no WhatsApp), para gravar o vídeo ensinando a DALU a usar. Os outros clientes continuam sem o relatório.',
+  },
+  {
     title: 'Vídeo com nome encurtado pela IA agora é encontrado por semelhança (Paraíso Dos Fios)',
     date: '04/11/2026',
     detail: 'A IA às vezes pedia "VIETNAMITA ONDULADO" e o catálogo tinha "CABELO VIETNAMITA LISO ONDULADO 50/55 CM" — o vídeo não saía e a cliente ficava sem ele. Agora, se o nome exato não existir, o sistema procura a mídia que tem todas as palavras pedidas (sem trocar de produto nem de tamanho). Por enquanto só no Paraíso Dos Fios. No Paraíso Dos Fios o prompt também foi ajustado: a IA só oferece vídeo de cabelo que tem vídeo cadastrado; para loiro, cachos personalizados e leves ondulações (ainda sem vídeo) passa o preço e oferece a avaliação por vídeo chamada.',
