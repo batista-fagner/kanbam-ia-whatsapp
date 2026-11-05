@@ -314,6 +314,28 @@ export const setAdminAgendaMode = (tenantId, mode) =>
     body: JSON.stringify({ mode }),
   }).then(agendaJson)
 
+// --- Agenda da Trinks (backend/src/agenda/trinks) ---
+export const getTrinksStatus = () => authFetch(`${BASE}/agenda/trinks`).then(agendaJson)
+export const getTrinksServices = () => authFetch(`${BASE}/agenda/trinks/services`).then(agendaJson)
+export const syncTrinks = () => agendaSend('/trinks/sync', 'POST')
+export const linkTrinksService = (id, externalId) => agendaSend(`/trinks/services/${id}/link`, 'PUT', { externalId })
+export const approveTrinksService = (id) => agendaSend(`/trinks/services/${id}/approve`, 'POST')
+export const unapproveTrinksService = (id) => agendaSend(`/trinks/services/${id}/unapprove`, 'POST')
+export const setTrinksAutoConfirm = (value) => agendaSend('/trinks/auto-confirm', 'PUT', { value })
+export const getTrinksLog = () => authFetch(`${BASE}/agenda/trinks/log`).then(agendaJson)
+// Admin: a chave vai só na ida (PUT) — o backend nunca devolve.
+const adminAgendaSend = (path, method, body) =>
+  authFetch(`${BASE}/admin/agenda${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(agendaJson)
+export const getAdminTrinksStatus = (tenantId) => authFetch(`${BASE}/admin/agenda/${tenantId}/trinks`).then(agendaJson)
+export const connectAdminTrinks = (tenantId, apiKey) => adminAgendaSend(`/${tenantId}/trinks`, 'PUT', { apiKey })
+export const testAdminTrinks = (tenantId) => adminAgendaSend(`/${tenantId}/trinks/test`, 'POST')
+export const disconnectAdminTrinks = (tenantId) => adminAgendaSend(`/${tenantId}/trinks`, 'DELETE')
+export const setAdminTrinksMode = (tenantId, on) => adminAgendaSend(`/${tenantId}/trinks/mode`, 'PUT', { on })
+
 // --- Admin: gestão de clientes ---
 export const getClients = () =>
   authFetch(`${BASE}/admin/clients`).then(json)

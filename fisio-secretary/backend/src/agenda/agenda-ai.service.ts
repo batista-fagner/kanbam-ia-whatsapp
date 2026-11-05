@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Lead } from '../common/entities/lead.entity';
@@ -7,47 +7,19 @@ import type { AiResponse } from '../ai/ai.service';
 import { formatInTZ } from '../common/utils/sp-time.util';
 import { AgendaConflictError, AgendaService } from './agenda.service';
 import { formatWhen } from './agenda-notifier';
+import { AGENDA_JSON_FIELDS, AgendaPromptParts, ddmm, formatDuration as duration, MAX_SLOTS_PER_DAY, normalizeDate, parseLocal, STATE_TTL_MS, syncRawJson } from './agenda-ai.shared';
+import { TrinksAiFlow } from './trinks/trinks-ai.flow';
+
+export { AGENDA_JSON_FIELDS, normalizeDate, parseLocal, syncRawJson };
+export type { AgendaPromptParts };
 
 // Ponte entre a IA (contrato JSON de sempre) e a agenda com profissionais. Sem function calling:
 // a IA pede uma consulta (action=check_availability), o controller chama a IA de novo com os
 // horários livres no fim do prompt, e só confirma "agendado" depois que o book() deu certo.
 
-const STATE_TTL_MS = 2 * 3600 * 1000;
-const MAX_SLOTS_PER_DAY = 8;
-
-// Partes que os motores de prompt encaixam no system prompt.
-export interface AgendaPromptParts {
-  rules: string; // estático por tenant (serviços + regras) — fica no prefixo cacheável
-  jsonFields: string; // campos JSON do contrato com a agenda
-  dynamic: string; // variável (horários + agendamento atual) — SEMPRE no fim do prompt
-  codes: Record<string, string>; // "S1" → serviceId
-}
-
-export const AGENDA_JSON_FIELDS = `  "reply": "texto da resposta para a cliente",
-  "stage": "novo_lead|lead_frio|lead_quente|agendado|perdido",
-  "temperature": "quente|morno|frio",
-  "action": "none|send_media|check_availability|schedule|reschedule|cancel",
-  "mediaName": "id exato do catálogo (ou array de ids p/ vários) — só com action=send_media",
-  "agendaServiceCode": "código do serviço da lista SERVIÇOS QUE PODEM SER AGENDADOS (ex.: S2) — com check_availability, schedule e reschedule",
-  "agendaDate": "YYYY-MM-DD do dia que a cliente quer — com check_availability, SEMPRE pela TABELA DE DATAS",
-  "appointmentDateTime": "YYYY-MM-DDTHH:MM:SS copiado da lista HORÁRIOS LIVRES — só com schedule e reschedule",
-  "tags": [],
-  "shouldIgnore": false,
-  "fields": { "name": "nome se coletado ou null" }`;
-
 function money(v: string | null): string {
   if (v === null || v === undefined) return '';
   return `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function duration(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h ? (m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`) : `${m} min`;
-}
-
-function ddmm(date: string): string {
-  return date.split('-').reverse().slice(0, 2).join('/');
 }
 
 export function buildAgendaRules(services: AgendaServiceEntity[]): { rules: string; codes: Record<string, string> } {
@@ -114,16 +86,22 @@ export class AgendaAiService {
   constructor(
     private readonly agenda: AgendaService,
     @InjectRepository(Lead) private readonly leadRepo: Repository<Lead>,
+    // Agenda da Trinks (tenant_schedules.mode='trinks'). Opcional: os specs antigos não passam.
+    @Optional() private readonly trinks?: TrinksAiFlow,
   ) {}
 
   // null = tenant sem agenda com profissionais ou com a IA proibida de agendar → fluxo antigo.
   // `justChecked`: 2ª chamada da mesma rodada — o bloco avisa que a consulta pedida acabou de ser feita.
   async prepare(tenantId: string, lead: Lead, justChecked = false): Promise<AgendaPromptParts | null> {
+    if (this.trinks) {
+      const viaTrinks = await this.trinks.prepare(tenantId, lead, justChecked);
+      if (viaTrinks !== undefined) return viaTrinks; // undefined = cliente não usa a Trinks
+    }
     if (!(await this.agenda.isAiBookingEnabled(tenantId))) return null;
     const services = await this.agenda.listServices(tenantId, false);
     const { rules, codes } = buildAgendaRules(services);
     const dynamic = await this.buildDynamic(tenantId, lead, services, codes, justChecked);
-    return { rules, jsonFields: AGENDA_JSON_FIELDS, dynamic, codes };
+    return { rules, jsonFields: AGENDA_JSON_FIELDS, dynamic, codes, backend: 'internal' };
   }
 
   private async buildDynamic(tenantId: string, lead: Lead, services: AgendaServiceEntity[], codes: Record<string, string>, justChecked = false): Promise<string> {
@@ -163,6 +141,7 @@ export class AgendaAiService {
 
   // action=check_availability → grava o que consultar. false = pedido inválido (serviço/dia).
   async registerCheck(tenantId: string, lead: Lead, ai: AiResponse, parts: AgendaPromptParts): Promise<boolean> {
+    if (parts.backend === 'trinks' && this.trinks) return this.trinks.registerCheck(tenantId, lead, ai, parts);
     const serviceId = parts.codes[(ai.agendaServiceCode ?? '').trim().toUpperCase()];
     const date = normalizeDate(ai.agendaDate) ?? normalizeDate(ai.appointmentDateTime?.slice(0, 10));
     if (!serviceId) return false;
@@ -177,6 +156,7 @@ export class AgendaAiService {
   // Resposta pronta quando a 2ª chamada da IA falha ou pede outra consulta.
   async fallbackReply(tenantId: string, lead: Lead): Promise<string> {
     const state = lead.agendaState;
+    if (this.trinks && state && (state.days !== undefined || state.unavailable)) return this.trinks.fallbackReply(lead);
     if (!state) return 'Qual serviço você quer agendar e pra qual dia?';
     const days = await this.agenda.getSlots(tenantId, state.serviceId, state.date, 7);
     const day = days.find((d) => d.date === state.date && d.slots.length) ?? days.find((d) => d.slots.length);
@@ -188,6 +168,14 @@ export class AgendaAiService {
   // Executa schedule/reschedule/cancel e ajusta o aiResponse (reply/stage/action) conforme o
   // resultado REAL — a cliente só ouve "agendado" se o agendamento existir de verdade.
   async applyAction(tenantId: string, lead: Lead, ai: AiResponse, parts: AgendaPromptParts): Promise<void> {
+    if (parts.backend === 'trinks' && this.trinks) {
+      try {
+        await this.trinks.applyAction(tenantId, lead, ai, parts);
+      } finally {
+        syncRawJson(ai);
+      }
+      return;
+    }
     const action = ai.action as string;
     if (!['schedule', 'reschedule', 'cancel'].includes(action)) return;
     try {
@@ -251,27 +239,4 @@ export class AgendaAiService {
       ai.stage = 'lead_quente';
     }
   }
-}
-
-// O histórico da conversa (lead.aiContext) guarda o JSON bruto da IA. Quando o sistema troca
-// reply/action/stage (conflito, falha, resposta pronta), o JSON tem que acompanhar — senão no
-// turno seguinte a IA "lembra" de uma resposta que a cliente nunca recebeu.
-export function syncRawJson(ai: AiResponse): AiResponse {
-  let base: any = {};
-  try { base = ai.rawJson ? JSON.parse(ai.rawJson) : {}; } catch { base = {}; }
-  ai.rawJson = JSON.stringify({ ...base, reply: ai.reply, action: ai.action, stage: ai.stage });
-  return ai;
-}
-
-export function normalizeDate(v?: string | null): string | null {
-  const m = (v ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
-}
-
-// "2026-10-23T14:00:00" (hora local de Brasília, sem fuso) → Date.
-export function parseLocal(v?: string | null): Date | null {
-  const m = (v ?? '').match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
-  if (!m) return null;
-  const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00-03:00`);
-  return isNaN(d.getTime()) ? null : d;
 }

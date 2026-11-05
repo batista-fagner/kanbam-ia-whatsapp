@@ -9,6 +9,7 @@ import {
   addClientExtraCharge,
   deleteClientExtraCharge,
 } from '../services/api'
+import TrinksAdminCard from './agenda/TrinksAdminCard'
 
 const fmtBRL = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -226,6 +227,9 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
               <p className="text-xs text-gray-400 mt-1.5">Com número preenchido, a IA responde só a ele; os outros contatos ficam salvos no Kanban, sem resposta. Vazio = IA responde a todos. Follow-ups automáticos não são afetados. Vale na próxima mensagem.</p>
             </div>
           )}
+
+          {/* Integração Trinks (agenda) — só na aba Clientes, igual ao modo teste */}
+          {hasTestPhoneField && <TrinksAdminCard tenantId={client.id} />}
 
           {/* Churn */}
           <div className="mb-5 border border-gray-200 rounded-xl p-4">

@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Agenda da Trinks: a IA agenda direto na Trinks (piloto DALU)',
+    date: '05/11/2026',
+    detail: 'Novo modo de agenda: a IA consulta os horários livres na Trinks e marca, remarca e cancela lá. Antes de gravar, o sistema manda à cliente um resumo com o dia da semana e a data calculados por ele (não pela IA) e só grava depois do "sim". A IA só agenda serviços que a cliente aprovou na tela Agenda (cada serviço da tabela dela ligado ao serviço da Trinks). Os preços continuam vindo da tabela do prompt. No começo, os agendamentos entram como "Aguardando confirmação" na Trinks para a recepção conferir. Se a Trinks falhar ou a cota do mês (5.000 consultas) acabar, a IA diz que a equipe confirma e o salão recebe aviso no WhatsApp. O token fica criptografado e é cadastrado só pelo Admin (card "Integração Trinks" no cliente).',
+  },
+  {
     title: 'Follow-up do card do lead: agora dá para escolher quantos dias',
     date: '04/11/2026',
     detail: 'No card do lead (Kanban), além de 1h, 4h e 24h, há a opção "Dias": a cliente escolhe de 1 a 90 dias e escreve a mensagem que quiser (ou gera com a IA), individual para aquele lead. A tela mostra a data prevista; se cair fora do horário comercial, sai quando abrir. O menu "Regras de Alertas" passou a se chamar "Follow-up personalizado" (mensagem automática por raia, a mesma para todos os leads).',
@@ -483,6 +488,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'DALU / Trinks: ativar a integração',
+    detail: 'Falta: configurar INTEGRATIONS_ENC_KEY no Railway antes do deploy, colar o token no card "Integração Trinks", a DALU aprovar os serviços (as durações na Trinks estão diferentes das do CRM, ex.: fita adesiva 60 min lá e 150 min aqui, e "aplicação de 4 telas" está com 0 min), ajustar o prompt dela, testar uma conversa com o número de teste e só então ligar "A IA pode agendar sozinha". Os 2 agendamentos futuros da agenda do CRM precisam ser lançados na Trinks.',
+  },
   {
     title: 'Paraíso Dos Fios: subir vídeos de cachos personalizados, leves ondulações e loiro',
     detail: 'Esses cabelos estão na tabela de preços mas não têm vídeo no catálogo. Enquanto não tiverem, a IA oferece a avaliação por vídeo chamada no lugar do vídeo.',

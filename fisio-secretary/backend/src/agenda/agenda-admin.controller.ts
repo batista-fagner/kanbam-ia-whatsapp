@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { TenantSchedule } from '../common/entities/tenant-schedule.entity';
@@ -15,10 +15,10 @@ export class AgendaAdminController {
     @InjectRepository(TenantSchedule) private readonly scheduleRepo: Repository<TenantSchedule>,
   ) {}
 
-  // { [tenantId]: 'professionals' } — só quem está no modo novo.
+  // { [tenantId]: 'professionals' | 'trinks' } — só quem está no modo novo.
   @Get('modes')
   async modes() {
-    const rows = await this.scheduleRepo.find({ where: { mode: 'professionals' } });
+    const rows = await this.scheduleRepo.find({ where: { mode: In(['professionals', 'trinks']) } });
     return Object.fromEntries(rows.map((r) => [r.tenantId, r.mode]));
   }
 

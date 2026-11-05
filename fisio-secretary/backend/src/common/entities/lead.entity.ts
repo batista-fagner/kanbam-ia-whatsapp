@@ -12,6 +12,24 @@ export type LeadStage =
 
 export type LeadTemperature = 'quente' | 'morno' | 'frio';
 
+// Estado da agenda na conversa (ver agenda/agenda-ai.service.ts).
+export interface LeadAgendaState {
+  serviceId: string;
+  date: string;
+  checkedAt: string;
+  // Trinks: horários consultados (dia → horários) e se a consulta falhou.
+  days?: { date: string; weekday: string; times: string[] }[];
+  unavailable?: boolean;
+  // Pedido aguardando a confirmação da cliente (o sistema só grava depois do "sim").
+  pending?: {
+    kind: 'schedule' | 'reschedule' | 'cancel';
+    serviceId: string | null;
+    start: string | null; // ISO
+    appointmentId: string | null;
+    createdAt: string;
+  } | null;
+}
+
 @Entity('leads')
 // Unique por tenant: o mesmo número pode existir em clientes diferentes.
 @Index('UQ_leads_tenant_phone', ['tenantId', 'phone'], { unique: true })
@@ -103,8 +121,10 @@ export class Lead {
 
   // Agenda com profissionais: última consulta de horários feita pela IA nesta conversa
   // (serviço + dia). Reaproveitada nos turnos seguintes pra reinjetar horários frescos.
+  // Na agenda da Trinks também guarda o resultado da consulta (`days`, pra não gastar cota da
+  // Trinks a cada mensagem) e o pedido aguardando o "sim" da cliente (`pending`).
   @Column({ name: 'agenda_state', type: 'jsonb', nullable: true })
-  agendaState: { serviceId: string; date: string; checkedAt: string } | null;
+  agendaState: LeadAgendaState | null;
 
   // Foto de perfil do WhatsApp, baixada uma vez e persistida no nosso storage
   // (a URL original do WhatsApp expira em alguns dias). Ver LeadsService.fetchAvatar.

@@ -39,7 +39,7 @@ export class AppointmentsService {
 
   // Nome do profissional (agenda com profissionais) pro lembrete — null nos agendamentos antigos.
   async professionalNameFor(appt: Appointment): Promise<string | null> {
-    if (!appt.professionalId) return null;
+    if (!appt.professionalId) return appt.externalProfessionalName ?? null; // agenda da Trinks
     const p = await this.repo.manager.findOne(AgendaProfessional, { where: { id: appt.professionalId } });
     return p?.name ?? null;
   }

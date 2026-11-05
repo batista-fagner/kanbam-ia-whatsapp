@@ -61,6 +61,23 @@ export class Appointment {
   @Column({ type: 'varchar', nullable: true })
   source: 'ia' | 'manual' | null;
 
+  // Agendamento que mora num sistema externo (Trinks): esta linha é a cópia local, usada pelo
+  // lembrete, pelo card do lead e pelo histórico "agendamentos feitos pela IA".
+  @Column({ name: 'external_provider', type: 'varchar', nullable: true })
+  externalProvider: 'trinks' | null;
+
+  @Column({ name: 'external_id', type: 'varchar', nullable: true })
+  externalId: string | null;
+
+  @Column({ name: 'external_client_id', type: 'varchar', nullable: true })
+  externalClientId: string | null;
+
+  @Column({ name: 'external_professional_id', type: 'varchar', nullable: true })
+  externalProfessionalId: string | null;
+
+  @Column({ name: 'external_professional_name', type: 'varchar', nullable: true })
+  externalProfessionalName: string | null;
+
   @Column({ name: 'reminder_sent_at', type: 'timestamp', nullable: true })
   reminderSentAt: Date | null;
 

@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { externalAppointmentCheck } from '../common/external-appointment-check';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, IsNull } from 'typeorm';
@@ -963,6 +964,8 @@ export class FollowupService implements OnApplicationBootstrap, OnModuleDestroy 
   // Envia o lembrete (reminder_sent_at já marcado por quem chamou) e grava na conversa.
   // Usado pelo cron legado e pelo job (runAppointmentReminder).
   private async sendAppointmentReminder(cfg: WhatsappConfig, appt: Appointment): Promise<void> {
+    // Agendamento da Trinks: confere lá antes (cancelado/remarcado pela recepção → não lembra).
+    if (!(await externalAppointmentCheck.isStillActive(appt))) return;
     const reminder = cfg.appointmentReminder!;
     const hora = appt.startDateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
     const data = appt.startDateTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });

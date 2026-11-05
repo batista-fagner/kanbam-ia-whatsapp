@@ -28,6 +28,23 @@ export class AgendaServiceEntity {
   @Column({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number;
 
+  // Agenda na Trinks (tenant_schedules.mode='trinks'): serviço correspondente lá. A IA só agenda
+  // o serviço com ligação APROVADA pela cliente (approved_at). Trocar a ligação zera a aprovação.
+  @Column({ name: 'external_id', type: 'varchar', nullable: true })
+  externalId: string | null;
+
+  @Column({ name: 'external_name', type: 'varchar', nullable: true })
+  externalName: string | null;
+
+  @Column({ name: 'external_duration_minutes', type: 'integer', nullable: true })
+  externalDurationMinutes: number | null;
+
+  @Column({ name: 'approved_at', type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ name: 'approved_by', type: 'varchar', nullable: true })
+  approvedBy: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

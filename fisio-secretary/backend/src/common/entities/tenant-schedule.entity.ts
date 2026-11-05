@@ -26,8 +26,9 @@ export class TenantSchedule {
 
   // 'simple' = agenda de um recurso só (capacity); 'professionals' = agenda com profissionais e
   // serviços (módulo agenda/). Com 'professionals', slot_minutes vira a grade de início dos horários.
+  // 'trinks' = a agenda é a da Trinks (agenda/trinks): horários, gravação, remarcação e cancelamento lá.
   @Column({ type: 'varchar', default: 'simple' })
-  mode: 'simple' | 'professionals';
+  mode: 'simple' | 'professionals' | 'trinks';
 
   @Column({ name: 'slot_minutes', type: 'integer', default: 60 })
   slotMinutes: number;

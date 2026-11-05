@@ -55,6 +55,42 @@ export class AgendaNotifier {
   }
 }
 
+export interface SalonAlertSender {
+  notifySalon(tenantId: string, text: string): Promise<void>;
+}
+
+// Aviso solto ao número de avisos do salão (whatsapp_config.notification_phone) — usado pela
+// agenda da Trinks quando algo dá errado e a equipe precisa assumir. Falha só loga.
+@Injectable()
+export class SalonAlertNotifier implements SalonAlertSender {
+  private readonly logger = new Logger('SalonAlertNotifier');
+
+  constructor(
+    @InjectRepository(WhatsappConfig) private readonly configRepo: Repository<WhatsappConfig>,
+    private readonly config: ConfigService,
+  ) {}
+
+  async notifySalon(tenantId: string, text: string): Promise<void> {
+    try {
+      const tenant = await this.configRepo.findOne({ where: { id: tenantId } });
+      const token = tenant?.instanceToken || this.config.get<string>('UAZAPI_TOKEN') || '';
+      const baseUrl = (this.config.get<string>('UAZAPI_BASE_URL') ?? '').replace(/\/$/, '');
+      if (!tenant?.notificationPhone || !token || !baseUrl) {
+        this.logger.warn(`[AGENDA] Aviso ao salão não enviado (sem número de avisos/token) — tenant ${tenantId}`);
+        return;
+      }
+      const r = await fetch(`${baseUrl}/send/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token },
+        body: JSON.stringify({ number: normalize(tenant.notificationPhone), text }),
+      });
+      if (!r.ok) this.logger.warn(`[AGENDA] Aviso ao salão falhou (HTTP ${r.status}) — tenant ${tenantId}`);
+    } catch (err) {
+      this.logger.warn(`[AGENDA] Aviso ao salão falhou: ${err?.message} — tenant ${tenantId}`);
+    }
+  }
+}
+
 function normalize(phone: string): string {
   const d = phone.replace(/\D/g, '');
   return d.startsWith('55') ? d : `55${d}`;
