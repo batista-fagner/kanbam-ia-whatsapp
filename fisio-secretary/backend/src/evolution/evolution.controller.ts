@@ -101,6 +101,13 @@ const IMAGE_ANALYSIS_TENANT_IDS = [
 // Vai pra IA no lugar do texto quando nenhuma transcrição funcionou.
 const AUDIO_NOT_TRANSCRIBED = '[a cliente mandou um áudio, mas não deu pra ouvir — peça com carinho pra ela escrever a mensagem]';
 
+// Tenants que não são de cabelo: o aviso fixo de foto sem legenda não pode perguntar
+// "liso, ondulado ou cacheado". Mult Festa (09/11/2026) — loja de festa.
+const NON_HAIR_IMAGE_TENANT_IDS = [
+  '69420c85-634c-451d-af45-2ebccf8aa1d3', // Mult Festa
+];
+const IMAGE_NOT_SEEN_REPLY_GENERIC = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me contar em palavras o que tem na foto?';
+
 // Tenants em que a foto sem legenda vai pra IA como "[imagem]" em vez do aviso fixo "não consigo
 // ver imagens" — o prompt deles tem regra própria pra foto (ex.: passar pra dona). Fabiana (13/10/2026).
 const IMAGE_PLACEHOLDER_TO_AI_TENANT_IDS = [
@@ -429,7 +436,9 @@ export class EvolutionController {
               return;
             }
 
-            const reply = 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
+            const reply = NON_HAIR_IMAGE_TENANT_IDS.includes(tenantId)
+              ? IMAGE_NOT_SEEN_REPLY_GENERIC
+              : 'oi! ainda não consigo ver imagens por aqui 😅 vc pode me dizer se o cabelo é liso, ondulado ou cacheado?';
             // Aviso fixo: só UMA vez por conversa. Fotos que chegam com mais de 15s de intervalo
             // passam do debounce separadamente e geravam o mesmo aviso a cada foto.
             if (await this.leadsService.wasOutboundSentRecently(conversation.id, reply, 24)) {

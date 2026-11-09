@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Foto sem texto: a Mult Festa não pergunta mais sobre cabelo (Mult Festa)',
+    date: '09/11/2026',
+    detail: 'Quando o lead mandava uma foto sem texto, a resposta automática era a mesma de todas as clientes: "vc pode me dizer se o cabelo é liso, ondulado ou cacheado?" — sem sentido numa loja de festa. Agora a Mult Festa responde "vc pode me contar em palavras o que tem na foto?". As clientes de cabelo continuam iguais.',
+  },
+  {
     title: 'Agenda da Trinks: a IA agenda direto na Trinks (piloto DALU)',
     date: '05/11/2026',
     detail: 'Novo modo de agenda: a IA consulta os horários livres na Trinks e marca, remarca e cancela lá. Antes de gravar, o sistema manda à cliente um resumo com o dia da semana e a data calculados por ele (não pela IA) e só grava depois do "sim". A IA só agenda serviços que a cliente aprovou na tela Agenda (cada serviço da tabela dela ligado ao serviço da Trinks). Os preços continuam vindo da tabela do prompt. No começo, os agendamentos entram como "Aguardando confirmação" na Trinks para a recepção conferir. Se a Trinks falhar ou a cota do mês (5.000 consultas) acabar, a IA diz que a equipe confirma e o salão recebe aviso no WhatsApp. O token fica criptografado e é cadastrado só pelo Admin (card "Integração Trinks" no cliente).',
