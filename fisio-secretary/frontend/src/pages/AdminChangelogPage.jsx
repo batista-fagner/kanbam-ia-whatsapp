@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Black Friday: a IA só manda vídeo da Black Friday (S&A Cabelos Naturais)',
+    date: '11/11/2026',
+    detail: 'A IA mandou o vídeo antigo do Vietnamita 59 cm (legenda R$ 499,90) em vez do vídeo da Black Friday (R$ 449,90), e a cliente viu dois preços. Agora, se a IA escolher um vídeo de cabelo sem "Black Friday" no nome, o sistema troca pela versão Black Friday do mesmo cabelo; se não existir, não envia e responde que esse modelo não está na Black Friday. Também saiu do módulo de preço a regra de desconto em espécie (falta o Alex apagar o campo "Espécie" na Tabela de preços). Desligar a trava quando a Black Friday acabar.',
+  },
+  {
     title: 'Foto sem texto: frase nova da Mult Festa (Mult Festa)',
     date: '10/11/2026',
     detail: 'A pedido da cliente, a resposta automática para foto sem texto agora é: "Recebemos sua imagem! 😊 Obrigada por compartilhar conosco. Vou deixar sua imagem como referência para o atendimento. Me conta, como podemos ajudar você com essa inspiração? ❤️". As outras clientes continuam iguais.',

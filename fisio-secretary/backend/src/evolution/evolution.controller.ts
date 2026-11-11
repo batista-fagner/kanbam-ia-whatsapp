@@ -26,6 +26,7 @@ import { AudioService } from '../audio/audio.service';
 import { MediaService } from '../media/media.service';
 import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
+import { BLACK_FRIDAY_MEDIA_TENANT_IDS, BLACK_FRIDAY_MEDIA_BLOCKED_REPLY, swapToBlackFriday } from '../media/black-friday-media.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -147,6 +148,9 @@ const COMPACT_REPLY_TENANT_IDS = [
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline Carvalho / HE Cabelos
 ];
 
+// Marca, na lista de "não encontradas", as mídias barradas pela trava da Black Friday.
+const BLACK_FRIDAY_BLOCKED_PREFIX = '[fora da Black Friday] ';
+
 @Controller('webhooks')
 export class EvolutionController {
   private readonly logger = new Logger(EvolutionController.name);
@@ -184,6 +188,12 @@ export class EvolutionController {
   // brilho!"); se tiver conteúdo substancial (preço, explicação), manda a reply mesmo sem
   // mídia — perder informação real é pior do que mandar o texto sem o vídeo.
   private resolveMediaFallback(reply: string, notFoundNames: string[]): string {
+    // Trava da Black Friday barrou todos os vídeos pedidos (sem versão Black Friday) — a reply
+    // da IA fala de um vídeo que não vai sair, então troca pela frase fixa.
+    if (notFoundNames.length > 0 && notFoundNames.every((n) => n.startsWith(BLACK_FRIDAY_BLOCKED_PREFIX))) {
+      this.logger.warn(`[MEDIA-BF] Só vídeo(s) fora da Black Friday pedido(s): ${notFoundNames.join(', ')} — usando frase fixa`);
+      return BLACK_FRIDAY_MEDIA_BLOCKED_REPLY;
+    }
     const text = (reply ?? '').replace(/\|\|\|/g, ' ').trim();
     if (text.length >= 80) {
       this.logger.warn(`[MEDIA] Mídia(s) não encontrada(s): ${notFoundNames.join(', ')} — reply mantido (tem conteúdo próprio, ${text.length} chars)`);
@@ -1379,6 +1389,18 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       .filter((n): n is string => typeof n === 'string' && n.trim().length > 0)
       .slice(0, MAX_MEDIA);
 
+    // Trava da Black Friday (ver black-friday-media.util.ts): vídeo de cabelo sem "Black Friday"
+    // no nome é trocado pela versão Black Friday do mesmo cabelo, ou barrado se não houver.
+    const bfBlocked: string[] = [];
+    if (BLACK_FRIDAY_MEDIA_TENANT_IDS.has(tenantId) && names.length > 0) {
+      const catalog = (await this.mediaService.listAll(tenantId)).map((m) => m.name);
+      const bf = swapToBlackFriday(names, catalog);
+      for (const s of bf.swapped) this.logger.warn(`[MEDIA-BF] "${s.from}" trocado por "${s.to}" (${phone})`);
+      if (bf.blocked.length > 0) this.logger.warn(`[MEDIA-BF] Barrado(s) sem versão Black Friday (${phone}): ${bf.blocked.join(', ')}`);
+      bfBlocked.push(...bf.blocked);
+      names.splice(0, names.length, ...bf.names);
+    }
+
     // Limite diário de vídeos por tenant (BRT). Padrão: 100.
     const dailyLimit = instanceConfig?.mediaLimitPerDay ?? 100;
     const alreadySentToday = await this.leadsService.countTodayOutboundMedia(tenantId);
@@ -1416,7 +1438,7 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     }
 
     let sentCount = 0;
-    const notFound: string[] = [];
+    const notFound: string[] = bfBlocked.map((n) => BLACK_FRIDAY_BLOCKED_PREFIX + n);
     for (let i = 0; i < names.length; i++) {
       if (sentCount >= remainingQuota) {
         this.logger.warn(`[MEDIA-LIMIT] Limite diário de ${dailyLimit} vídeos atingido para tenant ${tenantId} — pulando envio`);
