@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Foto sem texto: frase nova da Mult Festa (Mult Festa)',
+    date: '10/11/2026',
+    detail: 'A pedido da cliente, a resposta automática para foto sem texto agora é: "Recebemos sua imagem! 😊 Obrigada por compartilhar conosco. Vou deixar sua imagem como referência para o atendimento. Me conta, como podemos ajudar você com essa inspiração? ❤️". As outras clientes continuam iguais.',
+  },
+  {
     title: 'Foto sem texto: a Mult Festa não pergunta mais sobre cabelo (Mult Festa)',
     date: '09/11/2026',
     detail: 'Quando o lead mandava uma foto sem texto, a resposta automática era a mesma de todas as clientes: "vc pode me dizer se o cabelo é liso, ondulado ou cacheado?" — sem sentido numa loja de festa. Agora a Mult Festa responde "vc pode me contar em palavras o que tem na foto?". As clientes de cabelo continuam iguais.',
