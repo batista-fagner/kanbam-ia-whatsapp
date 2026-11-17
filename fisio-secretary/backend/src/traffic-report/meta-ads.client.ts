@@ -17,12 +17,16 @@ export class MetaAdsClient {
     return !!this.config.get<string>('META_ADS_TOKEN');
   }
 
-  // Sem versão fixa por padrão: a Meta aposenta versões da API de Marketing em cerca de um
-  // ano, e versão vencida derruba a rotina inteira. Sem versão na URL, a Meta usa a mais
-  // antiga ainda válida para o app. META_GRAPH_VERSION (ex: "v24.0") fixa uma, se preciso.
+  // A Meta aposenta versões da API de Marketing em cerca de dois anos. Sem versão na URL ela
+  // usa a versão em que o aplicativo foi criado, e se essa já foi aposentada recusa tudo com
+  // "(#2635) deprecated version" (foi o que aconteceu em 16/11/2026 no teste). Por isso a
+  // versão é fixa. Quando a Meta avisar de nova aposentadoria, troque META_GRAPH_VERSION no
+  // Railway (sem precisar de deploy) ou atualize o padrão abaixo.
+  private static readonly DEFAULT_GRAPH_VERSION = 'v26.0';
+
   private baseUrl(): string {
-    const version = (this.config.get<string>('META_GRAPH_VERSION') ?? '').trim();
-    return version ? `https://graph.facebook.com/${version}` : 'https://graph.facebook.com';
+    const version = (this.config.get<string>('META_GRAPH_VERSION') ?? '').trim() || MetaAdsClient.DEFAULT_GRAPH_VERSION;
+    return `https://graph.facebook.com/${version}`;
   }
 
   private async insights(adAccountId: string, params: Record<string, string>): Promise<any[]> {
