@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Relatório semanal de tráfego pago, com aprovação pelo WhatsApp',
+    date: '16/11/2026',
+    detail: 'Todo dia às 19h o sistema vê quais clientes de tráfego completaram 7 dias desde o último relatório, busca os números na Meta (investido, conversas no WhatsApp, custo por conversa, pessoas alcançadas), monta o texto e manda o rascunho para o WhatsApp do Fagner com um link. No link dá para editar, aprovar (aí vai para o grupo do cliente) ou descartar. Sem investimento na semana, nada vai para o grupo. Começa com Glow Hair, Paraíso dos Fios e Adriele; primeiro envio em 23/11, cobrindo 16 a 22/11. Antes os relatórios eram montados e enviados à mão.',
+  },
+  {
     title: 'Black Friday: a IA só manda vídeo da Black Friday (S&A Cabelos Naturais)',
     date: '11/11/2026',
     detail: 'A IA mandou o vídeo antigo do Vietnamita 59 cm (legenda R$ 499,90) em vez do vídeo da Black Friday (R$ 449,90), e a cliente viu dois preços. Agora, se a IA escolher um vídeo de cabelo sem "Black Friday" no nome, o sistema troca pela versão Black Friday do mesmo cabelo; se não existir, não envia e responde que esse modelo não está na Black Friday. Também saiu do módulo de preço a regra de desconto em espécie (falta o Alex apagar o campo "Espécie" na Tabela de preços). Desligar a trava quando a Black Friday acabar.',
@@ -503,6 +508,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Relatório de tráfego: falta o token da Meta no Railway',
+    detail: 'A rotina só liga quando existir META_ADS_TOKEN no Railway (token de usuário do sistema do portfólio "BM - afiliado", com permissão de leitura de anúncios nas contas Glow Hair, Paraíso dos Fios e DrikaBM). Sem ele, às 19h nada acontece. A busca na Meta com token de verdade ainda não foi testada. Falta também cadastrar a Silvia quando a conta dela for conectada (hoje o cadastro é feito direto no banco, não tem tela).',
+  },
   {
     title: 'DALU / Trinks: ativar a integração',
     detail: 'Falta: configurar INTEGRATIONS_ENC_KEY no Railway antes do deploy, colar o token no card "Integração Trinks", a DALU aprovar os serviços (as durações na Trinks estão diferentes das do CRM, ex.: fita adesiva 60 min lá e 150 min aqui, e "aplicação de 4 telas" está com 0 min), ajustar o prompt dela, testar uma conversa com o número de teste e só então ligar "A IA pode agendar sozinha". Os 2 agendamentos futuros da agenda do CRM precisam ser lançados na Trinks.',
