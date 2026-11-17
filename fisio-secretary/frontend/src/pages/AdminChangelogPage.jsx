@@ -9,7 +9,7 @@ const DONE = [
   {
     title: 'Relatório semanal de tráfego pago, com aprovação pelo WhatsApp',
     date: '16/11/2026',
-    detail: 'Todo dia às 19h o sistema vê quais clientes de tráfego completaram 7 dias desde o último relatório, busca os números na Meta (investido, conversas no WhatsApp, custo por conversa, pessoas alcançadas), monta o texto e manda o rascunho para o WhatsApp do Fagner com um link. No link dá para editar, aprovar (aí vai para o grupo do cliente) ou descartar. Sem investimento na semana, nada vai para o grupo. Começa com Glow Hair, Paraíso dos Fios e Adriele; primeiro envio em 23/11, cobrindo 16 a 22/11. Antes os relatórios eram montados e enviados à mão.',
+    detail: 'Todo dia às 19h o sistema vê quais clientes de tráfego completaram 7 dias desde o último relatório, busca os números na Meta (investido, conversas no WhatsApp, custo por conversa, pessoas alcançadas), monta o texto e manda o rascunho para o WhatsApp do Fagner com um link. No link dá para editar, aprovar (aí vai para o grupo do cliente) ou descartar. Sem investimento na semana, nada vai para o grupo. Começa com Glow Hair, Paraíso dos Fios e Adriele; primeiro envio em 23/11, cobrindo 16 a 22/11. Antes os relatórios eram montados e enviados à mão. A busca na Meta usa a versão v26.0 da API (a Meta recusou a versão antiga no teste de 16/11); a versão pode ser trocada pela variável META_GRAPH_VERSION no Railway.',
   },
   {
     title: 'Black Friday: a IA só manda vídeo da Black Friday (S&A Cabelos Naturais)',
@@ -509,8 +509,8 @@ const DONE = [
 
 const PENDING = [
   {
-    title: 'Relatório de tráfego: falta o token da Meta no Railway',
-    detail: 'A rotina só liga quando existir META_ADS_TOKEN no Railway (token de usuário do sistema do portfólio "BM - afiliado", com permissão de leitura de anúncios nas contas Glow Hair, Paraíso dos Fios e DrikaBM). Sem ele, às 19h nada acontece. A busca na Meta com token de verdade ainda não foi testada. Falta também cadastrar a Silvia quando a conta dela for conectada (hoje o cadastro é feito direto no banco, não tem tela).',
+    title: 'Relatório de tráfego: acompanhar o primeiro envio automático',
+    detail: 'O token da Meta já está no Railway e o teste de 16/11 bateu com o Gerenciador. Falta só acompanhar o primeiro envio de verdade, segunda 23/11 às 19h: o rascunho chega no WhatsApp do Fagner para aprovar. A Silvia fica fora até a conta dela ser conectada; a Adriele só entra nos relatórios quando a conta tiver forma de pagamento e gastar.',
   },
   {
     title: 'DALU / Trinks: ativar a integração',
