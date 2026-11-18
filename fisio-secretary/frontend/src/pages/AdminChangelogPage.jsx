@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Encaminhamento ao Alex: etiqueta e aviso com contexto (S&A Cabelos Naturais)',
+    date: '19/11/2026',
+    detail: 'Quando a cliente diz "quero esse", "manda o pix", "pode reservar" etc., o sistema responde "Perfeito! Vou deixar tudo encaminhado e o Alex já continua com você…" e desliga a IA, mas o lead ficava só com a etiqueta "qualificado" (2.037 leads) e o aviso era pobre (nome, telefone e a palavra) e sem registro de entrega. Agora o lead ganha a etiqueta "aguardando-alex" (aparece no CRM e nas etiquetas do WhatsApp) e o Alex recebe um aviso com o nome, o link direto da conversa, o que a cliente disse e o gatilho. O número de aviso estava salvo sem o 55 e agora é normalizado. Quando o Alex terminar, é só tirar a etiqueta.',
+  },
+  {
     title: 'Automação de Instagram: comentário e Direct levam para o WhatsApp (DALU)',
     date: '18/11/2026',
     detail: 'Nova tela "Instagram" no CRM do cliente: ele escolhe o post, decide se dispara em qualquer comentário ou só com palavra-chave, escreve o Direct (com {nome} para o @ da pessoa), o texto do botão e o link do WhatsApp (número e mensagem já escrita). Quem comenta recebe um Direct com botão "Falar no WhatsApp" e, se configurado, uma resposta pública; quem manda Direct também pode receber a mesma mensagem. A mesma pessoa não recebe de novo dentro do intervalo escolhido (padrão 24h), para não parecer spam. A tela mostra a atividade (enviado, sem palavra-chave, já tinha recebido, erro). No Admin, o card "Automação de Instagram" conecta a conta colando o token; o token fica criptografado e renova sozinho antes dos 60 dias. Usa o app CRM-IA da Meta: o convertHairCRM repassa para cá os eventos que não são da conta converthair.',

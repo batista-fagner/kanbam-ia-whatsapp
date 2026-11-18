@@ -28,6 +28,7 @@ import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
 import { BLACK_FRIDAY_MEDIA_TENANT_IDS, BLACK_FRIDAY_MEDIA_BLOCKED_REPLY, swapToBlackFriday } from '../media/black-friday-media.util';
 import { PIX_KEY_GUARD_TENANT_IDS, PIX_KEY_BLOCKED_REPLY, checkPixKeys } from './pix-key-guard.util';
+import { ALEX_HANDOFF_LABEL, buildAlexHandoffText, normalizeNotifyPhone } from './alex-handoff.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -792,7 +793,8 @@ export class EvolutionController {
         await this.evolutionService.sendTextMessage(phone, handoffReply, tenantToken, tenantId, { dynamicTyping: !!instanceConfig?.bubbleMode });
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', handoffReply);
         await this.leadsService.toggleAi(lead.id, false);
-        this.notifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, matchedKeyword);
+        await this.markAlexHandoffLabel(lead, phone, tenantId);
+        this.notifyAlexHandoff(lead, pushName ?? null, instanceConfig, tenantToken, tenantId, matchedKeyword, combinedText);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
@@ -1339,6 +1341,36 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     if (Date.now() - last < PURCHASE_NOTIFY_COOLDOWN_MS) return;
     this.purchaseNotifiedAt.set(lead.id, Date.now());
     this.notifyPurchaseIntent(lead, instanceConfig, tenantToken, tenantId, keyword);
+  }
+
+  // Etiqueta do encaminhamento ao Alex (ver alex-handoff.util.ts). Sempre reaplica na uazapi,
+  // porque o Alex tira a etiqueta quando termina e o mesmo lead pode voltar a ser encaminhado.
+  // Falha na etiqueta nunca derruba o encaminhamento.
+  private async markAlexHandoffLabel(lead: any, phone: string, tenantId: string): Promise<void> {
+    try {
+      await this.applyTagsToLead(phone, [ALEX_HANDOFF_LABEL], tenantId);
+      const existing: string[] = lead.labels ?? [];
+      if (!existing.includes(ALEX_HANDOFF_LABEL)) {
+        await this.leadsService.update(lead.id, { labels: [...existing, ALEX_HANDOFF_LABEL] } as any);
+      }
+    } catch (err: any) {
+      this.logger.error(`[ALEX-HANDOFF] Falha ao etiquetar ${phone}: ${err.message}`);
+    }
+  }
+
+  // Aviso do encaminhamento ao Alex: nome, link direto da conversa, o que a cliente disse e o
+  // gatilho. Número normalizado com 55 (o do Alex está salvo sem DDI) e log de sucesso/falha —
+  // o aviso antigo (notifyPurchaseIntent) não deixava rastro de entrega.
+  private notifyAlexHandoff(lead: any, pushName: string | null, instanceConfig: any, tenantToken: string | undefined, tenantId: string, keyword: string, customerText: string): void {
+    const notificationPhone = normalizeNotifyPhone(instanceConfig?.notificationPhone);
+    if (!notificationPhone) {
+      this.logger.warn(`[ALEX-HANDOFF] Sem número de aviso em Configurações — ${lead.phone} encaminhada sem notificação`);
+      return;
+    }
+    const text = buildAlexHandoffText({ name: lead.name || pushName, phone: lead.phone, keyword, customerText });
+    this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
+      .then(() => this.logger.log(`[ALEX-HANDOFF] Aviso enviado para ${notificationPhone} (lead ${lead.phone})`))
+      .catch(err => this.logger.error(`[ALEX-HANDOFF] Falha ao avisar ${notificationPhone}: ${err.message}`));
   }
 
   // Ver PURCHASE_HANDOFF_TENANT_IDS — avisa o número cadastrado em Configurações
