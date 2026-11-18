@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Chave Pix inventada: a IA só manda a chave cadastrada no prompt (DALU)',
+    date: '18/11/2026',
+    detail: 'A IA da DALU inventou chave Pix para clientes (um e-mail falso em 23/10; "[INSERIR CHAVE PIX OFICIAL]", um CNPJ zerado e uma chave aleatória de exemplo em 13/11), porque o prompt dizia para enviar a chave do cadastro, mas não havia chave nenhuma. Agora, se a resposta tiver uma chave que não está escrita no prompt dela, a mensagem não sai: a cliente recebe "vou pedir para alguém da equipe te enviar os dados de pagamento", o atendimento passa para a equipe e a DALU é avisada no número de Configurações. Quando ela cadastrar a chave no prompt, só essa chave passa.',
+  },
+  {
     title: 'Relatório semanal de tráfego pago, com aprovação pelo WhatsApp',
     date: '16/11/2026',
     detail: 'Todo dia às 19h o sistema vê quais clientes de tráfego completaram 7 dias desde o último relatório, busca os números na Meta (investido, conversas no WhatsApp, custo por conversa, pessoas alcançadas), monta o texto e manda o rascunho para o WhatsApp do Fagner com um link. No link dá para editar, aprovar (aí vai para o grupo do cliente) ou descartar. Sem investimento na semana, nada vai para o grupo. Começa com Glow Hair, Paraíso dos Fios e Adriele; primeiro envio em 23/11, cobrindo 16 a 22/11. Antes os relatórios eram montados e enviados à mão. A busca na Meta usa a versão v26.0 da API (a Meta recusou a versão antiga no teste de 16/11); a versão pode ser trocada pela variável META_GRAPH_VERSION no Railway.',

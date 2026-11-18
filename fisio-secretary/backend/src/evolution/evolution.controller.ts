@@ -27,6 +27,7 @@ import { MediaService } from '../media/media.service';
 import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
 import { BLACK_FRIDAY_MEDIA_TENANT_IDS, BLACK_FRIDAY_MEDIA_BLOCKED_REPLY, swapToBlackFriday } from '../media/black-friday-media.util';
+import { PIX_KEY_GUARD_TENANT_IDS, PIX_KEY_BLOCKED_REPLY, checkPixKeys } from './pix-key-guard.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -942,6 +943,26 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
+
+    // Trava de chave Pix inventada (ver pix-key-guard.util.ts): chave que não está escrita no
+    // prompt do tenant não sai. A resposta vira "a equipe te manda", o lead vai pro humano
+    // (shouldIgnore, mesmo caminho de encaminhamento de sempre) e a dona é avisada.
+    if (PIX_KEY_GUARD_TENANT_IDS.has(tenantId) && aiResponse.reply) {
+      const allowedSource = [instanceConfig?.customPromptMegaHair, instanceConfig?.customPromptSofia].filter(Boolean).join('\n');
+      const pixCheck = checkPixKeys(aiResponse.reply, allowedSource);
+      if (pixCheck.blocked) {
+        this.logger.warn(`🛑 [PIX-GUARD] Chave Pix fora do prompt barrada para ${phone}: ${pixCheck.reasons.join('; ')}`);
+        aiResponse.reply = PIX_KEY_BLOCKED_REPLY;
+        aiResponse.shouldIgnore = true;
+        const notifyPhone = instanceConfig?.notificationPhone;
+        if (notifyPhone) {
+          const who = lead.name || pushName || phone;
+          const text = `💳 *Cliente pedindo dados de pagamento*\n\n${who} (${phone}) pediu a chave Pix. A IA não envia chave que não esteja cadastrada no prompt, então passou o atendimento para a equipe.\n\nResponda a cliente com a chave correta.`;
+          this.evolutionService.sendTextMessage(notifyPhone, text, tenantToken, tenantId)
+            .catch(err => this.logger.error(`[PIX-GUARD] Falha ao avisar a dona (${notifyPhone}): ${err.message}`));
+        }
+      }
+    }
 
     // CAMADA DE SEGURANÇA: resposta idêntica às 2 últimas (loop) → bloqueia envio e desativa a IA
     if (await this.detectAndBlockLoop(conversation.id, lead.id, tenantId, phone, aiResponse.reply)) {
