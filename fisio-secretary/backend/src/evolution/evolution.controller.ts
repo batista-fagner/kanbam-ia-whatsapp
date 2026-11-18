@@ -28,7 +28,7 @@ import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
 import { BLACK_FRIDAY_MEDIA_TENANT_IDS, BLACK_FRIDAY_MEDIA_BLOCKED_REPLY, swapToBlackFriday } from '../media/black-friday-media.util';
 import { PIX_KEY_GUARD_TENANT_IDS, PIX_KEY_BLOCKED_REPLY, checkPixKeys } from './pix-key-guard.util';
-import { ALEX_HANDOFF_LABEL, buildAlexHandoffText, normalizeNotifyPhone } from './alex-handoff.util';
+import { ALEX_HANDOFF_LABEL, ALEX_HANDOFF_TENANT_IDS, AlexHandoffTrigger, buildAlexHandoffText, normalizeNotifyPhone, shouldNotifyAlexForAiHandoff } from './alex-handoff.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
 import { PromptModulesService } from '../prompt-modules/prompt-modules.service';
@@ -794,7 +794,7 @@ export class EvolutionController {
         await this.leadsService.saveMessage(conversation.id, 'outbound', 'ai', handoffReply);
         await this.leadsService.toggleAi(lead.id, false);
         await this.markAlexHandoffLabel(lead, phone, tenantId);
-        this.notifyAlexHandoff(lead, pushName ?? null, instanceConfig, tenantToken, tenantId, matchedKeyword, combinedText);
+        this.notifyAlexHandoff(lead, pushName ?? null, instanceConfig, tenantToken, tenantId, { source: 'keyword', keyword: matchedKeyword }, combinedText);
         const updatedLead = await this.leadsService.findOne(lead.id);
         this.leadsGateway.emitLeadUpdated(updatedLead);
         return;
@@ -1064,6 +1064,15 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
     // CAMADA DE SEGURANÇA: Se shouldIgnore=true, não responder e sair
     if (aiResponse.shouldIgnore === true) {
       this.logger.warn(`Lead ${phone} marcado para ignorar. Aplicando etiquetas e não respondendo mais.`);
+
+      // S&A: a IA desligou o lead (pedido de falar com o Alex/humano, produto definido e cliente
+      // fechando, ou fora de escopo "vou deixar encaminhado com o Alex"). Mesmo tratamento do
+      // encaminhamento por palavra-chave: etiqueta aguardando-alex + aviso ao Alex. Não avisa quando
+      // a IA desligou por xingamento/emergência/lixo (ver ALEX_HANDOFF_SKIP_TAGS).
+      if (ALEX_HANDOFF_TENANT_IDS.has(tenantId) && shouldNotifyAlexForAiHandoff(aiResponse.tags)) {
+        await this.markAlexHandoffLabel(lead, phone, tenantId);
+        this.notifyAlexHandoff(lead, pushName ?? null, instanceConfig, tenantToken, tenantId, { source: 'ia', reply: aiResponse.reply ?? '' }, combinedText);
+      }
 
       // Se a IA pediu pra mandar mídia nesta mesma resposta (ex: último vídeo antes
       // de encaminhar pro humano), envia ANTES de desligar — senão o cliente fica
@@ -1361,13 +1370,13 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
   // Aviso do encaminhamento ao Alex: nome, link direto da conversa, o que a cliente disse e o
   // gatilho. Número normalizado com 55 (o do Alex está salvo sem DDI) e log de sucesso/falha —
   // o aviso antigo (notifyPurchaseIntent) não deixava rastro de entrega.
-  private notifyAlexHandoff(lead: any, pushName: string | null, instanceConfig: any, tenantToken: string | undefined, tenantId: string, keyword: string, customerText: string): void {
+  private notifyAlexHandoff(lead: any, pushName: string | null, instanceConfig: any, tenantToken: string | undefined, tenantId: string, trigger: AlexHandoffTrigger, customerText: string): void {
     const notificationPhone = normalizeNotifyPhone(instanceConfig?.notificationPhone);
     if (!notificationPhone) {
       this.logger.warn(`[ALEX-HANDOFF] Sem número de aviso em Configurações — ${lead.phone} encaminhada sem notificação`);
       return;
     }
-    const text = buildAlexHandoffText({ name: lead.name || pushName, phone: lead.phone, keyword, customerText });
+    const text = buildAlexHandoffText({ name: lead.name || pushName, phone: lead.phone, trigger, customerText });
     this.evolutionService.sendTextMessage(notificationPhone, text, tenantToken, tenantId)
       .then(() => this.logger.log(`[ALEX-HANDOFF] Aviso enviado para ${notificationPhone} (lead ${lead.phone})`))
       .catch(err => this.logger.error(`[ALEX-HANDOFF] Falha ao avisar ${notificationPhone}: ${err.message}`));
