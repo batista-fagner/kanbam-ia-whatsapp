@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle, FileBarChart } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ShieldCheck, LayoutDashboard, Send, LogOut, Settings, Image, Calendar, Trash2, BarChart2, Bell, Users, Activity, BookOpen, Sparkles, FileText, Boxes, ClipboardList, ListChecks, Wallet, MessageSquare, Tag, MessageCircle, FileBarChart, Instagram } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getInstanceConfig, getPriceConfig, getInboxUnreadCount } from '../services/api'
+import { getInstanceConfig, getPriceConfig, getInboxUnreadCount, getInstagramStatus } from '../services/api'
 import { getSocket, closeSocket, isLeadOpenOnScreen } from '../utils/realtime'
 import { getSoundPref, playNotify } from '../utils/notifySound'
 import iconOnly from '../assets/convertHair_icon_only.png'
@@ -90,6 +90,11 @@ export default function Layout({ onLogout }) {
   useEffect(() => {
     getPriceConfig().then(cfg => setHasPriceConfig(!!cfg?.exists)).catch(() => {})
   }, [user?.id])
+  // Instagram só aparece para quem tem a conta conectada (piloto DALU) — e para o admin.
+  const [hasInstagram, setHasInstagram] = useState(false)
+  useEffect(() => {
+    getInstagramStatus().then(s => setHasInstagram(!!s?.connected)).catch(() => {})
+  }, [user?.id])
   const isLocalDev = import.meta.env.VITE_API_URL?.includes('localhost') || (typeof window !== 'undefined' && window.location.hostname === 'localhost')
   // Multi-agente em rollout controlado: visível em localhost e para contas beta.
   // Todos os outros clientes seguem no monólito (o backend também só ativa via
@@ -131,6 +136,7 @@ export default function Layout({ onLogout }) {
         // Tabela de preços só aparece pra quem vende por gramatura (já tem linha em
         // price_configs, ex: S&A) — pros outros o menu ficaria sem sentido.
         ...(hasPriceConfig || isAdmin ? [{ icon: Tag, label: 'Tabela de preços', path: '/prices' }] : []),
+        ...(hasInstagram || isAdmin ? [{ icon: Instagram, label: 'Instagram', path: '/instagram' }] : []),
       ],
     },
     {

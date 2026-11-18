@@ -10,6 +10,7 @@ import {
   deleteClientExtraCharge,
 } from '../services/api'
 import TrinksAdminCard from './agenda/TrinksAdminCard'
+import InstagramAdminCard from './instagram/InstagramAdminCard'
 
 const fmtBRL = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -230,6 +231,8 @@ export default function ClientDrawer({ client, onClose, onChanged }) {
 
           {/* Integração Trinks (agenda) — só na aba Clientes, igual ao modo teste */}
           {hasTestPhoneField && <TrinksAdminCard tenantId={client.id} />}
+          {/* Automação de Instagram (comentário/Direct → WhatsApp) */}
+          {hasTestPhoneField && <InstagramAdminCard tenantId={client.id} />}
 
           {/* Churn */}
           <div className="mb-5 border border-gray-200 rounded-xl p-4">

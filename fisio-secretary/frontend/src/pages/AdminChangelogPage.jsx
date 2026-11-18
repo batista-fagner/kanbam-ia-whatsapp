@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Automação de Instagram: comentário e Direct levam para o WhatsApp (DALU)',
+    date: '18/11/2026',
+    detail: 'Nova tela "Instagram" no CRM do cliente: ele escolhe o post, decide se dispara em qualquer comentário ou só com palavra-chave, escreve o Direct (com {nome} para o @ da pessoa), o texto do botão e o link do WhatsApp (número e mensagem já escrita). Quem comenta recebe um Direct com botão "Falar no WhatsApp" e, se configurado, uma resposta pública; quem manda Direct também pode receber a mesma mensagem. A mesma pessoa não recebe de novo dentro do intervalo escolhido (padrão 24h), para não parecer spam. A tela mostra a atividade (enviado, sem palavra-chave, já tinha recebido, erro). No Admin, o card "Automação de Instagram" conecta a conta colando o token; o token fica criptografado e renova sozinho antes dos 60 dias. Usa o app CRM-IA da Meta: o convertHairCRM repassa para cá os eventos que não são da conta converthair.',
+  },
+  {
     title: 'Chave Pix inventada: a IA só manda a chave cadastrada no prompt (DALU)',
     date: '18/11/2026',
     detail: 'A IA da DALU inventou chave Pix para clientes (um e-mail falso em 23/10; "[INSERIR CHAVE PIX OFICIAL]", um CNPJ zerado e uma chave aleatória de exemplo em 13/11), porque o prompt dizia para enviar a chave do cadastro, mas não havia chave nenhuma. Agora, se a resposta tiver uma chave que não está escrita no prompt dela, a mensagem não sai: a cliente recebe "vou pedir para alguém da equipe te enviar os dados de pagamento", o atendimento passa para a equipe e a DALU é avisada no número de Configurações. Quando ela cadastrar a chave no prompt, só essa chave passa.',
@@ -513,6 +518,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Instagram da DALU: ligar em produção',
+    detail: 'Falta: (1) IG_FORWARD_SECRET igual no Railway do fisio-secretary e do convertHairCRM, FISIO_IG_FORWARD_URL no convertHairCRM e INTEGRATIONS_ENC_KEY no fisio-secretary; (2) subir os dois sistemas — o repasse do convertHairCRM tem que estar no ar antes de conectar a conta; (3) a DALU aceitar o convite de testadora (@dalucabelos) e fazer login uma vez para gerar o token; (4) colar o token no card do Admin; (5) prova real: uma conta comum, que não seja testadora, comenta num post e confere se o Direct chega.',
+  },
   {
     title: 'Relatório de tráfego: acompanhar o primeiro envio automático',
     detail: 'O token da Meta já está no Railway e o teste de 16/11 bateu com o Gerenciador. Falta só acompanhar o primeiro envio de verdade, segunda 23/11 às 19h: o rascunho chega no WhatsApp do Fagner para aprovar. A Silvia fica fora até a conta dela ser conectada; a Adriele só entra nos relatórios quando a conta tiver forma de pagamento e gastar.',

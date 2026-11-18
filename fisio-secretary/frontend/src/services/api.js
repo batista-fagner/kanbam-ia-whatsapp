@@ -682,3 +682,26 @@ export const downloadSalesReportPdf = async (id) => {
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+// --- Automação de Instagram (backend/src/instagram) ---
+const igSend = (path, method, body) =>
+  authFetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(agendaJson)
+
+export const getInstagramStatus = () => authFetch(`${BASE}/instagram`).then(agendaJson)
+export const updateInstagramSettings = (payload) => igSend('/instagram/settings', 'PUT', payload)
+export const getInstagramMedia = (after) =>
+  authFetch(`${BASE}/instagram/media${after ? `?after=${encodeURIComponent(after)}` : ''}`).then(agendaJson)
+export const getInstagramAutomations = () => authFetch(`${BASE}/instagram/automations`).then(agendaJson)
+export const createInstagramAutomation = (payload) => igSend('/instagram/automations', 'POST', payload)
+export const updateInstagramAutomation = (id, payload) => igSend(`/instagram/automations/${id}`, 'PUT', payload)
+export const deleteInstagramAutomation = (id) => igSend(`/instagram/automations/${id}`, 'DELETE')
+export const getInstagramEvents = () => authFetch(`${BASE}/instagram/events?limit=50`).then(agendaJson)
+// Admin
+export const getAdminInstagramStatus = (tenantId) => authFetch(`${BASE}/admin/instagram/${tenantId}`).then(agendaJson)
+export const connectAdminInstagram = (tenantId, token) => igSend(`/admin/instagram/${tenantId}`, 'PUT', { token })
+export const testAdminInstagram = (tenantId) => igSend(`/admin/instagram/${tenantId}/test`, 'POST')
+export const disconnectAdminInstagram = (tenantId) => igSend(`/admin/instagram/${tenantId}`, 'DELETE')
