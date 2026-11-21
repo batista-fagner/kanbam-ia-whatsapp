@@ -202,6 +202,82 @@ function freshState(extra: any = {}) {
   return { serviceId: 'svc-fita', date: FRI, checkedAt: new Date().toISOString(), days: [{ date: FRI, weekday: 'sex', times: ['13:00', '15:00'] }], unavailable: false, pending: null, ...extra };
 }
 
+describe('Trinks — trava anti-troca de serviço', () => {
+  const svcCorte: any = { id: 'svc-corte', name: 'Corte de cabelo', durationMinutes: 60, externalId: '1', externalDurationMinutes: 40 };
+  const svcAval: any = { id: 'svc-aval', name: 'Avaliação', durationMinutes: 30, externalId: '2', externalDurationMinutes: 30 };
+  const partsCorte: any = { rules: '', jsonFields: '', dynamic: '', codes: { S1: 'svc-corte' }, backend: 'trinks' };
+
+  function guarded(texts: string[]) {
+    const backend: any = { book: jest.fn(), fetchDays: jest.fn() };
+    const integration: any = {
+      approvedServices: jest.fn().mockResolvedValue([svcCorte]),
+      allServices: jest.fn().mockResolvedValue([svcCorte, svcAval]), // avaliação existe mas NÃO está aprovada
+      recordError: jest.fn(),
+    };
+    const salon: any = { notifySalon: jest.fn().mockResolvedValue(undefined) };
+    const leadRepo: any = { update: jest.fn() };
+    const flow: any = new TrinksAiFlow(backend, integration, salon, leadRepo);
+    flow.recentCustomerTexts = jest.fn().mockResolvedValue(texts);
+    return { flow: flow as TrinksAiFlow, backend, salon };
+  }
+  const state = (extra: any = {}) => ({ serviceId: 'svc-corte', date: FRI, checkedAt: new Date().toISOString(), days: [{ date: FRI, weekday: 'sex', times: ['13:00'] }], unavailable: false, pending: null, ...extra });
+
+  it('cliente pediu avaliação (não liberada) e a IA escolhe corte → não grava, não manda resumo, avisa o salão', async () => {
+    const { flow, backend, salon } = guarded(['Sim, eu gostaria de ir fazer uma avaliação!', 'meu corte químico']);
+    const lead: any = { id: 'lead-1', name: 'Amanda', phone: '558498493126', agendaState: state() };
+    const ai: any = { action: 'schedule', agendaServiceCode: 'S1', appointmentDateTime: `${FRI}T13:00:00`, reply: 'Perfeito!', stage: 'agendado' };
+    await flow.applyAction('t1', lead, ai, partsCorte);
+    expect(backend.book).not.toHaveBeenCalled();
+    expect(ai.action).toBe('none');
+    expect(ai.stage).toBe('lead_quente');
+    expect(ai.reply).toContain('avaliação');
+    expect(ai.reply).toContain('equipe');
+    expect(ai.reply).not.toContain('Só confirmando');
+    expect(lead.agendaState.pending).toBeNull();
+    expect(salon.notifySalon).toHaveBeenCalledTimes(1);
+  });
+
+  it('no "sim" a cliente corrige ("Sim! A avaliação") → NÃO grava o corte', async () => {
+    const start = toSPDate(FRI, '13:00');
+    const { flow, backend } = guarded(['Sim!\nA avaliação']);
+    const lead: any = { id: 'lead-1', phone: '558498493126', agendaState: state({ pending: { kind: 'schedule', serviceId: 'svc-corte', start: start.toISOString(), appointmentId: null, createdAt: new Date().toISOString() } }) };
+    const ai: any = { action: 'schedule', agendaServiceCode: 'S1', appointmentDateTime: `${FRI}T13:00:00`, reply: 'Agendado!', stage: 'agendado' };
+    await flow.applyAction('t1', lead, ai, partsCorte);
+    expect(backend.book).not.toHaveBeenCalled();
+    expect(ai.action).toBe('none');
+    expect(lead.agendaState.pending).toBeNull();
+  });
+
+  it('confirmação normal do mesmo serviço segue gravando', async () => {
+    const start = toSPDate(FRI, '13:00');
+    const { flow, backend } = guarded(['sim, pode ser o corte']);
+    backend.book.mockResolvedValue({ id: 'appt-1', startDateTime: start });
+    const lead: any = { id: 'lead-1', name: 'Maria', phone: '558498493126', agendaState: state({ pending: { kind: 'schedule', serviceId: 'svc-corte', start: start.toISOString(), appointmentId: null, createdAt: new Date().toISOString() } }) };
+    const ai: any = { action: 'schedule', agendaServiceCode: 'S1', appointmentDateTime: `${FRI}T13:00:00`, reply: '', stage: 'agendado' };
+    await flow.applyAction('t1', lead, ai, partsCorte);
+    expect(backend.book).toHaveBeenCalled();
+    expect(ai.stage).toBe('agendado');
+  });
+
+  it('conversa que nunca nomeou serviço não é barrada', async () => {
+    const { flow, backend } = guarded(['pode ser sexta', 'às 13h']);
+    const lead: any = { id: 'lead-1', phone: '558498493126', agendaState: state() };
+    const ai: any = { action: 'schedule', agendaServiceCode: 'S1', appointmentDateTime: `${FRI}T13:00:00`, reply: '', stage: 'lead_quente' };
+    await flow.applyAction('t1', lead, ai, partsCorte);
+    expect(backend.book).not.toHaveBeenCalled(); // ainda é o resumo
+    expect(ai.reply).toContain('Só confirmando: *Corte de cabelo*');
+  });
+
+  it('se a busca do histórico falhar, não derruba: segue com o resumo normal', async () => {
+    const { flow } = guarded([]);
+    (flow as any).recentCustomerTexts = jest.fn().mockRejectedValue(new Error('db'));
+    const lead: any = { id: 'lead-1', phone: '558498493126', agendaState: state() };
+    const ai: any = { action: 'schedule', agendaServiceCode: 'S1', appointmentDateTime: `${FRI}T13:00:00`, reply: '', stage: 'lead_quente' };
+    await flow.applyAction('t1', lead, ai, partsCorte);
+    expect(ai.reply).toContain('Só confirmando');
+  });
+});
+
 describe('Trinks — fluxo da IA', () => {
   it('prepare: fora da Trinks → undefined; IA desligada → null; ligada → partes sem preço', async () => {
     const backend: any = { schedule: jest.fn(), currentMirror: jest.fn().mockResolvedValue(null) };

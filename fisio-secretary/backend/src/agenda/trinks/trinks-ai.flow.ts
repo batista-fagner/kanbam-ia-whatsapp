@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Lead, LeadAgendaState } from '../../common/entities/lead.entity';
 import { AgendaServiceEntity } from '../../common/entities/agenda-service.entity';
 import type { Appointment } from '../../common/entities/appointment.entity';
+import { Message } from '../../common/entities/message.entity';
 import type { AiResponse } from '../../ai/ai.service';
 import { formatInTZ, weekdayOfDateStr } from '../../common/utils/sp-time.util';
 import { AgendaConflictError } from '../agenda.service';
@@ -11,6 +12,7 @@ import { SalonAlertNotifier } from '../agenda-notifier';
 import { AGENDA_JSON_FIELDS, AgendaPromptParts, ddmm, formatDuration, MAX_SLOTS_PER_DAY, normalizeDate, parseLocal, STATE_TTL_MS } from '../agenda-ai.shared';
 import { TrinksAgendaBackend } from './trinks-agenda.backend';
 import { TrinksIntegrationService } from './trinks-integration.service';
+import { findServiceConflict } from './service-mention.util';
 
 // Fluxo da IA quando a agenda do salão é a da Trinks. Mesmo contrato JSON da agenda do CRM
 // (check_availability → 2ª chamada com HORÁRIOS LIVRES → schedule/reschedule/cancel), com travas
@@ -68,6 +70,7 @@ export function buildTrinksAgendaRules(services: AgendaServiceEntity[]): { rules
 SERVIÇOS QUE PODEM SER AGENDADOS (código — nome — duração):
 ${lines.length ? lines.join('\n') : '- (nenhum serviço liberado para agendamento — não agende; diga que a equipe confirma o horário)'}
 Serviço que NÃO está nesta lista você não agenda: diga que a equipe vai confirmar o horário com ela.
+NUNCA troque o serviço que a cliente pediu por outro "parecido" ou "mais próximo" só para conseguir agendar (ex.: ela pede avaliação e você marca corte). Se o que ela pediu não está na lista: action="none" e avise que a equipe confirma o horário.
 PREÇOS: use SEMPRE a tabela de preços deste prompt. Esta lista da agenda não tem preço.
 
 COMO AGENDAR (um passo por mensagem):
@@ -97,6 +100,7 @@ export class TrinksAiFlow {
     private readonly integration: TrinksIntegrationService,
     private readonly salon: SalonAlertNotifier,
     @InjectRepository(Lead) private readonly leadRepo: Repository<Lead>,
+    @Optional() @InjectRepository(Message) private readonly msgRepo?: Repository<Message>,
   ) {}
 
   // undefined = cliente não usa a Trinks (segue o fluxo da agenda do CRM).
@@ -245,6 +249,10 @@ export class TrinksAiFlow {
       }
       summary = `${svc.name} — ${describeWhen(start)}`;
 
+      // Trava anti-troca: o serviço que a IA quer gravar é o que a cliente pediu?
+      const conflict = kind === 'schedule' ? await this.checkServiceConflict(tenantId, lead, svc, services, !!pending) : null;
+      if (conflict) return await this.handleServiceConflict(tenantId, lead, ai, svc, conflict);
+
       const confirmed = !!pending
         && pending.kind === kind
         && pending.serviceId === svc.id
@@ -300,6 +308,56 @@ export class TrinksAiFlow {
       }
       this.downgrade(ai);
     }
+  }
+
+  // O que a cliente escreveu nas últimas horas, da mais nova pra mais antiga.
+  protected async recentCustomerTexts(lead: Lead): Promise<string[]> {
+    if (!this.msgRepo) return [];
+    const rows = await this.msgRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.conversation', 'c')
+      .where('c.lead_id = :leadId', { leadId: lead.id })
+      .andWhere("m.direction = 'inbound'")
+      .andWhere("m.created_at > now() - interval '12 hours'")
+      .orderBy('m.created_at', 'DESC')
+      .limit(10)
+      .getMany();
+    return rows.map((r) => r.content ?? '').filter(Boolean);
+  }
+
+  private async checkServiceConflict(tenantId: string, lead: Lead, svc: AgendaServiceEntity, approved: AgendaServiceEntity[], confirming: boolean) {
+    try {
+      const texts = await this.recentCustomerTexts(lead);
+      if (!texts.length) return null;
+      const all = await this.integration.allServices?.(tenantId);
+      if (!all?.length) return null;
+      return findServiceConflict(texts, svc, all, new Set(approved.map((a) => a.id)), { confirming });
+    } catch (err) {
+      // A trava nunca pode derrubar o atendimento; o resumo de confirmação continua como segunda barreira.
+      this.logger.warn(`[TRINKS-IA] Trava de serviço falhou (lead ${lead.id}): ${(err as Error)?.message}`);
+      return null;
+    }
+  }
+
+  private async handleServiceConflict(
+    tenantId: string,
+    lead: Lead,
+    ai: AiResponse,
+    svc: AgendaServiceEntity,
+    conflict: NonNullable<Awaited<ReturnType<TrinksAiFlow['checkServiceConflict']>>>,
+  ): Promise<void> {
+    const state = lead.agendaState;
+    if (state?.pending) await this.saveState(lead, { ...state, pending: null }).catch(() => undefined);
+    const asked = conflict.service.name.trim();
+    if (conflict.kind === 'unapproved') {
+      ai.reply = `Esse horário de *${asked.toLowerCase()}* eu prefiro deixar com a equipe, pra ter certeza de que fica certinho pra você 😊 Já já te chamam por aqui pra confirmar, tá?`;
+      this.alertSalon(tenantId, `servico-${lead.id}`, `🔔 *Agenda Trinks — cliente pediu serviço que a IA não agenda*\n👤 ${lead.name || lead.phone} (${lead.phone}) quer *${asked}*. A IA ia marcar *${svc.name}* e foi barrada. Confirme o horário com ela pela conversa.`);
+      this.logger.warn(`[TRINKS-IA] Troca de serviço barrada: cliente pediu "${asked}" e a IA ia gravar "${svc.name}" (lead ${lead.id})`);
+    } else {
+      ai.reply = `Só pra eu não errar: você quer *${asked}* ou *${svc.name}*? Me confirma o serviço, por favor 😊`;
+      this.logger.warn(`[TRINKS-IA] Confirmação com outro serviço: cliente falou "${asked}", pendente era "${svc.name}" (lead ${lead.id})`);
+    }
+    this.downgrade(ai);
   }
 
   private async runCancel(tenantId: string, lead: Lead, ai: AiResponse, pending: LeadAgendaState['pending'] | null): Promise<void> {

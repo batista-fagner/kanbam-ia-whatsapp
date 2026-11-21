@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Agenda Trinks: IA não troca mais o serviço que a cliente pediu (DALU)',
+    date: '20/11/2026',
+    detail: 'A cliente pediu "avaliação" (serviço ainda não aprovado pra IA) e a IA marcou "Corte de cabelo" por conta própria; depois aceitou o "Sim! A avaliação" como confirmação do corte. Agora, se a cliente nomeou um serviço que a IA não pode agendar, ou corrigiu o serviço na hora do "sim", nada é gravado: a IA diz que a equipe confirma e o salão recebe um aviso. A regra também foi escrita no prompt da agenda.',
+  },
+  {
     title: 'Encaminhamento ao Alex: etiqueta e aviso com contexto (S&A Cabelos Naturais)',
     date: '19/11/2026',
     detail: 'O lead que é encaminhado ao Alex ficava só com a etiqueta "qualificado" (2.037 leads) e o aviso era pobre e sem registro de entrega. Agora, em TODO encaminhamento — a regra por palavra-chave ("quero esse", "manda o pix", "pode reservar"…) e também quando a IA desliga sozinha (cliente pede o Alex ou um humano, fecha a compra ou faz pergunta fora de escopo, "vou deixar encaminhado com o Alex") — o lead ganha a etiqueta "aguardando-alex" e o Alex recebe um aviso com o nome, o link direto da conversa, o que a cliente disse e o motivo. A IA também deixa de avisar quando desliga por xingamento, emergência ou assunto descartado. O número de aviso estava salvo sem o 55 e agora é normalizado, e cada aviso registra sucesso ou falha no log. Quando o Alex terminar, é só tirar a etiqueta.',

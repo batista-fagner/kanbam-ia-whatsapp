@@ -8,6 +8,7 @@ import { ScheduleBlock } from '../common/entities/schedule-block.entity';
 import { TenantSchedule } from '../common/entities/tenant-schedule.entity';
 import { WhatsappConfig } from '../common/entities/whatsapp-config.entity';
 import { Lead } from '../common/entities/lead.entity';
+import { Message } from '../common/entities/message.entity';
 import { TenantScheduleModule } from '../schedule/schedule.module';
 import { AgendaService } from './agenda.service';
 import { AgendaNotifier } from './agenda-notifier';
@@ -25,7 +26,7 @@ import { TrinksAdminController, TrinksController } from './trinks/trinks.control
 // Trinks (mode='trinks', pasta trinks/).
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AgendaProfessional, AgendaServiceEntity, AgendaProfessionalService, Appointment, ScheduleBlock, TenantSchedule, WhatsappConfig, Lead, AgendaIntegration]),
+    TypeOrmModule.forFeature([AgendaProfessional, AgendaServiceEntity, AgendaProfessionalService, Appointment, ScheduleBlock, TenantSchedule, WhatsappConfig, Lead, Message, AgendaIntegration]),
     TenantScheduleModule,
   ],
   providers: [AgendaService, AgendaNotifier, SalonAlertNotifier, TrinksIntegrationService, TrinksAgendaBackend, TrinksAiFlow, AgendaAiService],

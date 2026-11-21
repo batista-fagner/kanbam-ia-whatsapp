@@ -318,6 +318,12 @@ export class TrinksIntegrationService implements OnModuleInit {
     if (!r.affected) throw new NotFoundException('Serviço não encontrado');
   }
 
+  // Todos os serviços da cliente (aprovados ou não): a trava anti-troca precisa saber o que ela
+  // chama de "avaliação" mesmo quando a IA ainda não pode agendar.
+  async allServices(tenantId: string): Promise<AgendaServiceEntity[]> {
+    return this.serviceRepo.find({ where: { tenantId } });
+  }
+
   // Serviços que a IA pode agendar: ativos, ligados, aprovados e ainda válidos na Trinks.
   async approvedServices(tenantId: string): Promise<AgendaServiceEntity[]> {
     const views = await this.listServiceLinks(tenantId);
