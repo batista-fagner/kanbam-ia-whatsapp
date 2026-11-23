@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Agenda Trinks: botão Remover em serviços duplicados (DALU)',
+    date: '23/11/2026',
+    detail: 'A DALU tinha dois "Avaliação" na lista de serviços (um aprovado, outro duplicado) e não havia como tirar o repetido. Agora todo serviço não aprovado tem o botão Remover: ele some da lista e a IA não o enxerga; os agendamentos antigos continuam no histórico.',
+  },
+  {
     title: 'S&A Cabelos Naturais: trava de vídeo da Black Friday desligada',
     date: '23/11/2026',
     detail: 'O prompt já tinha voltado ao normal, mas a trava em código continuava ativa: todo vídeo sem "Black Friday" no nome era barrado e a cliente recebia "Esse modelo não está na nossa Black Friday" em vez do catálogo. A trava foi desligada e os vídeos normais voltam a sair.',

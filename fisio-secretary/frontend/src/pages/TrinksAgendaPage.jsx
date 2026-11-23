@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bot, CalendarCheck2, CheckCircle2, AlertTriangle, CircleDashed, Loader2, RefreshCw, Plus, XCircle, History, Settings2, ListChecks } from 'lucide-react'
 import {
   getTrinksStatus, getTrinksServices, syncTrinks, linkTrinksService, approveTrinksService, unapproveTrinksService,
-  setTrinksAutoConfirm, getTrinksLog, updateAgendaSettings, createAgendaService, listAgendaAppointments,
+  setTrinksAutoConfirm, getTrinksLog, updateAgendaSettings, createAgendaService, deactivateAgendaService, listAgendaAppointments,
 } from '../services/api'
 
 const TABS = [
@@ -172,6 +172,20 @@ function ServicesTab({ status, onStatus }) {
                     className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
                   >
                     Tirar da IA
+                  </button>
+                )}
+                {l.status !== 'approved' && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Remover "${l.name}" da lista? A IA deixa de ver esse serviço (os agendamentos antigos continuam no histórico).`)) {
+                        run(`rm-${l.id}`, () => deactivateAgendaService(l.id))
+                      }
+                    }}
+                    disabled={!!busy}
+                    title="Remover da lista (duplicado ou que não usa)"
+                    className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40"
+                  >
+                    {busy === `rm-${l.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Remover'}
                   </button>
                 )}
               </div>
