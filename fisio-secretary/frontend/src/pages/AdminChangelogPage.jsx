@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'S&A Cabelos Naturais: trava de vídeo da Black Friday desligada',
+    date: '23/11/2026',
+    detail: 'O prompt já tinha voltado ao normal, mas a trava em código continuava ativa: todo vídeo sem "Black Friday" no nome era barrado e a cliente recebia "Esse modelo não está na nossa Black Friday" em vez do catálogo. A trava foi desligada e os vídeos normais voltam a sair.',
+  },
+  {
     title: 'Agenda Trinks: IA não troca mais o serviço que a cliente pediu (DALU)',
     date: '20/11/2026',
     detail: 'A cliente pediu "avaliação" (serviço ainda não aprovado pra IA) e a IA marcou "Corte de cabelo" por conta própria; depois aceitou o "Sim! A avaliação" como confirmação do corte. Agora, se a cliente nomeou um serviço que a IA não pode agendar, ou corrigiu o serviço na hora do "sim", nada é gravado: a IA diz que a equipe confirma e o salão recebe um aviso. A regra também foi escrita no prompt da agenda.',

@@ -7,9 +7,9 @@
 // prompt às vezes, então a regra tem que ser em código.
 //
 // Só vale para os tenants da lista. Ao fim da Black Friday, tire o tenant daqui.
-export const BLACK_FRIDAY_MEDIA_TENANT_IDS = new Set<string>([
-  'badfc5d9-d522-4253-a788-28b3ebe41753', // S&A Cabelos Naturais (Black Friday 2026)
-]);
+// 23/11/2026: S&A saiu da Black Friday (prompt voltou ao normal) e a trava estava barrando
+// todos os vídeos normais. Lista vazia = trava desligada para todos.
+export const BLACK_FRIDAY_MEDIA_TENANT_IDS = new Set<string>([]);
 
 export const BLACK_FRIDAY_MEDIA_BLOCKED_REPLY =
   'Esse modelo não está na nossa Black Friday 😕 Quer que eu te mostre as opções mais parecidas que estão na promoção?';
