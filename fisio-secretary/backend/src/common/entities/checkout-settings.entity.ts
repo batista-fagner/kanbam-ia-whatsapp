@@ -25,6 +25,12 @@ export class CheckoutSettings {
   @Column({ name: 'plano_price', type: 'numeric', precision: 10, scale: 2, default: 390 })
   planoPrice: string;
 
+  @Column({ name: 'trafego_enabled', type: 'boolean', default: false })
+  trafegoEnabled: boolean;
+
+  @Column({ name: 'trafego_price', type: 'numeric', precision: 10, scale: 2, default: 1500 })
+  trafegoPrice: string;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

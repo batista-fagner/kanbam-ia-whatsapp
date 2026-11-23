@@ -561,6 +561,14 @@ export const createImplantacaoCheckout = (payload) => // { name, phone, email }
     body: JSON.stringify(payload),
   }).then(json)
 
+// --- Tráfego pago (valor das configurações, PIX único, sem conta) ---
+export const createTrafegoCheckout = (payload) => // { name, phone, email }
+  fetch(`${BASE}/payments/trafego`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(json)
+
 // --- Checkout: settings públicas (o que exibir na página) ---
 export const getCheckoutSettings = () =>
   fetch(`${BASE}/payments/checkout-settings`).then(json)
@@ -569,7 +577,7 @@ export const getCheckoutSettings = () =>
 export const getAdminCheckoutSettings = () =>
   authFetch(`${BASE}/admin/checkout-settings`).then(json)
 
-export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEnabled?, implantacaoEnabled?, implantacaoPrice?, planoPrice? }
+export const updateAdminCheckoutSettings = (payload) => // { pixEnabled?, cardEnabled?, implantacaoEnabled?, implantacaoPrice?, planoPrice?, trafegoEnabled?, trafegoPrice? }
   authFetch(`${BASE}/admin/checkout-settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

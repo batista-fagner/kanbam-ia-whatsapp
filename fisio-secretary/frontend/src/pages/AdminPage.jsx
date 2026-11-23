@@ -155,6 +155,8 @@ export default function AdminPage() {
         planoEnabled: s.planoEnabled,
         implantacaoPrice: Number(s.implantacaoPrice),
         planoPrice: Number(s.planoPrice),
+        trafegoEnabled: !!s.trafegoEnabled,
+        trafegoPrice: Number(s.trafegoPrice),
       })
     } catch (e) { setError(e.message) } finally { setLoadingCheckout(false) }
   }
@@ -176,8 +178,8 @@ export default function AdminPage() {
   async function handleSaveCheckout(e) {
     e.preventDefault()
     setError('')
-    if (!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled) {
-      setError('Pelo menos um plano (Mensal ou Implantação) precisa ficar ligado.')
+    if (!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled && !checkoutForm.trafegoEnabled) {
+      setError('Pelo menos um item (Mensal, Implantação ou Tráfego pago) precisa ficar ligado.')
       return
     }
     setSavingCheckout(true); setCheckoutSaved(false)
@@ -186,6 +188,7 @@ export default function AdminPage() {
         ...checkoutForm,
         implantacaoPrice: Number(checkoutForm.implantacaoPrice),
         planoPrice: Number(checkoutForm.planoPrice),
+        trafegoPrice: Number(checkoutForm.trafegoPrice),
       })
       setCheckoutSettings(updated)
       setCheckoutSaved(true)
@@ -603,15 +606,21 @@ export default function AdminPage() {
                       onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoEnabled: e.target.checked })}
                       className="w-4 h-4 accent-teal-700" />
                   </label>
+                  <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
+                    <span className="text-sm text-gray-700">Tráfego pago (cobrança avulsa via PIX)</span>
+                    <input type="checkbox" checked={!!checkoutForm.trafegoEnabled}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, trafegoEnabled: e.target.checked })}
+                      className="w-4 h-4 accent-teal-700" />
+                  </label>
                 </div>
-                {!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled && (
-                  <p className="text-xs text-red-500 mt-2">Pelo menos um dos dois precisa ficar ligado.</p>
+                {!checkoutForm.planoEnabled && !checkoutForm.implantacaoEnabled && !checkoutForm.trafegoEnabled && (
+                  <p className="text-xs text-red-500 mt-2">Pelo menos um precisa ficar ligado.</p>
                 )}
               </div>
 
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">Formas de pagamento (Plano Mensal)</h3>
-                <p className="text-xs text-gray-400 mb-3">A implantação é sempre via PIX.</p>
+                <p className="text-xs text-gray-400 mb-3">Implantação e tráfego pago são sempre via PIX.</p>
                 <div className="space-y-2">
                   <label className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg">
                     <span className="text-sm text-gray-700">PIX</span>
@@ -641,6 +650,12 @@ export default function AdminPage() {
                     <label className="block text-xs text-gray-500 mb-1">Implantação (R$)</label>
                     <input type="number" min="0.01" step="0.01" value={checkoutForm.implantacaoPrice}
                       onChange={e => setCheckoutForm({ ...checkoutForm, implantacaoPrice: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Tráfego pago (R$)</label>
+                    <input type="number" min="0.01" step="0.01" value={checkoutForm.trafegoPrice ?? ''}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, trafegoPrice: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                   </div>
                 </div>

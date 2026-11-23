@@ -56,7 +56,9 @@ export default function PixRenewalPage() {
               </div>
               <h2 className="text-xl font-bold text-gray-800 mb-2">Pagamento confirmado! 🎉</h2>
               <p className="text-sm text-gray-600">
-                Sua renovação já foi processada. Obrigado por continuar com a Convert Hair!
+                {data.title
+                  ? 'Recebemos seu pagamento. Nossa equipe já vai dar andamento e entra em contato pelo WhatsApp. Obrigado!'
+                  : 'Sua renovação já foi processada. Obrigado por continuar com a Convert Hair!'}
               </p>
             </div>
           )}
@@ -68,7 +70,7 @@ export default function PixRenewalPage() {
               </div>
               <h2 className="text-xl font-bold text-gray-800 mb-2">Link expirado</h2>
               <p className="text-sm text-gray-600">
-                Este código Pix não está mais disponível. Se você ainda precisa renovar, entre em contato pelo WhatsApp.
+                Este código Pix não está mais disponível. Se você ainda precisa pagar, entre em contato pelo WhatsApp.
               </p>
             </div>
           )}
@@ -76,7 +78,7 @@ export default function PixRenewalPage() {
           {!error && data?.status === 'pending' && (
             <>
               <div className="bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl p-4 mb-6 text-white text-center">
-                <p className="text-sm opacity-90">Plano Convert Hair{data.clientName ? ` — ${data.clientName}` : ''}</p>
+                <p className="text-sm opacity-90">{data.title ?? 'Plano Convert Hair'}{data.clientName ? ` — ${data.clientName}` : ''}</p>
                 <p className="text-2xl font-bold">R$ {data.valor}</p>
               </div>
 

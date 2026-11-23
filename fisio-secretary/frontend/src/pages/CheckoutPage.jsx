@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, QrCode, Loader2, User, Mail, Phone, CheckCircle2, MessageCircle, Wrench } from 'lucide-react'
-import { createCheckout, createImplantacaoCheckout, getCheckoutSettings } from '../services/api'
+import { CreditCard, QrCode, Loader2, User, Mail, Phone, CheckCircle2, MessageCircle, Wrench, Megaphone } from 'lucide-react'
+import { createCheckout, createImplantacaoCheckout, createTrafegoCheckout, getCheckoutSettings } from '../services/api'
 import logo from '../assets/logo_hair.png'
 
 function formatBRL(value) {
@@ -36,7 +36,7 @@ function readOrigin() {
 export default function CheckoutPage() {
   const [settings, setSettings] = useState(null) // { pixEnabled, cardEnabled, implantacaoEnabled, implantacaoPrice, planoPrice }
   const [settingsError, setSettingsError] = useState('')
-  const [checkoutType, setCheckoutType] = useState('plano') // 'implantacao' | 'plano'
+  const [checkoutType, setCheckoutType] = useState('plano') // 'implantacao' | 'plano' | 'trafego'
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
   const [method, setMethod] = useState('pix')
   const [loading, setLoading] = useState(false)
@@ -51,15 +51,21 @@ export default function CheckoutPage() {
         // Se só cartão estiver habilitado, PIX não faz sentido como default.
         if (!s.pixEnabled && s.cardEnabled) setMethod('card')
         // Se só um dos dois planos estiver ligado, entra direto nele (sem seletor).
-        if (!s.planoEnabled && s.implantacaoEnabled) setCheckoutType('implantacao')
-        else if (s.planoEnabled && !s.implantacaoEnabled) setCheckoutType('plano')
+        // Entra direto no primeiro item ligado (ordem: mensal, implantação, tráfego); ?tipo=trafego força.
+        const wanted = new URLSearchParams(window.location.search).get('tipo')
+        const enabled = { plano: s.planoEnabled, implantacao: s.implantacaoEnabled, trafego: s.trafegoEnabled }
+        if (wanted && enabled[wanted]) setCheckoutType(wanted)
+        else if (!enabled.plano) setCheckoutType(enabled.implantacao ? 'implantacao' : 'trafego')
       })
       .catch(e => setSettingsError(e.message))
   }, [])
 
   const isImplantacao = checkoutType === 'implantacao'
+  const isTrafego = checkoutType === 'trafego'
+  const isAvulso = isImplantacao || isTrafego // cobrança única via PIX, sem conta
   const checkoutTypes = settings ? {
     implantacao: { label: 'Implantação', price: `${formatBRL(settings.implantacaoPrice)}`, subtitle: 'Pagamento único', description: 'Taxa de implantação para iniciar no sistema Convert Hair.' },
+    trafego: { label: 'Tráfego Pago', price: `${formatBRL(settings.trafegoPrice)}`, subtitle: 'Gestão de campanhas', description: 'Serviço de gestão de tráfego pago da Convert Hair.' },
     plano: { label: 'Plano Mensal', price: `${formatBRL(settings.planoPrice)}/mês`, subtitle: 'Recorrente', description: 'Assinatura mensal do plano Convert Hair.' },
   } : null
   const currentType = checkoutTypes?.[checkoutType]
@@ -68,7 +74,7 @@ export default function CheckoutPage() {
     e.preventDefault()
     setError('')
     // PIX: confirma o número antes de enviar. Cartão: vai direto pro Stripe.
-    if (method === 'pix') {
+    if (method === 'pix' || isAvulso) {
       setConfirmOpen(true)
     } else {
       submit()
@@ -81,7 +87,9 @@ export default function CheckoutPage() {
     try {
       let res
       const origin = readOrigin()
-      if (isImplantacao) {
+      if (isTrafego) {
+        res = await createTrafegoCheckout({ name: form.name, phone: form.phone, email: form.email })
+      } else if (isImplantacao) {
         res = await createImplantacaoCheckout({ name: form.name, phone: form.phone, email: form.email, ...origin })
       } else {
         res = await createCheckout({ ...form, method, ...origin })
@@ -125,7 +133,9 @@ export default function CheckoutPage() {
             </div>
 
             <p className="text-xs text-gray-400 mt-6 leading-relaxed">
-              Após o pagamento ser confirmado, você recebe o login e a senha de acesso no mesmo WhatsApp. ✅
+              {isTrafego
+                ? 'Após o pagamento ser confirmado, nossa equipe inicia a configuração das suas campanhas. ✅'
+                : 'Após o pagamento ser confirmado, você recebe o login e a senha de acesso no mesmo WhatsApp. ✅'}
             </p>
           </div>
         </div>
@@ -145,7 +155,7 @@ export default function CheckoutPage() {
     )
   }
 
-  if (!settings.planoEnabled && !settings.implantacaoEnabled) {
+  if (!settings.planoEnabled && !settings.implantacaoEnabled && !settings.trafegoEnabled) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 flex items-center justify-center p-4">
         <p className="text-gray-500 text-sm">Checkout temporariamente indisponível.</p>
@@ -164,25 +174,27 @@ export default function CheckoutPage() {
 
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
 
-          {/* Seletor de tipo */}
-          {settings.implantacaoEnabled && settings.planoEnabled && (
-            <div className="grid grid-cols-2 gap-2 mb-6">
-              <button type="button" onClick={() => setCheckoutType('implantacao')}
-                className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
-                  isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                }`}>
-                <Wrench className="w-4 h-4" />
-                <span>Implantação</span>
-                <span className={`text-xs font-bold ${isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>{formatBRL(settings.implantacaoPrice)}</span>
-              </button>
-              <button type="button" onClick={() => setCheckoutType('plano')}
-                className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
-                  !isImplantacao ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                }`}>
-                <QrCode className="w-4 h-4" />
-                <span>Plano Mensal</span>
-                <span className={`text-xs font-bold ${!isImplantacao ? 'text-pink-600' : 'text-gray-400'}`}>{formatBRL(settings.planoPrice)}/mês</span>
-              </button>
+          {/* Seletor de tipo — aparece quando há mais de um item ligado */}
+          {[settings.planoEnabled, settings.implantacaoEnabled, settings.trafegoEnabled].filter(Boolean).length > 1 && (
+            <div className={`grid gap-2 mb-6 ${[settings.planoEnabled, settings.implantacaoEnabled, settings.trafegoEnabled].filter(Boolean).length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {[
+                { key: 'implantacao', enabled: settings.implantacaoEnabled, icon: Wrench, label: 'Implantação', price: formatBRL(settings.implantacaoPrice) },
+                { key: 'plano', enabled: settings.planoEnabled, icon: QrCode, label: 'Plano Mensal', price: `${formatBRL(settings.planoPrice)}/mês` },
+                { key: 'trafego', enabled: settings.trafegoEnabled, icon: Megaphone, label: 'Tráfego Pago', price: formatBRL(settings.trafegoPrice) },
+              ].filter(o => o.enabled).map(o => {
+                const active = checkoutType === o.key
+                const Icon = o.icon
+                return (
+                  <button key={o.key} type="button" onClick={() => setCheckoutType(o.key)}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-sm font-medium transition ${
+                      active ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}>
+                    <Icon className="w-4 h-4" />
+                    <span>{o.label}</span>
+                    <span className={`text-xs font-bold ${active ? 'text-pink-600' : 'text-gray-400'}`}>{o.price}</span>
+                  </button>
+                )
+              })}
             </div>
           )}
 
@@ -203,13 +215,13 @@ export default function CheckoutPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{isImplantacao ? 'E-mail' : 'E-mail de acesso'}</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{isAvulso ? 'E-mail' : 'E-mail de acesso'}</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500" />
               </div>
-              {isImplantacao && <p className="text-xs text-gray-400 mt-1">O código PIX também será enviado para este e-mail.</p>}
+              {isAvulso && <p className="text-xs text-gray-400 mt-1">O código PIX também será enviado para este e-mail.</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
@@ -223,7 +235,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* Método de pagamento (plano mensal) */}
-            {!isImplantacao && (settings.pixEnabled || settings.cardEnabled) && (
+            {!isAvulso && (settings.pixEnabled || settings.cardEnabled) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -258,7 +270,7 @@ export default function CheckoutPage() {
 
             <button type="submit" disabled={loading}
               className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processando...</> : 'Assinar agora'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processando...</> : isTrafego ? 'Pagar com PIX' : 'Assinar agora'}
             </button>
           </form>
         </div>

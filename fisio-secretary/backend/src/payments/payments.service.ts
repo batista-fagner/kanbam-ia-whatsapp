@@ -158,12 +158,20 @@ export class PaymentsService implements OnModuleInit {
     planoEnabled?: boolean;
     implantacaoPrice?: number;
     planoPrice?: number;
+    trafegoEnabled?: boolean;
+    trafegoPrice?: number;
   }): Promise<CheckoutSettings> {
     const settings = await this.getCheckoutSettings();
     if (body.pixEnabled !== undefined) settings.pixEnabled = body.pixEnabled;
     if (body.cardEnabled !== undefined) settings.cardEnabled = body.cardEnabled;
     if (body.implantacaoEnabled !== undefined) settings.implantacaoEnabled = body.implantacaoEnabled;
     if (body.planoEnabled !== undefined) settings.planoEnabled = body.planoEnabled;
+    if (body.trafegoEnabled !== undefined) settings.trafegoEnabled = body.trafegoEnabled;
+    if (body.trafegoPrice !== undefined) {
+      const trafegoPrice = Number(body.trafegoPrice);
+      if (!Number.isFinite(trafegoPrice) || trafegoPrice <= 0) throw new BadRequestException('Valor do tráfego pago deve ser maior que zero');
+      settings.trafegoPrice = trafegoPrice.toFixed(2);
+    }
     if (body.implantacaoPrice !== undefined) {
       const implantacaoPrice = Number(body.implantacaoPrice);
       if (!Number.isFinite(implantacaoPrice) || implantacaoPrice <= 0) throw new BadRequestException('Valor da implantação deve ser maior que zero');
@@ -748,6 +756,60 @@ export class PaymentsService implements OnModuleInit {
     }
   }
 
+  // ───────────────────────── Tráfego pago (cobrança avulsa, sem conta) ─────────────────────────
+  // Mesmo molde da implantação: cria a linha em implantacao_payments (kind='trafego'), gera o Pix
+  // na Efí e manda o template pix_trafego_link_v1 (botão "Ver cobrança" → página /pix/:txid) + e-mail.
+
+  async createTrafegoCheckout(name: string, phone: string, email: string): Promise<{ ok: true; phone: string }> {
+    const settings = await this.getCheckoutSettings();
+    if (!settings.trafegoEnabled) throw new BadRequestException('Cobrança de tráfego pago está desabilitada no momento.');
+    if (!phone) throw new BadRequestException('WhatsApp é obrigatório');
+    if (!email) throw new BadRequestException('E-mail é obrigatório');
+
+    const payment = await this.implantacaoRepo.save(
+      this.implantacaoRepo.create({ name, phone, email, status: 'pending', kind: 'trafego', amount: Number(settings.trafegoPrice).toFixed(2) }),
+    );
+    void this._sendTrafegoPix(payment.id, name, phone, email, Number(settings.trafegoPrice));
+    return { ok: true, phone };
+  }
+
+  private async _sendTrafegoPix(paymentId: string, name: string, phone: string, email: string | null, valorTextoNum: number): Promise<void> {
+    const txid = paymentId.replace(/-/g, '');
+    const valorNum = valorTextoNum.toFixed(2);
+    const valorTexto = valorNum.replace('.', ',');
+    const label = `Tráfego pago — ${name}`;
+    try {
+      const pix = await this._efiCreateCob(txid, `Tráfego pago Convert Hair - ${name}`, valorNum);
+      // QR/código ficam na linha: a página pública /pix/:txid depende só do banco.
+      await this.implantacaoRepo.update(paymentId, { pixTxid: txid, pixQrCode: pix.qrCode, pixCode: pix.pixCode });
+      await this._onPixCreated('implantacao', paymentId, txid);
+      this.logger.log(`[EFI] QR tráfego pago gerado txid=${txid}`);
+      await this._logBillingEvent(null, 'pix', 'sent', valorTextoNum, txid, undefined, label);
+
+      // WhatsApp e e-mail são canais independentes — falha em um não deve impedir o outro.
+      try {
+        await this._sendMetaTemplate(phone, 'pix_trafego_link_v1', [
+          { type: 'body', parameters: [{ type: 'text', text: name }, { type: 'text', text: valorTexto }] },
+          { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: txid }] },
+        ]);
+        this.logger.log(`[EFI] Link tráfego pago: ${this._buildPixPageUrl(txid)}`);
+        await this._logBillingEvent(null, 'whatsapp', 'sent', valorTextoNum, txid, undefined, label);
+      } catch (waErr) {
+        this.logger.error(`[EFI] Falha ao enviar PIX tráfego pago por WhatsApp (payment ${paymentId}): ${waErr.message}`);
+        await this._logBillingEvent(null, 'whatsapp', 'failed', valorTextoNum, txid, waErr.message, label);
+      }
+      if (email) {
+        const result = await this._sendPixEmail(email, name, 'Gestão de Tráfego Pago', valorTexto, pix, 'Serviço de gestão de tráfego pago da Convert Hair.');
+        await this._logBillingEvent(null, 'email', result.ok ? 'sent' : 'failed', valorTextoNum, txid, result.error, label);
+      }
+    } catch (err) {
+      this.logger.error(`[EFI] Falha ao gerar/enviar QR tráfego pago (payment ${paymentId}): ${err.message}`);
+      await this._logBillingEvent(null, 'pix', 'failed', valorTextoNum, null, err.message, label);
+      await this.implantacaoRepo.update(paymentId, { status: 'expired' });
+      await this._sendText(phone, `Ops! Tivemos um problema ao gerar seu PIX. 😕 Por favor, tente novamente em instantes.`);
+    }
+  }
+
   private async _activatePaidImplantacao(payment: ImplantacaoPayment): Promise<void> {
     const claim = await this.implantacaoRepo
       .createQueryBuilder()
@@ -761,17 +823,20 @@ export class PaymentsService implements OnModuleInit {
     // Registra a implantação como receita confirmada (antes só ficava como 'pix/sent', que é
     // "QR enviado", não "pago") e tenta ligar ao tenant — sem isso a tela Financeiro não
     // conseguia atribuir a taxa de implantação a nenhum cliente.
-    const valor = Number(payment.amount ?? (await this.getCheckoutSettings()).implantacaoPrice ?? 400);
+    const valor = Number(payment.amount ?? (payment.kind === 'trafego' ? (await this.getCheckoutSettings()).trafegoPrice : (await this.getCheckoutSettings()).implantacaoPrice) ?? 400);
     const tenantId = payment.tenantId ?? (await this._findTenantIdForImplantacao(payment));
     if (tenantId && !payment.tenantId) {
       await this.implantacaoRepo.update(payment.id, { tenantId });
     }
-    await this._logBillingEvent(tenantId, 'pagamento', 'confirmado', valor, payment.id.replace(/-/g, ''), undefined, payment.name);
+    await this._logBillingEvent(tenantId, 'pagamento', 'confirmado', valor, payment.id.replace(/-/g, ''), undefined, payment.kind === 'trafego' ? `Tráfego pago — ${payment.name}` : payment.name);
 
-    const msg =
-      `🎉 Pagamento de implantação confirmado, ${payment.name}!\n\n` +
-      `Em breve nossa equipe entrará em contato para configurar seu sistema *Convert Hair*. 🚀\n\n` +
-      `Obrigado pela confiança! 🙏`;
+    const msg = payment.kind === 'trafego'
+      ? `🎉 Pagamento do serviço de tráfego pago confirmado, ${payment.name}!\n\n` +
+        `Nossa equipe já vai iniciar a configuração das suas campanhas e entra em contato por aqui. 🚀\n\n` +
+        `Obrigado pela confiança! 🙏`
+      : `🎉 Pagamento de implantação confirmado, ${payment.name}!\n\n` +
+        `Em breve nossa equipe entrará em contato para configurar seu sistema *Convert Hair*. 🚀\n\n` +
+        `Obrigado pela confiança! 🙏`;
     await this._sendText(payment.phone, msg);
     this.logger.log(`[EFI] Implantação paga → payment ${payment.id} CONFIRMADO${tenantId ? ` (tenant ${tenantId})` : ' (sem tenant vinculado ainda)'}`);
   }
@@ -1632,6 +1697,23 @@ export class PaymentsService implements OnModuleInit {
     return `${frontendUrl.replace(/\/$/, '')}/pix/${txid}`;
   }
 
+  // Cobrança avulsa (tráfego pago): não há tenant, o QR/código ficam em implantacao_payments.
+  private async _getAvulsoPixPageData(txid: string) {
+    const p = await this.implantacaoRepo.findOne({ where: { pixTxid: txid } });
+    if (!p) return { status: 'expired' as const };
+    const title = p.kind === 'trafego' ? 'Gestão de Tráfego Pago' : 'Taxa de Implantação';
+    if (p.status === 'paid') return { status: 'paid' as const, clientName: p.name, title };
+    if (p.status !== 'pending' || !p.pixQrCode || !p.pixCode) return { status: 'expired' as const };
+    return {
+      status: 'pending' as const,
+      valor: Number(p.amount ?? 0).toFixed(2).replace('.', ','),
+      qrCode: p.pixQrCode,
+      pixCode: p.pixCode,
+      clientName: p.name,
+      title,
+    };
+  }
+
   // Sem auth (link vem direto do WhatsApp). Só retorna dado de quem tem exatamente esse
   // txid como cobrança ATUAL (lastPixTxid) — um txid de ciclo anterior já não bate mais,
   // então cai em "expired" sem expor nada do ciclo velho.
@@ -1641,11 +1723,12 @@ export class PaymentsService implements OnModuleInit {
     qrCode?: string;
     pixCode?: string;
     clientName?: string;
+    title?: string;
   }> {
     if (!/^[a-zA-Z0-9]{20,40}$/.test(txid)) return { status: 'expired' };
 
     const tenant = await this.configRepo.findOne({ where: { lastPixTxid: txid } });
-    if (!tenant) return { status: 'expired' };
+    if (!tenant) return this._getAvulsoPixPageData(txid);
 
     if (tenant.planStatus === 'active') return { status: 'paid', clientName: tenant.displayName ?? undefined };
     if (!['pending', 'past_due'].includes(tenant.planStatus)) return { status: 'expired' };

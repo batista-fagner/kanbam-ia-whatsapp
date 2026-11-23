@@ -30,6 +30,15 @@ export class PaymentsController {
     return this.payments.createImplantacaoCheckout(name, phone, email);
   }
 
+  // Público: serviço de gestão de tráfego pago (valor das configurações do checkout, só PIX, sem conta)
+  @Post('payments/trafego')
+  async trafego(@Body() body: ImplantacaoBody) {
+    if (!body?.name?.trim()) throw new BadRequestException('Nome é obrigatório');
+    if (!body?.phone?.trim()) throw new BadRequestException('WhatsApp é obrigatório');
+    if (!body?.email?.trim()) throw new BadRequestException('E-mail é obrigatório');
+    return this.payments.createTrafegoCheckout(body.name.trim(), body.phone.replace(/\D/g, ''), body.email.trim().toLowerCase());
+  }
+
   // Público: inicia o checkout (cartão recorrente via Stripe; PIX via Efí Bank enviado no WhatsApp)
   @Post('payments/checkout')
   async checkout(@Body() body: CheckoutBody) {
@@ -103,6 +112,8 @@ export class PaymentsController {
       planoEnabled: s.planoEnabled,
       implantacaoPrice: Number(s.implantacaoPrice),
       planoPrice: Number(s.planoPrice),
+      trafegoEnabled: s.trafegoEnabled,
+      trafegoPrice: Number(s.trafegoPrice),
     };
   }
 
@@ -122,6 +133,8 @@ export class PaymentsController {
     planoEnabled?: boolean;
     implantacaoPrice?: number;
     planoPrice?: number;
+    trafegoEnabled?: boolean;
+    trafegoPrice?: number;
   }) {
     return this.payments.updateCheckoutSettings(body);
   }

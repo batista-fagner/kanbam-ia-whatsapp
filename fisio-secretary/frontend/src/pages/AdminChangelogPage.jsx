@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Checkout: serviço de Tráfego Pago com link de Pix no WhatsApp',
+    date: '23/11/2026',
+    detail: 'O checkout ganhou o item "Tráfego Pago" (valor e liga/desliga em Admin > Checkout; link direto: /checkout?tipo=trafego). A pessoa recebe no WhatsApp a mensagem com o botão "Ver cobrança", que abre a página com QR e Pix copia e cola, e o pagamento é confirmado sozinho. O modelo pix_trafego_link_v1 foi aprovado pela Meta como Marketing (mais caro que Utilidade).',
+  },
+  {
     title: 'Agenda Trinks: botão Remover em serviços duplicados (DALU)',
     date: '23/11/2026',
     detail: 'A DALU tinha dois "Avaliação" na lista de serviços (um aprovado, outro duplicado) e não havia como tirar o repetido. Agora todo serviço não aprovado tem o botão Remover: ele some da lista e a IA não o enxerga; os agendamentos antigos continuam no histórico.',
@@ -538,6 +543,10 @@ const DONE = [
 ]
 
 const PENDING = [
+  {
+    title: 'Tráfego Pago: ligar no Admin e testar',
+    detail: 'O item vem desligado. Em Admin > Checkout, ligar "Tráfego pago", ajustar o valor (padrão R$ 1.500) e testar com um número seu em /checkout?tipo=trafego. O pedido de análise da categoria do modelo (Marketing → Utilidade) fica com o Fagner.',
+  },
   {
     title: 'Instagram da DALU: ligar em produção',
     detail: 'Falta: (1) IG_FORWARD_SECRET igual no Railway do fisio-secretary e do convertHairCRM, FISIO_IG_FORWARD_URL no convertHairCRM e INTEGRATIONS_ENC_KEY no fisio-secretary; (2) subir os dois sistemas — o repasse do convertHairCRM tem que estar no ar antes de conectar a conta; (3) a DALU aceitar o convite de testadora (@dalucabelos) e fazer login uma vez para gerar o token; (4) colar o token no card do Admin; (5) prova real: uma conta comum, que não seja testadora, comenta num post e confere se o Direct chega.',
