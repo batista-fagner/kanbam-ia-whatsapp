@@ -650,6 +650,18 @@ export class LeadsService implements OnApplicationBootstrap {
     return msgs.map((m) => m.content);
   }
 
+  // Texto das últimas mensagens da cliente (mais antigas primeiro) — usado pela trava de cor
+  // das mídias (media-color-guard.util), que precisa saber se ela já disse a cor que quer.
+  async getInboundTexts(conversationId: string, limit = 60): Promise<string> {
+    const msgs = await this.messagesRepo.find({
+      where: { conversationId, direction: 'inbound' },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      select: ['content', 'createdAt'],
+    });
+    return msgs.reverse().map((m) => m.content ?? '').join('\n');
+  }
+
   // Quando a IA respondeu pela última vez nesta conversa (null se nunca) — usado pela trava
   // de saudação repetida.
   async getLastAiReplyAt(conversationId: string): Promise<Date | null> {

@@ -28,6 +28,7 @@ import { mediaSendType, mediaDocName } from '../media/media-send-type.util';
 import { SIMILAR_MEDIA_TENANT_IDS } from '../media/media-similar-match.util';
 import { BLACK_FRIDAY_MEDIA_TENANT_IDS, BLACK_FRIDAY_MEDIA_BLOCKED_REPLY, swapToBlackFriday } from '../media/black-friday-media.util';
 import { PIX_KEY_GUARD_TENANT_IDS, PIX_KEY_BLOCKED_REPLY, checkPixKeys } from './pix-key-guard.util';
+import { MEDIA_COLOR_GUARD_TENANT_IDS, MEDIA_COLOR_ASK_REPLY, filterMediaByColor } from '../media/media-color-guard.util';
 import { ALEX_HANDOFF_LABEL, ALEX_HANDOFF_TENANT_IDS, AlexHandoffTrigger, buildAlexHandoffText, normalizeNotifyPhone, shouldNotifyAlexForAiHandoff } from './alex-handoff.util';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { AgentsService } from '../agents/agents.service';
@@ -148,6 +149,7 @@ const REPEATED_GREETING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const COMPACT_REPLY_TENANT_IDS = [
   '3ff8efe4-7a7c-44ee-b98b-548e5921b174', // Heline Carvalho / HE Cabelos
+  'd69c3b3a-5b96-4c7d-9bce-ea7c44533d5c', // DALU — "nada de texto grande" (Fagner, 27/11/2026): 1 bolha depois de mídia e sem repetir mídia
 ];
 
 // Marca, na lista de "não encontradas", as mídias barradas pela trava da Black Friday.
@@ -945,6 +947,25 @@ Se a REGRA #0 (qualificação) ainda não foi atendida, pergunte ela ANTES de pe
       }
     }
 
+
+    // Trava de cor (ver media-color-guard.util.ts): foto/vídeo de cabelo só sai depois que a
+    // cliente disse a cor que quer, e loiro só para quem falou em loiro/clarear. Mídia de técnica
+    // (fita, queratina, tela) passa. Se nada sobrar, a IA pergunta a cor em vez de mandar a mídia.
+    if (MEDIA_COLOR_GUARD_TENANT_IDS.has(tenantId) && aiResponse.action === 'send_media' && aiResponse.mediaName) {
+      const requested = (Array.isArray(aiResponse.mediaName) ? aiResponse.mediaName : [aiResponse.mediaName]).filter(Boolean) as string[];
+      const leadText = `${await this.leadsService.getInboundTexts(conversation.id)}\n${combinedText ?? ''}`;
+      const colorCheck = filterMediaByColor(requested, leadText);
+      if (colorCheck.blocked.length > 0) {
+        this.logger.warn(`🎨 [MEDIA-COLOR] Mídia de cabelo barrada para ${phone} (cor não pedida): ${colorCheck.blocked.join(', ')}`);
+        if (colorCheck.allowed.length > 0) {
+          aiResponse.mediaName = colorCheck.allowed;
+        } else {
+          aiResponse.action = 'none';
+          aiResponse.mediaName = undefined;
+          aiResponse.reply = MEDIA_COLOR_ASK_REPLY;
+        }
+      }
+    }
 
     // Trava de chave Pix inventada (ver pix-key-guard.util.ts): chave que não está escrita no
     // prompt do tenant não sai. A resposta vira "a equipe te manda", o lead vai pro humano

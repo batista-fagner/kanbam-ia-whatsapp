@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'DALU: foto de cabelo só depois da cor, e respostas mais curtas',
+    date: '27/11/2026',
+    detail: 'A IA mandou 3 fotos de cabelo loiro para uma cliente de base escura que nunca falou em loiro, e a cliente achou a conversa longa. Agora (DALU) foto/vídeo de cabelo só sai depois que a cliente diz a cor que quer, e loiro só para quem pediu loiro/clarear; se não, a IA pergunta "quer manter o seu tom ou clarear?". Vídeos de técnica (fita, queratina, tela) continuam liberados. Depois de mídia vai só 1 bolha curta com a pergunta, e mídia já enviada não se repete. O prompt dela ganhou essas regras no topo (backup em scripts/backups).',
+  },
+  {
     title: 'Agenda Trinks: tela mostra quem faz cada serviço',
     date: '27/11/2026',
     detail: 'Na tela de serviços da agenda Trinks (DALU), cada serviço agora mostra "Quem faz: …" com os profissionais cadastrados para ele na Trinks, e avisa em vermelho quando ninguém faz. Assim a cliente confere antes de aprovar, já que a IA escolhe entre essas pessoas quem está livre.',
