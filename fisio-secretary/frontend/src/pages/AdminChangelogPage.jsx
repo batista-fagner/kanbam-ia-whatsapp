@@ -7,6 +7,11 @@ import { CheckCircle2, Clock, Bug } from 'lucide-react'
 
 const DONE = [
   {
+    title: 'Agenda Trinks: tela mostra quem faz cada serviço',
+    date: '27/11/2026',
+    detail: 'Na tela de serviços da agenda Trinks (DALU), cada serviço agora mostra "Quem faz: …" com os profissionais cadastrados para ele na Trinks, e avisa em vermelho quando ninguém faz. Assim a cliente confere antes de aprovar, já que a IA escolhe entre essas pessoas quem está livre.',
+  },
+  {
     title: 'Checkout: serviço de Tráfego Pago com link de Pix no WhatsApp',
     date: '23/11/2026',
     detail: 'O checkout ganhou o item "Tráfego Pago" (valor e liga/desliga em Admin > Checkout; link direto: /checkout?tipo=trafego). A pessoa recebe no WhatsApp a mensagem com o botão "Ver cobrança", que abre a página com QR e Pix copia e cola, e o pagamento é confirmado sozinho. O modelo pix_trafego_link_v1 foi aprovado pela Meta como Marketing (mais caro que Utilidade).',

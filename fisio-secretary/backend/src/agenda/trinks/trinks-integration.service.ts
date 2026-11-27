@@ -280,8 +280,21 @@ export class TrinksIntegrationService implements OnModuleInit {
     });
   }
 
+  // `professionals`: quem faz o serviço na Trinks (apelido, ou nome se não tiver). A tela mostra
+  // isso para a cliente conferir antes de aprovar — é desse grupo que a IA escolhe quem está livre.
   catalogServices(integ: AgendaIntegration | null) {
-    return (integ?.catalog?.services ?? []).map((s) => ({ id: s.id, nome: s.nome, duracaoEmMinutos: s.duracaoEmMinutos }));
+    const pros = integ?.catalog?.professionals ?? [];
+    return (integ?.catalog?.services ?? []).map((s) => ({
+      id: s.id,
+      nome: s.nome,
+      duracaoEmMinutos: s.duracaoEmMinutos,
+      professionals: [...new Set(
+        pros
+          .filter((p) => Array.isArray(p.serviceIds) && p.serviceIds.includes(s.id))
+          .map((p) => (p.apelido || p.nome || '').trim())
+          .filter(Boolean),
+      )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    }));
   }
 
   async linkService(tenantId: string, serviceId: string, externalId: string | number | null): Promise<void> {

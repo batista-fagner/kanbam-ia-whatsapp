@@ -145,6 +145,13 @@ function ServicesTab({ status, onStatus }) {
                   {!l.externalId && l.suggestion && !choice[l.id] ? 'Sugestão pelo nome — confira' : 'Serviço na Trinks'}
                   {selectedSvc ? ` · duração ${duration(selectedSvc.duracaoEmMinutos)}` : ''}
                 </div>
+                {selectedSvc && (
+                  <div className="text-xs mt-0.5">
+                    {selectedSvc.professionals?.length
+                      ? <span className="text-gray-600">Quem faz: {selectedSvc.professionals.join(', ')}</span>
+                      : <span className="text-red-600">Ninguém faz esse serviço na Trinks</span>}
+                  </div>
+                )}
               </div>
               <div>
                 <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full border ${ui.cls}`}>
